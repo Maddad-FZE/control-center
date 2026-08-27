@@ -1,0 +1,46 @@
+{% extends "core/base.html" %}
+{% block title %}Profile — {{ site_title }}{% endblock %}
+{% block content %}
+<section class="panel panel-wide settings-panel">
+  <div class="panel-head">Profile</div>
+  <div class="panel-body">
+    <div class="settings-grid">
+      <div class="settings-section">
+        <h2 class="settings-section-title">Account</h2>
+        <div class="stat-row">
+          <span class="stat-label">Username</span>
+          <span class="stat-value">{{ user_obj.username }}</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Joined</span>
+          <span class="stat-value">{{ user_obj.date_joined|date:"Y-m-d H:i" }}</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Last login</span>
+          <span class="stat-value">{{ user_obj.last_login|date:"Y-m-d H:i"|default:"—" }}</span>
+        </div>
+        <p class="settings-hint">
+          <a href="{% url 'password_change' %}">Change password</a>
+        </p>
+      </div>
+      <div class="settings-section">
+        <h2 class="settings-section-title">Details</h2>
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="form" value="profile">
+          {% for field in profile_form %}
+          <div class="form-group">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.errors %}
+              <p class="alert-item error">{{ field.errors|join:", " }}</p>
+            {% endif %}
+          </div>
+          {% endfor %}
+          <button type="submit" class="btn">Save profile</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

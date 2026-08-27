@@ -1,0 +1,27 @@
+{% extends "core/base.html" %}
+{% block title %}Audit log — {{ site_title }}{% endblock %}
+{% block content %}
+<section class="panel panel-wide">
+  <div class="panel-head">Audit log</div>
+  <div class="panel-body">
+    <table class="data">
+      <thead>
+        <tr><th>Time</th><th>Type</th><th>User</th><th>IP</th><th>Message</th></tr>
+      </thead>
+      <tbody>
+        {% for ev in events %}
+        <tr>
+          <td>{{ ev.created_at|date:"Y-m-d H:i:s" }}</td>
+          <td>{{ ev.get_event_type_display }}</td>
+          <td>{{ ev.username }}</td>
+          <td>{{ ev.ip_address }}</td>
+          <td>{{ ev.message }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5">No events recorded.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

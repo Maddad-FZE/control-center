@@ -1,0 +1,176 @@
+{% extends "core/base.html" %}
+{% load static dashboard_extras %}
+{% block title %}{% if services_down %}({{ services_down }} DOWN) {% endif %}{{ site_title }}{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
+{% endblock %}
+{% block content %}
+<meta name="csrf-token" content="{{ csrf_token }}">
+<div class="status-strip" id="status-strip" role="status" aria-live="polite">
+  <div class="status-strip__metrics">
+    <span class="status-chip status-chip--up" id="stat-up">{{ services_up }} up</span>
+    <button type="button" class="status-chip status-chip--down status-chip--clickable" id="stat-down">{{ services_down }} down</button>
+    {% if services_unknown %}<span class="status-chip status-chip--unknown" id="stat-unknown">{{ services_unknown }} unknown</span>{% endif %}
+    <span class="status-divider" aria-hidden="true">·</span>
+    <button type="button" class="status-chip status-chip--clickable" id="stat-alerts">{{ unack_alerts }} alert{% if unack_alerts != 1 %}s{% endif %}</button>
+    <span class="status-divider" aria-hidden="true">·</span>
+    <span class="status-chip" id="stat-uptime-24h">24H —</span>
+    <span class="status-divider" aria-hidden="true">·</span>
+    <span class="status-chip" id="stat-host-uptime">Host uptime —</span>
+  </div>
+  <div class="status-strip__actions">
+    <label class="filter-label" for="service-filter">Filter</label>
+    <input type="search" id="service-filter" class="service-filter" placeholder="Filter services ( / )" autocomplete="off" spellcheck="false">
+    <span class="refresh-indicator" id="refresh-indicator">Syncing…</span>
+  </div>
+</div>
+
+<div class="dashboard-page">
+  <div class="dashboard-main">
+    <div class="services-board">
+      {% for category in categories %}
+      <section class="services-group">
+        <h2 class="group-title{% if category.id in down_category_ids %} group-title--alert{% endif %}">
+          {{ forloop.counter }} - {{ category.name }}
+        </h2>
+        <div class="service-grid{% if category.layout == 'rows' %} service-grid--wide{% endif %}">
+          {% for service in category.services.all %}
+            {% if service.enabled %}
+            {% with s=status|get_item:service.id %}
+            <a
+              class="service-card{% if s and not s.is_up %} service-card--down{% endif %}{% if service.widget_type != 'none' %} service-card--widget{% endif %}{% if service.is_public %} service-card--public{% endif %}"
+              href="{{ service.href }}"
+              target="_blank"
+              rel="noopener"
+              data-service-id="{{ service.id }}"
+              data-service-name="{{ service.name|lower }}"
+              data-service-desc="{{ service.description|lower }}"
+              data-service-down="{% if s and not s.is_up %}1{% else %}0{% endif %}"
+              data-widget-type="{{ service.widget_type }}"
+              title="{{ service.name }}{% if s and s.response_ms %} · {{ s.response_ms }}ms{% endif %}"
+            >
+              <span class="status-dot {% if s %}{% if s.is_up %}up{% else %}down{% endif %}{% endif %}" data-service-id="{{ service.id }}" aria-label="{{ service.name }}: {% if s %}{% if s.is_up %}up{% else %}down{% endif %}{% else %}unknown{% endif %}"></span>
+              <header class="service-card__header">
+                {% if service.icon %}
+                <div class="service-icon-wrap">
+                  <img class="service-icon" src="{{ service.icon }}" alt="">
+                </div>
+                {% endif %}
+                <div class="service-card__identity">
+                  <div class="service-name">{{ service.name }}</div>
+                  {% if service.description %}<div class="service-desc">{{ service.description }}</div>{% endif %}
+                </div>
+              </header>
+              <div class="service-card__stats{% if service.widget_type == 'none' %} service-card__stats--empty{% endif %}" data-widget-service-id="{{ service.id }}" aria-label="{{ service.name }} stats"></div>
+              <span class="service-latency" data-service-id="{{ service.id }}" hidden>{% if s and s.response_ms %}{{ s.response_ms }}ms{% endif %}</span>
+            </a>
+            {% endwith %}
+            {% endif %}
+          {% empty %}
+            <p class="empty-group">No services in this group.</p>
+          {% endfor %}
+        </div>
+      </section>
+      {% empty %}
+      <section class="services-group">
+        <h2 class="group-title">1 - Services</h2>
+        <p class="empty-group">Run <code>python manage.py seed_homelab</code> to populate services.</p>
+      </section>
+      {% endfor %}
+    </div>
+
+    {% if bookmarks %}
+    <section class="bookmarks-bar">
+      <h2>Quick links</h2>
+      <div class="bookmarks">
+        {% for bm in bookmarks %}
+          <a class="bookmark" href="{{ bm.href }}" target="_blank" rel="noopener">
+            {% if bm.icon %}<img src="{{ bm.icon }}" alt="">{% endif %}
+            {{ bm.name }}
+          </a>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+  </div>
+
+  <aside class="ops-stack">
+    <section class="panel" data-panel-id="system">
+      <button type="button" class="panel-head panel-toggle" aria-expanded="true" aria-controls="panel-system">
+        <span class="panel-toggle__label">System</span>
+        <span class="panel-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div class="panel-body" id="panel-system">
+        <div id="system-stats">
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" data-panel-id="alerts" id="alerts-panel-section">
+      <div class="panel-head panel-head--alerts">
+        <button type="button" class="panel-toggle panel-toggle--inline" aria-expanded="true" aria-controls="panel-alerts">
+          <span class="panel-toggle__label">Alerts</span>
+          <span class="panel-badge" id="alerts-badge"{% if not unack_alerts %} hidden{% endif %}>{{ unack_alerts }}</span>
+          <span class="panel-chevron" aria-hidden="true">▾</span>
+        </button>
+        <button type="button" class="btn secondary btn-ack" id="ack-all-btn">ACK ALL</button>
+      </div>
+      <div class="panel-body panel-body--alerts" id="panel-alerts">
+        <div id="alerts-panel">
+          {% for alert in alerts %}
+            <div class="alert-item {{ alert.level }}{% if alert.acknowledged %} acknowledged{% endif %}">
+              <span class="alert-icon" aria-hidden="true">{% if alert.level == 'error' %}!{% elif alert.level == 'success' %}✓{% else %}·{% endif %}</span>
+              <span class="alert-text">{{ alert.title }}</span>
+              <span class="alert-time">{{ alert.created_at|timesince }} ago</span>
+            </div>
+          {% empty %}
+            <div class="stat-label">No recent alerts.</div>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" data-panel-id="containers">
+      <button type="button" class="panel-head panel-toggle" aria-expanded="true" aria-controls="panel-containers">
+        <span class="panel-toggle__label">Containers</span>
+        <span class="panel-head-meta" id="docker-count"></span>
+        <span class="panel-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div class="panel-body" id="panel-containers">
+        <div id="docker-stats">
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" data-panel-id="uptime">
+      <button type="button" class="panel-head panel-toggle" aria-expanded="true" aria-controls="panel-uptime">
+        <span class="panel-toggle__label">Uptime (24h)</span>
+        <span class="panel-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div class="panel-body" id="panel-uptime">
+        <div id="uptime-panel">
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="ops-footer">
+      {% for ev in recent_logins %}
+        <span class="login-chip">{{ ev.username|default:"?" }} · {{ ev.created_at|date:"M d H:i" }}</span>
+      {% empty %}
+        <span class="login-chip">No login events yet.</span>
+      {% endfor %}
+    </div>
+  </aside>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/dashboard.js' %}"></script>
+{% endblock %}
