@@ -4,6 +4,7 @@ from django.contrib.auth import login
 from django.contrib.auth.decorators import login_not_required, login_required
 from django.contrib.auth.models import User
 from django.contrib.auth.views import LoginView, LogoutView, PasswordChangeView
+from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.http import FileResponse, HttpResponse, JsonResponse
@@ -42,14 +43,19 @@ def setup_view(request):
     if request.method == "POST":
         form = SetupAdminForm(request.POST)
         if form.is_valid():
-            user = User.objects.create_superuser(
-                username=form.cleaned_data["username"],
-                email="",
-                password=form.cleaned_data["password1"],
-            )
-            login(request, user)
-            messages.success(request, "Admin account created. Welcome!")
-            return redirect("dashboard")
+            try:
+                user = User.objects.create_superuser(
+                    username=form.cleaned_data["username"],
+                    email="",
+                    password=form.cleaned_data["password1"],
+                )
+            except ValidationError as exc:
+                for message in exc.messages:
+                    form.add_error("password1", message)
+            else:
+                login(request, user)
+                messages.success(request, "Admin account created. Welcome!")
+                return redirect("dashboard")
     return render(request, "core/setup.html", {"form": form})
 
 

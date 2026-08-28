@@ -1,6 +1,6 @@
 from django import forms
 from django.contrib.auth.models import User
-from django.contrib.auth.password_validation import MinimumLengthValidator
+from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 
 from .models import SiteSettings, UserProfile
@@ -46,8 +46,7 @@ class SetupAdminForm(forms.Form):
 
     def clean_password1(self):
         password = self.cleaned_data.get("password1", "")
-        validator = MinimumLengthValidator(min_length=8)
-        validator(password)
+        validate_password(password)
         return password
 
     def clean(self):
