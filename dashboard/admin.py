@@ -1,5 +1,12 @@
 from django.contrib import admin
-from .models import Alert, Bookmark, Service, ServiceCategory, ServiceCheck
+
+from .models import Alert, Bookmark, Service, ServiceCategory, ServiceCheck, ServiceMetric
+
+
+class ServiceMetricInline(admin.TabularInline):
+    model = ServiceMetric
+    extra = 0
+    fields = ("label", "json_path", "sort_order")
 
 
 @admin.register(ServiceCategory)
@@ -8,37 +15,40 @@ class ServiceCategoryAdmin(admin.ModelAdmin):
     ordering = ("sort_order",)
 
 
-class ServiceInline(admin.TabularInline):
-    model = Service
-    extra = 0
-    fields = (
-        "name",
-        "href",
-        "widget_type",
-        "widget_url",
-        "widget_api_key",
-        "enabled",
-        "sort_order",
-    )
-
-
 @admin.register(Service)
 class ServiceAdmin(admin.ModelAdmin):
     list_display = (
         "name",
         "category",
         "widget_type",
-        "href",
+        "host",
+        "port",
         "is_public",
         "enabled",
         "sort_order",
     )
     list_filter = ("category", "widget_type", "is_public", "enabled")
-    search_fields = ("name", "href")
+    search_fields = ("name", "href", "host")
+    inlines = [ServiceMetricInline]
     fieldsets = (
-        (None, {"fields": ("category", "name", "description", "href", "icon")}),
         (
-            "Health",
+            None,
+            {
+                "fields": (
+                    "category",
+                    "name",
+                    "description",
+                    "host",
+                    "port",
+                    "path",
+                    "href",
+                    "icon",
+                    "logo",
+                ),
+            },
+        ),
+        (
+            "Health & visibility",
             {"fields": ("health_check_url", "is_public", "enabled", "sort_order")},
         ),
         (
@@ -49,6 +59,13 @@ class ServiceAdmin(admin.ModelAdmin):
             },
         ),
     )
+
+
+@admin.register(ServiceMetric)
+class ServiceMetricAdmin(admin.ModelAdmin):
+    list_display = ("service", "label", "json_path", "sort_order")
+    list_filter = ("service__category",)
+    search_fields = ("label", "json_path", "service__name")
 
 
 @admin.register(Bookmark)

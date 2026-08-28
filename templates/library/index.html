@@ -1,0 +1,60 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block title %}Library — {{ site_title }}{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/library.css' %}">
+{% endblock %}
+{% block content %}
+<meta name="csrf-token" content="{{ csrf_token }}">
+<section class="library-page">
+  <header class="library-header">
+    <h1 class="library-title">App library</h1>
+    <p class="settings-hint">Install bundled addons or self-hosted services. Cards are created automatically when a service is installed.</p>
+  </header>
+
+  <div class="library-filters">
+    <div class="library-filters__field">
+      <label class="filter-label" for="library-type-filter">Type</label>
+      <select id="library-type-filter" class="library-filter-select">
+        <option value="">All</option>
+        <option value="addon">Addons</option>
+        <option value="service">Services</option>
+      </select>
+    </div>
+    <div class="library-filters__field">
+      <label class="filter-label" for="library-category-filter">Category</label>
+      <select id="library-category-filter" class="library-filter-select">
+        <option value="">All categories</option>
+        {% for category in categories %}
+        <option value="{{ category }}">{{ category }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <div class="library-grid" id="library-grid">
+    {% for item in catalog_items %}
+    {% include "library/_card.html" with item=item %}
+    {% endfor %}
+  </div>
+</section>
+
+<div class="library-modal" id="uninstall-modal" hidden>
+  <div class="library-modal__backdrop" data-modal-close></div>
+  <div class="library-modal__panel" role="dialog" aria-labelledby="uninstall-modal-title">
+    <h2 class="library-modal__title" id="uninstall-modal-title">Uninstall</h2>
+    <p class="settings-hint" id="uninstall-modal-desc"></p>
+    <label class="checkbox-label library-modal__checkbox" id="uninstall-data-wrap">
+      <input type="checkbox" id="uninstall-remove-data">
+      <span>Also delete data volumes</span>
+    </label>
+    <div class="library-modal__actions">
+      <button type="button" class="btn secondary" data-modal-close>Cancel</button>
+      <button type="button" class="btn danger" id="uninstall-confirm-btn">Uninstall</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'js/library.js' %}" defer></script>
+{% endblock %}

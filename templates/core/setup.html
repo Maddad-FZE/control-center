@@ -1,0 +1,48 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block title %}Setup — {{ site_title }}{% endblock %}
+{% block content %}
+<div class="panel login-wrap setup-wrap">
+  <div class="panel-head">First-time setup</div>
+  <div class="panel-body">
+    <p class="settings-hint">Create the admin account for this control center. Password must be at least 8 characters.</p>
+    <form method="post" id="setup-form">
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+        {% for error in form.non_field_errors %}
+          <p class="alert-item error">{{ error }}</p>
+        {% endfor %}
+      {% endif %}
+      <div class="form-group">
+        <label for="{{ form.username.id_for_label }}">Admin username</label>
+        {{ form.username }}
+        {% if form.username.errors %}
+          <p class="alert-item error">{{ form.username.errors|join:", " }}</p>
+        {% endif %}
+      </div>
+      <div class="form-group">
+        <label for="{{ form.password1.id_for_label }}">Password</label>
+        {{ form.password1 }}
+        <div class="password-strength" id="password-strength" hidden>
+          <div class="password-strength__bar"><span class="password-strength__fill" id="password-strength-fill"></span></div>
+          <span class="password-strength__label" id="password-strength-label"></span>
+        </div>
+        {% if form.password1.errors %}
+          <p class="alert-item error">{{ form.password1.errors|join:", " }}</p>
+        {% endif %}
+      </div>
+      <div class="form-group">
+        <label for="{{ form.password2.id_for_label }}">Confirm password</label>
+        {{ form.password2 }}
+        {% if form.password2.errors %}
+          <p class="alert-item error">{{ form.password2.errors|join:", " }}</p>
+        {% endif %}
+      </div>
+      <button type="submit" class="btn">Create admin &amp; continue</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'js/password-strength.js' %}" defer></script>
+{% endblock %}

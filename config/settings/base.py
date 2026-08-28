@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     "csp",
     "core",
     "dashboard",
+    "library",
     "apps.notes",
 ]
 
@@ -43,9 +44,11 @@ MIDDLEWARE = [
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "core.middleware.HostAppMiddleware",
+    "core.middleware.SetupRequiredMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "core.middleware.AddonEnabledMiddleware",
     "django.contrib.auth.middleware.LoginRequiredMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -113,6 +116,14 @@ STORAGES = {
     },
 }
 
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
+        "LOCATION": BASE_DIR / "data" / "django_cache",
+        "OPTIONS": {"MAX_ENTRIES": 2000},
+    }
+}
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOGIN_URL = "login"
@@ -164,6 +175,18 @@ NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "homelab-alerts")
 NTFY_USER = os.environ.get("NTFY_USER", "")
 NTFY_PASSWORD = os.environ.get("NTFY_PASSWORD", "")
 
+# Self-update via GitHub releases
+GITHUB_REPO = os.environ.get("GITHUB_REPO", "Maddad-FZE/control-center")
+UPDATE_CHECK_INTERVAL_HOURS = float(
+    os.environ.get("UPDATE_CHECK_INTERVAL_HOURS", "12")
+)
+UPDATES_ALLOW_INSTALL = os.environ.get("UPDATES_ALLOW_INSTALL", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+UPDATE_RESTART_COMMAND = os.environ.get("UPDATE_RESTART_COMMAND", "")
+
 # Public subdomain → Django app name (notes, etc.)
 HOST_APP_MAP = {
     host.strip(): app.strip()
@@ -172,9 +195,7 @@ HOST_APP_MAP = {
     for host, app in [pair.split(":", 1)]
 }
 
-# Nav registry for mini-apps
+# Nav registry — Dashboard only; addons and Library are built in context_processors.site
 NAV_APPS = [
     {"name": "Dashboard", "url_name": "dashboard", "icon": "dashboard"},
-    {"name": "Notes", "url_name": "notes:list", "icon": "note"},
-    {"name": "Audit", "url_name": "audit_log", "icon": "audit"},
 ]

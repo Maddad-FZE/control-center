@@ -18,7 +18,6 @@
 </head>
 <body class="theme-{{ user_theme }}{% if crt_enabled %} crt-on{% endif %}">
   <a class="skip-link" href="#main-content">Skip to content</a>
-  {% if user.is_authenticated %}
   <header class="topbar">
     <div class="brand">
       {% if site_logo_url %}
@@ -28,47 +27,41 @@
       {% endif %}
       <h1>{{ site_title }}</h1>
     </div>
+    {% if user.is_authenticated %}
     <nav class="nav" aria-label="Main navigation">
       {% for app in nav_apps %}
         <a href="{% url app.url_name %}" {% if request.resolver_match.url_name == app.url_name %}class="active"{% endif %}>{{ app.name }}</a>
       {% endfor %}
     </nav>
+  {% endif %}
     <div class="topbar-actions">
-      {% if weather_configured %}
+      {% if user.is_authenticated and weather_configured %}
       <span class="weather-chip" id="weather-chip" hidden aria-live="polite"></span>
       {% endif %}
+      {% if user.is_authenticated %}
       <time class="tva-clock" id="tva-clock" datetime="">FILED: —</time>
-      <form method="post" action="{% url 'toggle_crt' %}" class="crt-toggle-form">
-        {% csrf_token %}
-        <button type="submit" class="btn secondary crt-toggle" aria-pressed="{% if crt_enabled %}true{% else %}false{% endif %}">
-          CRT {% if crt_enabled %}<span class="crt-state crt-state--on">▮ON</span>{% else %}<span class="crt-state crt-state--off">▯OFF</span>{% endif %}
-        </button>
-      </form>
       <div class="user-menu" id="user-menu">
-        <button
-          type="button"
-          class="user-chip"
-          id="user-menu-trigger"
-          aria-haspopup="true"
-          aria-expanded="false"
-          aria-controls="user-menu-dropdown"
-        >
+        <button type="button" class="user-chip" id="user-menu-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="user-menu-dropdown">
           <span class="user-chip-avatar" aria-hidden="true">{{ user.username|slice:":1"|upper }}</span>
           <span class="user-chip-name">{{ user.username }}</span>
           <span class="user-chip-chevron" aria-hidden="true">▾</span>
         </button>
         <div class="user-menu-dropdown" id="user-menu-dropdown" role="menu" hidden>
           <a href="{% url 'profile' %}" class="user-menu-item" role="menuitem">Profile</a>
+          {% if is_admin %}
           <a href="{% url 'settings' %}" class="user-menu-item" role="menuitem">Settings</a>
+          {% endif %}
           <form method="post" action="{% url 'logout' %}" class="user-menu-logout">
             {% csrf_token %}
             <button type="submit" class="user-menu-item user-menu-signout" role="menuitem">Sign Out</button>
           </form>
         </div>
       </div>
+      {% else %}
+      <a href="{% url 'login' %}" class="btn secondary">Sign in</a>
+      {% endif %}
     </div>
   </header>
-  {% endif %}
   <main class="wrap{% if request.resolver_match.url_name == 'dashboard' %} wrap--dashboard{% endif %}" id="main-content">
     {% if messages %}
     <ul class="messages">
@@ -79,7 +72,13 @@
     {% endif %}
     {% block content %}{% endblock %}
   </main>
-  <footer class="footer">Homelab Control Center</footer>
+  <footer class="footer">
+    Homelab Control Center
+    <span class="footer-version">v{{ app_version }}</span>
+    {% if update_available %}
+    <a class="footer-update" href="{% url 'settings' %}?section=updates">Update available</a>
+    {% endif %}
+  </footer>
   {% if user.is_authenticated %}
   <script src="{% static 'js/user-menu.js' %}" defer></script>
   {% if weather_configured %}
@@ -87,5 +86,6 @@
   {% endif %}
   {% endif %}
   {% block extra_js %}{% endblock %}
+  <script src="{% static 'js/sw-register.js' %}" defer></script>
 </body>
 </html>

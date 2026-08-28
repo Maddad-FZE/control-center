@@ -123,6 +123,111 @@
   align-items: start;
 }
 
+.dashboard-page--guest {
+  grid-template-columns: 1fr;
+}
+
+.dashboard-admin-bar {
+  margin-bottom: 0.75rem;
+}
+
+.offline-banner {
+  margin-bottom: 0.65rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  border-left-width: 3px;
+  border-radius: 2px;
+  background: rgba(40, 16, 12, 0.92);
+  color: #fca5a5;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.offline-banner[hidden] {
+  display: none;
+}
+
+.service-card-wrap {
+  position: relative;
+}
+
+.service-card-menu {
+  position: absolute;
+  top: 0.35rem;
+  left: 0.35rem;
+  z-index: 10;
+}
+
+.service-kebab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: rgba(20, 12, 8, 0.75);
+  cursor: pointer;
+}
+
+.service-kebab:hover,
+.service-kebab[aria-expanded="true"] {
+  border-color: var(--tva-orange);
+}
+
+.service-kebab-dot {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--tva-amber);
+}
+
+.service-card-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 9rem;
+  margin-top: 0.2rem;
+  padding: 0.25rem 0;
+  border: 1px solid var(--tva-border);
+  border-radius: 2px;
+  background: rgba(36, 24, 16, 0.98);
+  box-shadow: 0 6px 16px var(--tva-shadow);
+}
+
+.service-card-dropdown__item {
+  display: block;
+  width: 100%;
+  padding: 0.4rem 0.65rem;
+  border: none;
+  background: none;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  color: var(--tva-cream);
+  text-align: left;
+  cursor: pointer;
+}
+
+.service-card-dropdown__item:hover {
+  background: rgba(232, 119, 34, 0.12);
+  color: var(--tva-orange);
+}
+
+.service-card-dropdown__item--danger {
+  color: #fca5a5;
+}
+
+.service-card--public {
+  border-color: rgba(110, 231, 160, 0.45);
+}
+
 .dashboard-main {
   display: flex;
   flex-direction: column;
@@ -297,6 +402,55 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.service-update-icon {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.4rem;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  color: var(--tva-orange);
+  pointer-events: none;
+}
+
+.service-update-icon svg {
+  width: 0.85rem;
+  height: 0.85rem;
+  filter: drop-shadow(0 0 6px var(--phosphor-soft));
+}
+
+.service-update-banner {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  padding: 0.32rem 0.45rem;
+  font-family: var(--font-display);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-align: center;
+  line-height: 1.2;
+  color: var(--tva-orange);
+  background: linear-gradient(180deg, rgba(20, 12, 8, 0.35), rgba(232, 119, 34, 0.18));
+  border-top: 1px solid rgba(232, 119, 34, 0.5);
+  box-shadow: 0 -4px 12px rgba(232, 119, 34, 0.08);
+  pointer-events: none;
+}
+
+.service-card--has-update {
+  padding-bottom: 1.55rem;
+}
+
+.service-card--has-update .status-dot {
+  right: 1.35rem;
 }
 
 .service-desc {
@@ -789,6 +943,56 @@
   .skeleton-row {
     animation: shimmer 1.4s ease-in-out infinite;
   }
+}
+
+.service-form-panel .installed-suggest {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  border: 1px dashed rgba(201, 166, 107, 0.35);
+  border-radius: 4px;
+}
+
+.installed-suggest__title {
+  margin: 0 0 0.35rem;
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--tva-orange);
+}
+
+.installed-suggest__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.5rem;
+}
+
+.installed-suggest__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--tva-border);
+  border-radius: 2px;
+  font-size: 0.72rem;
+  color: var(--tva-cream);
+}
+
+.installed-suggest__item:hover {
+  border-color: var(--tva-orange);
+  color: var(--tva-orange);
+}
+
+.installed-suggest__icon {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.installed-suggest__port {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--tva-muted);
 }
 
 .bookmarks-bar {

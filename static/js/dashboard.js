@@ -7,6 +7,8 @@ const MAX_CPU_HISTORY = 30;
 let prevNet = null;
 let pollFailCount = 0;
 let healthPollCounter = 0;
+let offlineMode = false;
+let lastLiveAt = null;
 const BASE_TITLE = document.title.replace(/^\(\d+ DOWN\) /, "");
 const PANEL_STORAGE_KEY = "tva-panel-collapse";
 
@@ -336,18 +338,72 @@ function renderAlerts(data) {
     .join("");
 }
 
-function setRefreshState(ok) {
+function setOfflineBanner(show) {
+  const banner = el("offline-banner");
+  if (!banner) return;
+  banner.hidden = !show;
+}
+
+function setRefreshState(ok, fromCache) {
   const indicator = el("refresh-indicator");
   if (!indicator) return;
   if (ok) {
     pollFailCount = 0;
-    indicator.textContent = `Updated ${formatTime24(new Date())}`;
+    offlineMode = false;
+    lastLiveAt = new Date();
+    setOfflineBanner(false);
+    indicator.textContent = `Updated ${formatTime24(lastLiveAt)}`;
     indicator.classList.remove("stale");
+  } else if (fromCache) {
+    offlineMode = true;
+    setOfflineBanner(true);
+    const stamp = lastLiveAt ? formatTime24(lastLiveAt) : "cached";
+    indicator.textContent = `Offline — ${stamp}`;
+    indicator.classList.add("stale");
   } else {
     pollFailCount += 1;
-    indicator.textContent = pollFailCount > 1 ? "STALE — retrying" : "Sync failed — retrying";
+    offlineMode = true;
+    setOfflineBanner(true);
+    indicator.textContent =
+      pollFailCount > 1 ? "Offline — retrying" : "Sync failed — retrying";
     indicator.classList.add("stale");
   }
+}
+
+async function fetchWithCache(url, cacheKey) {
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    if (window.dashboardCache) {
+      window.dashboardCache.save(cacheKey, data);
+    }
+    return { ok: true, stale: false, data };
+  } catch (e) {
+    const cached = window.dashboardCache ? window.dashboardCache.load(cacheKey) : null;
+    if (cached) {
+      return { ok: false, stale: true, data: cached.data };
+    }
+    throw e;
+  }
+}
+
+function hydrateFromCache() {
+  if (!window.dashboardCache) return;
+  let newestSavedAt = 0;
+  window.dashboardCache.hydrateKeys.forEach((key) => {
+    const entry = window.dashboardCache.load(key);
+    if (!entry) return;
+    if (entry.savedAt > newestSavedAt) newestSavedAt = entry.savedAt;
+    const data = entry.data;
+    if (key === "system") renderSystem(data);
+    else if (key === "docker") renderDocker(data);
+    else if (key === "alerts") renderAlerts(data);
+    else if (key === "health") renderHealth(data);
+    else if (key === "uptime") renderUptime(data);
+    else if (key === "widgets") renderWidgets(data);
+  });
+  if (newestSavedAt) lastLiveAt = new Date(newestSavedAt);
 }
 
 function updateClock() {
@@ -484,45 +540,90 @@ function initAckButton() {
   if (btn) btn.addEventListener("click", ackAllAlerts);
 }
 
-async function poll() {
+const IS_GUEST = !document.querySelector('meta[name="csrf-token"]');
+
+async function pollGuest() {
   try {
-    const fastFetches = [
-      fetch("/api/system/").then((r) => r.json()),
-      fetch("/api/docker/").then((r) => r.json()),
-      fetch("/api/alerts/").then((r) => r.json()),
-    ];
-
-    healthPollCounter += 1;
-    const slowPoll = healthPollCounter === 1 || healthPollCounter % 3 === 0;
-
-    if (slowPoll) {
-      fastFetches.push(fetch("/api/health/").then((r) => r.json()));
-      fastFetches.push(fetch("/api/uptime/").then((r) => r.json()));
-      fastFetches.push(fetch("/api/widgets/").then((r) => r.json()));
-    }
-
-    const results = await Promise.all(fastFetches);
-    renderSystem(results[0]);
-    renderDocker(results[1]);
-    renderAlerts(results[2]);
-    if (slowPoll) {
-      renderHealth(results[3]);
-      renderUptime(results[4]);
-      renderWidgets(results[5]);
-    }
-    setRefreshState(true);
+    const result = await fetchWithCache("/api/widgets/", "widgets");
+    renderWidgets(result.data);
+    setRefreshState(result.ok, result.stale);
   } catch (e) {
-    console.warn("dashboard poll failed", e);
-    setRefreshState(false);
+    console.warn("guest widget poll failed", e);
+    setRefreshState(false, false);
+  }
+}
+
+async function pollWidgets() {
+  try {
+    const result = await fetchWithCache("/api/widgets/", "widgets");
+    renderWidgets(result.data);
+    if (!result.ok && result.stale) {
+      setRefreshState(false, true);
+    }
+  } catch (e) {
+    console.warn("widget poll failed", e);
+  }
+}
+
+async function pollFast() {
+  try {
+    const [systemR, dockerR, alertsR] = await Promise.all([
+      fetchWithCache("/api/system/", "system"),
+      fetchWithCache("/api/docker/", "docker"),
+      fetchWithCache("/api/alerts/", "alerts"),
+    ]);
+    renderSystem(systemR.data);
+    renderDocker(dockerR.data);
+    renderAlerts(alertsR.data);
+    const anyOk = systemR.ok || dockerR.ok || alertsR.ok;
+    const anyStale =
+      (systemR.stale && !systemR.ok) ||
+      (dockerR.stale && !dockerR.ok) ||
+      (alertsR.stale && !alertsR.ok);
+    setRefreshState(anyOk, anyStale && !anyOk);
+  } catch (e) {
+    console.warn("dashboard fast poll failed", e);
+    setRefreshState(false, !!window.dashboardCache?.load("system"));
+  }
+}
+
+async function pollSlow() {
+  try {
+    const [healthR, uptimeR] = await Promise.all([
+      fetchWithCache("/api/health/", "health"),
+      fetchWithCache("/api/uptime/", "uptime"),
+    ]);
+    renderHealth(healthR.data);
+    renderUptime(uptimeR.data);
+  } catch (e) {
+    console.warn("dashboard slow poll failed", e);
+  }
+}
+
+async function poll() {
+  await pollFast();
+  healthPollCounter += 1;
+  if (healthPollCounter === 1 || healthPollCounter % 3 === 0) {
+    await pollSlow();
   }
 }
 
 updateClock();
 setInterval(updateClock, 1000);
-initFilter();
-initStatusChips();
-initCollapsiblePanels();
-initAckButton();
-updateGroupTitles();
-poll();
-setInterval(poll, 10000);
+
+if (IS_GUEST) {
+  hydrateFromCache();
+  pollGuest();
+  setInterval(pollGuest, 15000);
+} else {
+  hydrateFromCache();
+  initFilter();
+  initStatusChips();
+  initCollapsiblePanels();
+  initAckButton();
+  updateGroupTitles();
+  poll();
+  pollWidgets();
+  setInterval(poll, 10000);
+  setInterval(pollWidgets, 12000);
+}

@@ -1,55 +1,50 @@
 {% extends "core/base.html" %}
+{% load static %}
 {% block title %}Settings — {{ site_title }}{% endblock %}
 {% block content %}
-<section class="panel panel-wide settings-panel">
+<meta name="csrf-token" content="{{ csrf_token }}">
+<section class="settings-layout panel panel-wide">
   <div class="panel-head">Settings</div>
-  <div class="panel-body">
-    <div class="settings-grid">
-      <div class="settings-section">
-        <h2 class="settings-section-title">Theme &amp; display</h2>
+  <div class="panel-body settings-layout__body">
+    <nav class="settings-nav" aria-label="Settings sections">
+      <a href="?section=appearance" class="settings-nav__item{% if active_section == 'appearance' %} is-active{% endif %}" data-section="appearance">Appearance</a>
+      <a href="?section=site" class="settings-nav__item{% if active_section == 'site' %} is-active{% endif %}" data-section="site">Site</a>
+      <a href="?section=users" class="settings-nav__item{% if active_section == 'users' %} is-active{% endif %}" data-section="users">Users</a>
+      <a href="?section=updates" class="settings-nav__item{% if active_section == 'updates' %} is-active{% endif %}" data-section="updates">
+        Updates
+        {% if update_ready %}<span class="settings-nav__badge" title="Update available"></span>{% endif %}
+      </a>
+      <a href="?section=platform" class="settings-nav__item{% if active_section == 'platform' %} is-active{% endif %}" data-section="platform">Platform</a>
+      <a href="?section=audit" class="settings-nav__item{% if active_section == 'audit' %} is-active{% endif %}" data-section="audit">Audit</a>
+    </nav>
+
+    <div class="settings-content">
+      <section class="settings-pane{% if active_section == 'appearance' %} is-active{% endif %}" id="settings-appearance" data-section="appearance">
+        <h2 class="settings-section-title">Appearance</h2>
+        <p class="settings-hint">Personal theme for your account. CRT scanlines are site-wide (Site section).</p>
         <form method="post">
           {% csrf_token %}
-          <input type="hidden" name="form" value="settings">
+          <input type="hidden" name="form" value="appearance">
+          <input type="hidden" name="section" value="appearance">
           <div class="form-group">
-            <label for="{{ settings_form.theme.id_for_label }}">Color theme</label>
-            {{ settings_form.theme }}
-            <p class="settings-hint">Wood &amp; Orange is the default retro homelab look.</p>
-          </div>
-          <div class="form-group form-group--checkbox">
-            <label class="checkbox-label">
-              {{ settings_form.crt_enabled }}
-              <span>CRT scanline effect</span>
-            </label>
+            <label for="{{ appearance_form.theme.id_for_label }}">Color theme</label>
+            {{ appearance_form.theme }}
           </div>
           <div class="theme-preview" aria-hidden="true">
             <span class="theme-swatch theme-swatch--wood" title="Wood"></span>
             <span class="theme-swatch theme-swatch--slate" title="Slate"></span>
             <span class="theme-swatch theme-swatch--terminal" title="Terminal"></span>
           </div>
-          <button type="submit" class="btn">Save theme settings</button>
+          <button type="submit" class="btn">Save appearance</button>
         </form>
-      </div>
+      </section>
 
-      <div class="settings-section">
-        <h2 class="settings-section-title">Account</h2>
-        <div class="stat-row">
-          <span class="stat-label">Signed in as</span>
-          <span class="stat-value">{{ user.username }}</span>
-        </div>
-        <p class="settings-hint">
-          <a href="{% url 'profile' %}">Edit profile</a>
-          ·
-          <a href="{% url 'password_change' %}">Change password</a>
-        </p>
-      </div>
-
-      {% if users %}
-      <div class="settings-section settings-section--wide">
+      <section class="settings-pane{% if active_section == 'site' %} is-active{% endif %}" id="settings-site" data-section="site">
         <h2 class="settings-section-title">Site</h2>
-        {% if site_form %}
         <form method="post" enctype="multipart/form-data">
           {% csrf_token %}
           <input type="hidden" name="form" value="site">
+          <input type="hidden" name="section" value="site">
           <div class="form-group">
             <label for="{{ site_form.logo.id_for_label }}">Logo</label>
             {{ site_form.logo }}
@@ -67,16 +62,26 @@
           <div class="form-group">
             <label for="{{ site_form.weather_location.id_for_label }}">Weather location</label>
             {{ site_form.weather_location }}
-            <p class="settings-hint">City name for the weather chip in the header.</p>
+            <p class="settings-hint">City name for the weather chip in the header (signed-in users).</p>
+          </div>
+          <div class="form-group">
+            <label for="{{ site_form.services_host.id_for_label }}">Services host</label>
+            {{ site_form.services_host }}
+            <p class="settings-hint">LAN IP or hostname used for library-installed service cards (auto-detected on first install if empty).</p>
+          </div>
+          <div class="form-group form-group--checkbox">
+            <label class="checkbox-label">
+              {{ site_form.crt_enabled }}
+              <span>CRT scanline effect (site-wide)</span>
+            </label>
           </div>
           <button type="submit" class="btn">Save site settings</button>
         </form>
-        {% endif %}
-      </div>
+      </section>
 
-      <div class="settings-section settings-section--wide">
+      <section class="settings-pane{% if active_section == 'users' %} is-active{% endif %}" id="settings-users" data-section="users">
         <h2 class="settings-section-title">Users</h2>
-        <p class="settings-hint">Manage accounts via Django admin for full control.</p>
+        <p class="settings-hint">Manage accounts via Django admin for full control (password reset, permissions).</p>
         <table class="data">
           <thead>
             <tr>
@@ -102,11 +107,69 @@
         <p class="settings-hint">
           <a href="{% url 'admin:auth_user_changelist' %}">Open user admin</a>
         </p>
-      </div>
-      {% endif %}
+      </section>
 
-      <div class="settings-section">
+      <section class="settings-pane{% if active_section == 'updates' %} is-active{% endif %}" id="settings-updates" data-section="updates">
+        <h2 class="settings-section-title">Updates</h2>
+        <p class="settings-hint">
+          Releases are read from <code>{{ github_repo }}</code> on GitHub, at most once every
+          {{ check_interval_hours|floatformat:"-1" }} hours.
+        </p>
+
+        <div class="stat-row">
+          <span class="stat-label">Current version</span>
+          <span class="stat-value" id="update-current">v{{ current_version }}</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Latest release</span>
+          <span class="stat-value" id="update-latest">{% if update_status.latest_version %}{{ update_status.latest_version }}{% else %}—{% endif %}</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Last checked</span>
+          <span class="stat-value" id="update-checked">{% if update_status.last_checked_at %}{{ update_status.last_checked_at|timesince }} ago{% else %}Never{% endif %}</span>
+        </div>
+
+        <p class="update-banner{% if update_ready %} update-banner--available{% endif %}" id="update-banner">
+          {% if update_ready %}
+            Update {{ update_status.latest_version }} is available.
+          {% elif update_status.check_error %}
+            {{ update_status.check_error }}
+          {% else %}
+            You are running the latest version.
+          {% endif %}
+        </p>
+
+        {% if update_status.release_notes %}
+        <details class="update-notes"{% if update_ready %} open{% endif %}>
+          <summary>Release notes</summary>
+          <pre class="update-notes__body" id="update-notes">{{ update_status.release_notes }}</pre>
+          {% if update_status.release_url %}
+          <p class="settings-hint"><a href="{{ update_status.release_url }}" target="_blank" rel="noopener">View on GitHub</a></p>
+          {% endif %}
+        </details>
+        {% endif %}
+
+        <div class="update-actions">
+          <button type="button" class="btn secondary" id="update-check-btn">Check now</button>
+          <button type="button" class="btn" id="update-install-btn"{% if not update_ready or not install_allowed %} disabled{% endif %}>Install update</button>
+        </div>
+
+        {% if not install_allowed %}
+        <p class="settings-hint">In-app installs are disabled. Set <code>UPDATES_ALLOW_INSTALL=true</code> to enable them.</p>
+        {% endif %}
+
+        <div class="update-log-wrap" id="update-log-wrap"{% if update_status.install_state == 'idle' %} hidden{% endif %}>
+          <h3 class="settings-section-title">Install log</h3>
+          <pre class="update-log" id="update-log">{{ update_status.install_log }}</pre>
+        </div>
+      </section>
+
+      <section class="settings-pane{% if active_section == 'platform' %} is-active{% endif %}" id="settings-platform" data-section="platform">
         <h2 class="settings-section-title">Platform</h2>
+        <div class="stat-row">
+          <span class="stat-label">Version</span>
+          <span class="stat-value">v{{ platform.version }}{% if platform.revision %} ({{ platform.revision }}){% endif %}</span>
+        </div>
         <div class="stat-row">
           <span class="stat-label">Site title</span>
           <span class="stat-value">{{ platform.site_title }}</span>
@@ -119,20 +182,78 @@
           <span class="stat-label">Push alerts (ntfy)</span>
           <span class="stat-value">{% if platform.ntfy_configured %}Configured{% else %}Not configured{% endif %}</span>
         </div>
-        {% if user.is_superuser %}
         <div class="stat-row">
           <span class="stat-label">Debug mode</span>
           <span class="stat-value">{% if platform.debug %}On{% else %}Off{% endif %}</span>
         </div>
-        {% endif %}
         <p class="settings-hint">
-          <a href="{% url 'audit_log' %}">Audit log</a>
-          {% if user.is_staff %}
-          · <a href="{% url 'admin:index' %}">Django admin</a>
-          {% endif %}
+          <a href="{% url 'admin:index' %}">Django admin</a>
         </p>
-      </div>
+      </section>
+
+      <section class="settings-pane{% if active_section == 'audit' %} is-active{% endif %}" id="settings-audit" data-section="audit">
+        <h2 class="settings-section-title">Audit log</h2>
+        <p class="settings-hint">Platform events: logins, admin changes, service up/down, and updates.</p>
+        <form method="get" class="audit-filters">
+          <input type="hidden" name="section" value="audit">
+          <div class="audit-filters__row">
+            <div class="form-group">
+              <label for="audit-event-type">Event type</label>
+              <select name="event_type" id="audit-event-type">
+                <option value="">All types</option>
+                {% for value, label in audit_event_types %}
+                <option value="{{ value }}"{% if audit_event_type == value %} selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="audit-search">Search</label>
+              <input type="search" name="q" id="audit-search" value="{{ audit_search }}" placeholder="Username, message, IP">
+            </div>
+            <button type="submit" class="btn secondary">Filter</button>
+          </div>
+        </form>
+        <table class="data">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Type</th>
+              <th>User</th>
+              <th>IP</th>
+              <th>Message</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for ev in audit_events %}
+            <tr>
+              <td>{{ ev.created_at|date:"Y-m-d H:i:s" }}</td>
+              <td>{{ ev.get_event_type_display }}</td>
+              <td>{{ ev.username|default:"—" }}</td>
+              <td>{{ ev.ip_address|default:"—" }}</td>
+              <td>{{ ev.message }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5">No events match your filters.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% if audit_events.has_other_pages %}
+        <nav class="audit-pagination" aria-label="Audit pagination">
+          {% if audit_events.has_previous %}
+          <a class="btn secondary" href="?section=audit&amp;page={{ audit_events.previous_page_number }}{% if audit_event_type %}&amp;event_type={{ audit_event_type }}{% endif %}{% if audit_search %}&amp;q={{ audit_search|urlencode }}{% endif %}">Previous</a>
+          {% endif %}
+          <span class="audit-pagination__meta">Page {{ audit_events.number }} of {{ audit_events.paginator.num_pages }}</span>
+          {% if audit_events.has_next %}
+          <a class="btn secondary" href="?section=audit&amp;page={{ audit_events.next_page_number }}{% if audit_event_type %}&amp;event_type={{ audit_event_type }}{% endif %}{% if audit_search %}&amp;q={{ audit_search|urlencode }}{% endif %}">Next</a>
+          {% endif %}
+        </nav>
+        {% endif %}
+      </section>
     </div>
   </div>
 </section>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'js/settings-tabs.js' %}" defer></script>
+<script src="{% static 'js/updates.js' %}" defer></script>
 {% endblock %}

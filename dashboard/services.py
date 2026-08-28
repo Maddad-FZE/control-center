@@ -1,5 +1,7 @@
+import hashlib
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urljoin
 
 import docker
@@ -16,6 +18,11 @@ from .models import Alert, Service, ServiceCheck
 logger = logging.getLogger(__name__)
 
 CHECK_THROTTLE_SECONDS = 25
+SYSTEM_CACHE_TTL = 8
+DOCKER_CACHE_TTL = 15
+HEALTH_CACHE_TTL = CHECK_THROTTLE_SECONDS
+UPTIME_CACHE_TTL = 25
+ALERTS_CACHE_TTL = 5
 PSEUDO_FSTYPES = {
     "squashfs",
     "overlay",
@@ -40,6 +47,9 @@ PSEUDO_FSTYPES = {
 
 
 def get_system_stats():
+    cached = cache.get("system:stats")
+    if cached is not None:
+        return cached
     cpu = psutil.cpu_percent(interval=0.1)
     mem = psutil.virtual_memory()
     disks_by_device = {}
@@ -73,7 +83,7 @@ def get_system_stats():
     boot = psutil.boot_time()
     uptime_s = int(time.time() - boot)
     net = psutil.net_io_counters()
-    return {
+    result = {
         "cpu_percent": cpu,
         "load_avg": list(getattr(psutil, "getloadavg", lambda: (0, 0, 0))()),
         "memory_percent": mem.percent,
@@ -85,9 +95,14 @@ def get_system_stats():
         "network_sent_mb": round(net.bytes_sent / (1024**2), 1),
         "network_recv_mb": round(net.bytes_recv / (1024**2), 1),
     }
+    cache.set("system:stats", result, SYSTEM_CACHE_TTL)
+    return result
 
 
 def get_docker_containers():
+    cached = cache.get("docker:containers")
+    if cached is not None:
+        return cached
     try:
         client = docker.DockerClient(base_url=settings.DOCKER_HOST)
         containers = client.containers.list(all=True)
@@ -101,10 +116,14 @@ def get_docker_containers():
                     "state": c.attrs.get("State", {}).get("Status", c.status),
                 }
             )
-        return {"available": True, "containers": out}
+        result = {"available": True, "containers": out}
+        cache.set("docker:containers", result, DOCKER_CACHE_TTL)
+        return result
     except Exception as exc:
         logger.debug("Docker unavailable: %s", exc)
-        return {"available": False, "containers": [], "message": str(exc)}
+        result = {"available": False, "containers": [], "message": str(exc)}
+        cache.set("docker:containers", result, DOCKER_CACHE_TTL)
+        return result
 
 
 def _check_url_once(url, timeout=5):
@@ -161,6 +180,9 @@ def _should_send_recovery(service):
 def run_health_checks():
     if not settings.HEALTH_CHECK_ENABLED:
         return []
+    cached = cache.get("health:results")
+    if cached is not None:
+        return cached
     results = []
     for service in Service.objects.filter(enabled=True):
         url = service.health_check_url or service.href
@@ -223,7 +245,43 @@ def run_health_checks():
                 "error": err,
             }
         )
+    cache.set("health:results", results, HEALTH_CACHE_TTL)
     return results
+
+
+def get_cached_alerts(limit=30):
+    cached = cache.get("alerts:recent")
+    if cached is not None:
+        return cached
+    alerts = list(
+        Alert.objects.all()[:limit].values(
+            "id", "created_at", "level", "title", "message", "acknowledged"
+        )
+    )
+    cache.set("alerts:recent", alerts, ALERTS_CACHE_TTL)
+    return alerts
+
+
+def get_cached_uptime_payload():
+    cached = cache.get("uptime:payload")
+    if cached is not None:
+        return cached
+    data = {}
+    for svc in Service.objects.filter(enabled=True):
+        bars = uptime_sparkline(svc)
+        since = timezone.now() - timezone.timedelta(hours=24)
+        checks = list(
+            svc.checks.filter(checked_at__gte=since).values_list("is_up", flat=True)
+        )
+        percent = round(100 * sum(checks) / len(checks), 1) if checks else None
+        data[str(svc.id)] = {
+            "name": svc.name,
+            "percent": percent,
+            "bars": bars,
+        }
+    payload = {"uptime": data}
+    cache.set("uptime:payload", payload, UPTIME_CACHE_TTL)
+    return payload
 
 
 def send_ntfy(title, message=""):
@@ -274,7 +332,10 @@ def uptime_sparkline(service, hours=24):
     ]
 
 
-WIDGET_CACHE_TTL = 60
+WIDGET_CACHE_TTL = 45
+WIDGET_STALE_TTL = 3600
+WIDGET_BUNDLE_TTL = 30
+WIDGET_BUNDLE_STALE_TTL = 3600
 WEATHER_CACHE_TTL = 900
 WEATHER_API_URL = "https://api.open-meteo.com/v1/forecast"
 
@@ -283,32 +344,120 @@ def _widget_cache_key(widget_type, url, key=""):
     return f"widget:{widget_type}:{url}:{key}"
 
 
+def _set_widget_cache(cache_key, result):
+    cache.set(cache_key, result, WIDGET_CACHE_TTL)
+    if result and "error" not in result:
+        cache.set(f"{cache_key}:stale", result, WIDGET_STALE_TTL)
+
+
+def _get_widget_stale(cache_key):
+    return cache.get(f"{cache_key}:stale")
+
+
+def _pihole_sid_cache_key(base, api_key):
+    digest = hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:16]
+    return f"pihole:sid:{base}:{digest}"
+
+
+def _pihole_authenticate(base, api_key):
+    """Pi-hole v6 session login; returns (sid, error_message)."""
+    cache_key = _pihole_sid_cache_key(base, api_key)
+    cached = cache.get(cache_key)
+    if cached:
+        return cached, ""
+
+    try:
+        resp = requests.post(
+            f"{base}/api/auth",
+            json={"password": api_key},
+            timeout=8,
+        )
+    except Exception as exc:
+        logger.debug("Pi-hole v6 auth failed: %s", exc)
+        return None, "Pi-hole login request failed"
+
+    if resp.status_code == 401:
+        return None, "Pi-hole login failed — check app password"
+    if not resp.ok:
+        return None, f"Pi-hole login returned {resp.status_code}"
+
+    try:
+        data = resp.json()
+    except ValueError:
+        return None, "Pi-hole login returned invalid JSON"
+
+    session = data.get("session") or {}
+    sid = session.get("sid") or data.get("sid")
+    if not sid:
+        return None, "Pi-hole login did not return a session"
+
+    validity = session.get("validity") or data.get("validity") or 300
+    try:
+        ttl = int(validity)
+    except (TypeError, ValueError):
+        ttl = 300
+    cache.set(cache_key, sid, max(60, min(ttl - 30, 3600)))
+    return sid, ""
+
+
+def _pihole_summary_stats(data):
+    queries = data.get("queries", {})
+    gravity = data.get("gravity", {})
+    blocked = queries.get("blocked", 0)
+    total = queries.get("total", 0)
+    percent = queries.get("percent_blocked", 0)
+    if isinstance(percent, float):
+        percent = round(percent, 1)
+    if not total and blocked:
+        percent = round(
+            100 * blocked / max(blocked + queries.get("forwarded", 0), 1), 1
+        )
+    return {
+        "stats": [
+            {"label": "QUERIES", "value": f"{total:,}"},
+            {"label": "BLOCKED", "value": f"{blocked:,} ({percent}%)"},
+            {
+                "label": "GRAVITY",
+                "value": f"{gravity.get('domains_being_blocked', 0):,}",
+            },
+        ],
+    }
+
+
 def _fetch_pihole_stats(base_url, api_key):
     base = base_url.rstrip("/")
-    headers = {}
+
     if api_key:
-        headers["X-API-Key"] = api_key
+        sid, auth_error = _pihole_authenticate(base, api_key)
+        if sid:
+            try:
+                resp = requests.get(
+                    f"{base}/api/stats/summary",
+                    headers={"X-FTL-SID": sid},
+                    timeout=8,
+                )
+                if resp.ok:
+                    return _pihole_summary_stats(resp.json())
+                if resp.status_code in (401, 403):
+                    cache.delete(_pihole_sid_cache_key(base, api_key))
+                logger.debug(
+                    "Pi-hole v6 summary failed after auth: %s", resp.status_code
+                )
+            except Exception as exc:
+                logger.debug("Pi-hole v6 summary failed: %s", exc)
+        elif auth_error:
+            return {"error": auth_error}
+
     try:
-        resp = requests.get(f"{base}/api/stats/summary", headers=headers, timeout=8)
-        if resp.ok:
-            data = resp.json()
-            queries = data.get("queries", {})
-            gravity = data.get("gravity", {})
-            blocked = queries.get("blocked", 0)
-            total = queries.get("total", 0)
-            percent = queries.get("percent_blocked", 0)
-            if not total and blocked:
-                percent = round(100 * blocked / max(blocked + queries.get("forwarded", 0), 1), 1)
+        resp = requests.get(f"{base}/api/stats/summary", timeout=8)
+        if resp.status_code == 401:
             return {
-                "stats": [
-                    {"label": "QUERIES", "value": f"{total:,}"},
-                    {"label": "BLOCKED", "value": f"{blocked:,} ({percent}%)"},
-                    {
-                        "label": "GRAVITY",
-                        "value": f"{gravity.get('domains_being_blocked', 0):,}",
-                    },
-                ],
+                "error": "Pi-hole API requires an app password (Web Interface / API → Configure app password)",
             }
+        if resp.status_code == 403:
+            return {"error": "Pi-hole API returned 403"}
+        if resp.ok:
+            return _pihole_summary_stats(resp.json())
     except Exception as exc:
         logger.debug("Pi-hole v6 API failed: %s", exc)
 
@@ -376,35 +525,186 @@ def _fetch_speedtest_stats(base_url, api_key):
     return {"error": "Speedtest API unavailable"}
 
 
+def _resolve_json_path(data, path):
+    if not path:
+        return None
+    current = data
+    for part in path.split("."):
+        if isinstance(current, dict):
+            current = current.get(part)
+        elif isinstance(current, list) and part.isdigit():
+            idx = int(part)
+            current = current[idx] if idx < len(current) else None
+        else:
+            return None
+    return current
+
+
+def _format_metric_value(value):
+    if value is None:
+        return "—"
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    if isinstance(value, float):
+        if abs(value) >= 1000:
+            return f"{value:,.0f}"
+        return f"{value:.1f}"
+    if isinstance(value, int):
+        return f"{value:,}"
+    return str(value)
+
+
+def _fetch_generic_metrics(service):
+    url = service.widget_url or service.build_href()
+    if not url:
+        return {"error": "No API URL configured"}
+    cache_key = _widget_cache_key("generic", url, service.widget_api_key)
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    headers = {}
+    if service.widget_api_key:
+        headers["X-API-Key"] = service.widget_api_key
+        headers["Authorization"] = f"Bearer {service.widget_api_key}"
+    try:
+        resp = requests.get(url, headers=headers, timeout=8)
+        if not resp.ok:
+            return {"error": f"API returned {resp.status_code}"}
+        payload = resp.json()
+        data = payload.get("data", payload)
+        if isinstance(data, list) and data:
+            data = data[0]
+        stats = []
+        for metric in service.metrics.all():
+            raw = _resolve_json_path(data, metric.json_path)
+            if metric.label.upper() == "BLOCKED" and isinstance(raw, (int, float)):
+                total = _resolve_json_path(data, "queries.total") or _resolve_json_path(
+                    data, "dns_queries_today"
+                )
+                if total:
+                    pct = round(100 * raw / total, 1)
+                    value = f"{raw:,} ({pct}%)"
+                else:
+                    value = _format_metric_value(raw)
+            elif metric.json_path == "download" and isinstance(raw, (int, float)):
+                mbps = raw / 1_000_000 if raw > 1000 else raw
+                value = f"{mbps:.0f} Mbit/s"
+            elif metric.json_path == "upload" and isinstance(raw, (int, float)):
+                mbps = raw / 1_000_000 if raw > 1000 else raw
+                value = f"{mbps:.0f} Mbit/s"
+            elif metric.json_path == "ping" and isinstance(raw, (int, float)):
+                value = f"{raw:.0f} ms"
+            else:
+                value = _format_metric_value(raw)
+            stats.append({"label": metric.label, "value": value})
+        result = {"stats": stats} if stats else {"error": "No metrics configured"}
+        if "error" in result:
+            stale = _get_widget_stale(cache_key)
+            if stale:
+                return stale
+        _set_widget_cache(cache_key, result)
+        return result
+    except Exception as exc:
+        logger.debug("Generic widget fetch failed: %s", exc)
+        stale = _get_widget_stale(cache_key)
+        if stale:
+            return stale
+        return {"error": "API unavailable"}
+
+
 def fetch_service_widget(service):
+    url = service.widget_url or service.build_href()
+    if service.widget_type == Service.WidgetType.PIHOLE:
+        if not url:
+            return {"error": "No widget URL configured"}
+        cache_key = _widget_cache_key(service.widget_type, url, service.widget_api_key)
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+        result = _fetch_pihole_stats(url, service.widget_api_key)
+        if "error" in result:
+            stale = _get_widget_stale(cache_key)
+            if stale:
+                return stale
+        _set_widget_cache(cache_key, result)
+        return result
+
+    if service.widget_type == Service.WidgetType.SPEEDTEST:
+        if not url:
+            return {"error": "No widget URL configured"}
+        cache_key = _widget_cache_key(service.widget_type, url, service.widget_api_key)
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+        result = _fetch_speedtest_stats(url, service.widget_api_key)
+        if "error" in result:
+            stale = _get_widget_stale(cache_key)
+            if stale:
+                return stale
+        _set_widget_cache(cache_key, result)
+        return result
+
+    metrics = list(service.metrics.all())
+    if metrics:
+        return _fetch_generic_metrics(service)
     if service.widget_type == Service.WidgetType.NONE:
         return None
-    url = service.widget_url or service.href
     if not url:
         return {"error": "No widget URL configured"}
     cache_key = _widget_cache_key(service.widget_type, url, service.widget_api_key)
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
-    if service.widget_type == Service.WidgetType.PIHOLE:
-        result = _fetch_pihole_stats(url, service.widget_api_key)
-    elif service.widget_type == Service.WidgetType.SPEEDTEST:
-        result = _fetch_speedtest_stats(url, service.widget_api_key)
-    else:
-        result = {"error": "Unknown widget type"}
+    result = {"error": "Unknown widget type"}
     cache.set(cache_key, result, WIDGET_CACHE_TTL)
     return result
 
 
-def fetch_all_widgets():
+def fetch_all_widgets(public_only=False):
+    bundle_key = f"widgets:bundle:{public_only}"
+    stale_key = f"{bundle_key}:stale"
+    cached = cache.get(bundle_key)
+    if cached is not None:
+        return cached
+
+    qs = list(
+        Service.objects.filter(enabled=True).prefetch_related("metrics")
+    )
+    if public_only:
+        qs = [s for s in qs if s.is_public]
+
     widgets = {}
-    for service in Service.objects.filter(enabled=True).exclude(
-        widget_type=Service.WidgetType.NONE
-    ):
-        widgets[str(service.id)] = {
+
+    def _fetch_one(service):
+        data = fetch_service_widget(service)
+        if data is None:
+            return None
+        return str(service.id), {
             "type": service.widget_type,
-            "data": fetch_service_widget(service),
+            "data": data,
         }
+
+    if qs:
+        workers = min(8, len(qs))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(_fetch_one, svc) for svc in qs]
+            for future in as_completed(futures):
+                try:
+                    row = future.result()
+                    if row:
+                        sid, entry = row
+                        widgets[sid] = entry
+                except Exception as exc:
+                    logger.warning("Widget worker failed: %s", exc)
+
+    if not widgets:
+        stale_bundle = cache.get(stale_key)
+        if stale_bundle:
+            return stale_bundle
+
+    cache.set(bundle_key, widgets, WIDGET_BUNDLE_TTL)
+    if widgets:
+        cache.set(stale_key, widgets, WIDGET_BUNDLE_STALE_TTL)
     return widgets
 
 

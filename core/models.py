@@ -8,6 +8,12 @@ class SiteSettings(models.Model):
     weather_location = models.CharField(max_length=120, blank=True)
     weather_lat = models.FloatField(null=True, blank=True)
     weather_lon = models.FloatField(null=True, blank=True)
+    crt_enabled = models.BooleanField(default=True)
+    services_host = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="LAN IP or hostname for library-installed service cards",
+    )
 
     class Meta:
         verbose_name = "Site settings"
@@ -24,6 +30,47 @@ class SiteSettings(models.Model):
 
     def __str__(self):
         return "Site settings"
+
+
+class UpdateStatus(models.Model):
+    class InstallState(models.TextChoices):
+        IDLE = "idle", "Idle"
+        RUNNING = "running", "Running"
+        SUCCESS = "success", "Success"
+        FAILED = "failed", "Failed"
+
+    last_checked_at = models.DateTimeField(null=True, blank=True)
+    latest_version = models.CharField(max_length=32, blank=True)
+    release_url = models.URLField(blank=True)
+    release_notes = models.TextField(blank=True)
+    release_published_at = models.DateTimeField(null=True, blank=True)
+    check_error = models.CharField(max_length=255, blank=True)
+    install_state = models.CharField(
+        max_length=16,
+        choices=InstallState.choices,
+        default=InstallState.IDLE,
+    )
+    install_started_at = models.DateTimeField(null=True, blank=True)
+    install_finished_at = models.DateTimeField(null=True, blank=True)
+    install_log = models.TextField(blank=True)
+    installed_version = models.CharField(max_length=32, blank=True)
+    restart_required = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = "Update status"
+        verbose_name_plural = "Update status"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def __str__(self):
+        return "Update status"
 
 
 class UserProfile(models.Model):

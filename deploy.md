@@ -36,6 +36,45 @@ Add public hostname:
 5. Stop Homepage container after validation period
 6. Retire homelab-auth when File Share / URL Drop are migrated
 
+## Releases and updates
+
+The app reports the version in the `VERSION` file and compares it against the
+latest GitHub release of `GITHUB_REPO`.
+
+### Cutting a release
+
+1. Bump `VERSION` (for example `0.2.0`)
+2. Move the `CHANGELOG.md` "Unreleased" entries under the new version
+3. Commit, then `git tag v0.2.0 && git push origin main --tags`
+4. Publish a GitHub release for the tag; the release body becomes the in-app notes
+
+### Scheduled checks
+
+Settings > Updates checks at most once every `UPDATE_CHECK_INTERVAL_HOURS`
+(default 12) when an admin opens the pane. Add a cron entry so the check also
+runs unattended:
+
+```cron
+0 */12 * * * cd /home/daher/control-center && .venv/bin/python manage.py check_updates >> data/update-check.log 2>&1
+```
+
+### Installing from the UI
+
+Settings > Updates has "Check now" and "Install update". Installing runs
+`git fetch`, `git checkout <tag>`, `pip install -r requirements.txt`,
+`migrate`, `collectstatic`, then restarts the service.
+
+Requirements and caveats:
+
+- The deploy must be a **git checkout** with a clean working tree; installs abort
+  if there are uncommitted changes
+- Set `UPDATE_RESTART_COMMAND` (for example `sudo systemctl restart control-center`)
+  or run under gunicorn, where the master is sent `SIGHUP` for a graceful reload
+- Set `UPDATES_ALLOW_INSTALL=false` to disable in-app installs entirely
+- The `build: .` compose setup bakes source into the image, so the in-app
+  installer does not persist across container recreation. Either bind-mount the
+  source or rebuild the image with `docker compose up -d --build` after tagging
+
 ## Backups
 
 - Volume mount: `./data:/app/data`

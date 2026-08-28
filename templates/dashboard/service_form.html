@@ -1,0 +1,165 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block title %}{% if is_new %}Add card{% else %}Edit {{ service.name }}{% endif %} — {{ site_title }}{% endblock %}
+{% block content %}
+<section class="panel panel-wide service-form-panel">
+  <div class="panel-head">{% if is_new %}Add card{% else %}Edit card{% endif %}</div>
+  <div class="panel-body">
+    <form method="post" enctype="multipart/form-data" id="service-form">
+      {% csrf_token %}
+      {{ form.catalog_slug }}
+      {% if catalog_entry %}
+      <p class="settings-hint">Prefilled from library: <strong>{{ catalog_entry.name }}</strong>. Confirm host and save.</p>
+      {% endif %}
+      {% if installed_without_cards %}
+      <section class="installed-suggest">
+        <h3 class="installed-suggest__title">Installed — add a card</h3>
+        <p class="settings-hint">These services are installed via the Library but have no dashboard card yet.</p>
+        <div class="installed-suggest__list">
+          {% for item in installed_without_cards %}
+          <a href="{% url 'service_create' %}?catalog={{ item.slug }}" class="installed-suggest__item">
+            <img
+              src="{{ item.icon }}"
+              alt=""
+              class="installed-suggest__icon"
+              onerror="this.onerror=null;this.src='{% static 'img/service-default.svg' %}';"
+            >
+            <span>{{ item.name }}</span>
+            <span class="installed-suggest__port">:{{ item.host_port }}</span>
+          </a>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+      <div class="service-form-grid">
+        <div class="form-group">
+          <label for="{{ form.category.id_for_label }}">Category</label>
+          {{ form.category }}
+        </div>
+        <div class="form-group">
+          <label for="{{ form.name.id_for_label }}">Name</label>
+          {{ form.name }}
+        </div>
+        <div class="form-group">
+          <label for="{{ form.description.id_for_label }}">Description</label>
+          {{ form.description }}
+        </div>
+        <div class="form-group">
+          <label for="{{ form.host.id_for_label }}">Host</label>
+          {{ form.host }}
+        </div>
+        <div class="form-group">
+          <label for="{{ form.port.id_for_label }}">Port</label>
+          {{ form.port }}
+        </div>
+        <div class="form-group">
+          <label for="{{ form.path.id_for_label }}">Path</label>
+          {{ form.path }}
+        </div>
+        <div class="form-group">
+          <label for="{{ form.logo.id_for_label }}">Logo upload</label>
+          {{ form.logo }}
+          {% if service and service.logo %}
+          <p class="settings-hint">Current: <a href="{{ service.logo.url }}" target="_blank" rel="noopener">view</a></p>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label for="{{ form.icon.id_for_label }}">Icon URL</label>
+          {{ form.icon }}
+        </div>
+        <div class="form-group">
+          <label for="{{ form.health_check_url.id_for_label }}">Health check URL</label>
+          {{ form.health_check_url }}
+        </div>
+        <div class="form-group form-group--checkbox">
+          <label class="checkbox-label">
+            {{ form.is_public }}
+            <span>Public (visible to guests)</span>
+          </label>
+        </div>
+        <div class="form-group form-group--checkbox">
+          <label class="checkbox-label">
+            {{ form.enabled }}
+            <span>Enabled</span>
+          </label>
+        </div>
+        {% if form.catalog_slug.value or service.catalog_slug %}
+        <div class="form-group form-group--checkbox">
+          <label class="checkbox-label">
+            {{ form.check_updates }}
+            <span>Check for updates (library catalog)</span>
+          </label>
+          <p class="settings-hint">When enabled, shows an update banner if a newer GitHub release is available for this catalog app.</p>
+        </div>
+        {% endif %}
+        <div class="form-group">
+          <label for="{{ form.sort_order.id_for_label }}">Sort order</label>
+          {{ form.sort_order }}
+        </div>
+      </div>
+
+      <h3 class="settings-section-title">Widget / metrics</h3>
+      <p class="settings-hint">Use a preset for Pi-hole or Speedtest, or define custom JSON paths below.</p>
+      <div class="form-group">
+        <label for="{{ form.preset.id_for_label }}">Preset</label>
+        {{ form.preset }}
+      </div>
+      <div class="form-group">
+        <label for="{{ form.widget_type.id_for_label }}">Widget type</label>
+        {{ form.widget_type }}
+      </div>
+      <div class="form-group">
+        <label for="{{ form.widget_url.id_for_label }}">Widget API URL</label>
+        {{ form.widget_url }}
+      </div>
+          <div class="form-group">
+            <label for="{{ form.widget_api_key.id_for_label }}">Widget API key</label>
+            {{ form.widget_api_key }}
+            <p class="settings-hint">Pi-hole v6: Settings → Web Interface / API → Expert → Configure app password. Paste that password here (not your web login password unless you use that).</p>
+          </div>
+
+      <div id="metrics-section">
+        <h3 class="settings-section-title">Custom metrics</h3>
+        {{ metric_formset.management_form }}
+        <div id="metric-rows">
+          {% for metric_form in metric_formset %}
+          <div class="metric-row" data-form-index="{{ forloop.counter0 }}">
+            {% for hidden in metric_form.hidden_fields %}{{ hidden }}{% endfor %}
+            <div class="metric-row__fields">
+              <div class="form-group">
+                <label>Label</label>
+                {{ metric_form.label }}
+              </div>
+              <div class="form-group">
+                <label>JSON path</label>
+                {{ metric_form.json_path }}
+              </div>
+              {% if metric_form.DELETE %}
+              <div class="form-group form-group--checkbox metric-row__delete">
+                <label class="checkbox-label">
+                  {{ metric_form.DELETE }}
+                  <span>Remove</span>
+                </label>
+              </div>
+              {% endif %}
+            </div>
+            {% if metric_form.errors %}
+            <p class="alert-item error">{{ metric_form.errors }}</p>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        <button type="button" class="btn secondary" id="add-metric-row">+ Add metric</button>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn">{% if is_new %}Create card{% else %}Save changes{% endif %}</button>
+        <a href="{% url 'dashboard' %}" class="btn secondary btn-cancel">Cancel</a>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'js/service-form.js' %}" defer></script>
+{% endblock %}

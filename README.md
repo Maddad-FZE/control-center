@@ -28,9 +28,26 @@ Open http://127.0.0.1:8000/ and sign in.
 - Service tiles with live health checks
 - System stats (psutil) and Docker container list
 - Alerts + ntfy push on service down (configure `.env`)
-- Audit log
-- Notes mini-app example
+- Audit log in Settings (filter, search, pagination)
+- App library: unified grid of Addons and Services with Install/Uninstall, version badges, and daily update checks
+- One-click Docker install for catalog services (auto port, auto dashboard card); compose snippets still available
+- Notes mini-app example (first bundled addon)
 - Public subdomain routing for mini-apps (Cloudflare tunnel)
+- Version reporting with GitHub release checks every 12 hours and one-click updates from Settings
+
+## Updates
+
+The current version lives in `VERSION` and is shown in the footer. Settings >
+Updates compares it against the latest GitHub release, and can install a new
+release in place (git checkout, dependencies, migrations, static files, restart).
+
+```bash
+python manage.py check_updates          # respects the 12h throttle
+python manage.py check_updates --force  # check immediately
+python manage.py check_service_updates  # daily catalog release check (cron-friendly)
+```
+
+See [deploy.md](deploy.md) for the release process and cron setup.
 
 ## Legacy apps (phase 1)
 
