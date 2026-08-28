@@ -5,6 +5,7 @@
   data-slug="{{ item.slug }}"
   data-installed="{% if item.installed %}1{% else %}0{% endif %}"
   data-status="{{ item.status }}"
+  data-managed="{% if item.managed %}1{% else %}0{% endif %}"
 >
   <header class="library-card__header">
     <img
@@ -23,6 +24,12 @@
       <p class="library-card__tagline">{{ item.description }}</p>
       <span class="library-badge">{{ item.category }}</span>
       {% if item.type == "addon" %}<span class="library-badge library-badge--type">Addon</span>{% else %}<span class="library-badge library-badge--type">Service</span>{% endif %}
+      {% if item.installed and not item.managed %}
+      <span class="library-badge library-badge--detected">Detected</span>
+      {% endif %}
+      {% if item.host_port %}
+      <span class="library-badge library-badge--port">:{{ item.host_port }}</span>
+      {% endif %}
     </div>
   </header>
 
@@ -34,6 +41,9 @@
       <button type="button" class="btn secondary" disabled>Installing…</button>
       {% else %}
       <button type="button" class="btn danger library-uninstall-btn" data-type="service" data-slug="{{ item.slug }}">Uninstall</button>
+      {% endif %}
+      {% if item.type == "service" and not item.service_id %}
+      <a href="{% url 'service_create' %}?catalog={{ item.slug }}" class="btn secondary">Add card</a>
       {% endif %}
     {% else %}
       {% if item.type == "addon" %}

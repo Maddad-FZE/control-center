@@ -11,7 +11,7 @@ class AddonStateAdmin(admin.ModelAdmin):
 
 @admin.register(InstalledService)
 class InstalledServiceAdmin(admin.ModelAdmin):
-    list_display = ("slug", "status", "host_port", "installed_version", "installed_at")
+    list_display = ("slug", "status", "managed", "host_port", "installed_version", "installed_at")
     list_filter = ("status",)
 
 

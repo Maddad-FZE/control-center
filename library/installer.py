@@ -100,14 +100,31 @@ def _remove_container(client, name):
         pass
 
 
-def _remove_service_volumes(client, slug, remove_data):
+def _collect_container_volume_names(client, container_name):
+    try:
+        container = client.containers.get(container_name)
+    except docker.errors.NotFound:
+        return []
+    names = []
+    for mount in container.attrs.get("Mounts") or []:
+        if mount.get("Type") == "volume" and mount.get("Name"):
+            names.append(mount["Name"])
+    return names
+
+
+def _remove_service_volumes(client, slug, remove_data, extra_volume_names=None):
     if not remove_data:
         return
+    extra = set(extra_volume_names or [])
     prefix = f"cc-{slug}-"
     for vol in client.volumes.list():
         name = vol.name
         labels = vol.attrs.get("Labels") or {}
-        if name.startswith(prefix) or labels.get(DOCKER_LABEL_SLUG) == slug:
+        if (
+            name in extra
+            or name.startswith(prefix)
+            or labels.get(DOCKER_LABEL_SLUG) == slug
+        ):
             try:
                 vol.remove(force=True)
             except docker.errors.APIError as exc:
@@ -227,7 +244,10 @@ def start_install(slug):
     if not entry:
         return False, "Unknown service"
     existing = InstalledService.objects.filter(slug=slug).first()
-    if existing and existing.status == InstalledService.Status.RUNNING:
+    if existing and existing.status in (
+        InstalledService.Status.RUNNING,
+        InstalledService.Status.STOPPED,
+    ):
         return False, "Already installed"
     if existing and existing.status == InstalledService.Status.INSTALLING:
         return False, "Install already in progress"
@@ -239,6 +259,7 @@ def start_install(slug):
             "container_name": container_name,
             "host_port": 0,
             "status": InstalledService.Status.INSTALLING,
+            "managed": True,
             "error": "",
         },
     )
@@ -253,12 +274,20 @@ def start_install(slug):
 
 
 def uninstall(slug, remove_data=False):
-    entry = get_service_by_slug(slug)
-    container_name = f"cc-{slug}"
+    row = InstalledService.objects.filter(slug=slug).first()
+    container_name = row.container_name if row else f"cc-{slug}"
     try:
         client = get_docker_client()
+        extra_volumes = []
+        if remove_data and row and not row.managed:
+            extra_volumes = _collect_container_volume_names(client, container_name)
         _remove_container(client, container_name)
-        _remove_service_volumes(client, slug, remove_data)
+        _remove_service_volumes(
+            client,
+            slug,
+            remove_data,
+            extra_volume_names=extra_volumes,
+        )
     except docker.errors.DockerException as exc:
         logger.warning("Docker uninstall issue for %s: %s", slug, exc)
         InstalledService.objects.filter(slug=slug).update(
@@ -275,12 +304,17 @@ def uninstall(slug, remove_data=False):
 def status_payload(slug):
     row = InstalledService.objects.filter(slug=slug).first()
     if not row:
-        return {"slug": slug, "installed": False, "status": "none"}
+        return {"slug": slug, "installed": False, "status": "none", "managed": True}
+    installed = row.status in (
+        InstalledService.Status.RUNNING,
+        InstalledService.Status.STOPPED,
+    )
     return {
         "slug": slug,
-        "installed": row.status == InstalledService.Status.RUNNING,
+        "installed": installed,
         "status": row.status,
         "host_port": row.host_port,
         "installed_version": row.installed_version,
+        "managed": row.managed,
         "error": row.error,
     }

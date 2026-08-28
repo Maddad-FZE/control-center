@@ -167,6 +167,20 @@
   margin-left: 0.25rem;
 }
 
+.library-badge--detected {
+  margin-left: 0.25rem;
+  color: var(--tva-orange);
+  border-color: rgba(232, 119, 34, 0.55);
+  background: rgba(232, 119, 34, 0.1);
+}
+
+.library-badge--port {
+  margin-left: 0.25rem;
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
 .library-compose {
   margin-top: 0.25rem;
   border: 1px dashed rgba(201, 166, 107, 0.35);

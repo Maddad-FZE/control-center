@@ -45,9 +45,14 @@
   const confirmBtn = document.getElementById("uninstall-confirm-btn");
   let pendingUninstall = null;
 
-  function openModal(type, slug, name) {
-    pendingUninstall = { type, slug };
-    modalDesc.textContent = `Remove ${name} from your homelab?`;
+  function openModal(type, slug, name, managed) {
+    pendingUninstall = { type, slug, managed };
+    let desc = `Remove ${name} from your homelab?`;
+    if (type === "service" && !managed) {
+      desc +=
+        " This container was not created by Control Center — uninstall will stop and remove it.";
+    }
+    modalDesc.textContent = desc;
     if (removeDataWrap) {
       removeDataWrap.hidden = type !== "service";
     }
@@ -100,7 +105,8 @@
     btn.addEventListener("click", () => {
       const card = btn.closest(".library-card");
       const name = card?.querySelector(".library-card__name")?.textContent || btn.dataset.slug;
-      openModal(btn.dataset.type, btn.dataset.slug, name);
+      const managed = card?.dataset.managed !== "0";
+      openModal(btn.dataset.type, btn.dataset.slug, name, managed);
     });
   });
 

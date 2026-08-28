@@ -258,7 +258,7 @@ a:hover {
   gap: 0.4rem;
   padding: 0.3rem 0.55rem 0.3rem 0.35rem;
   border: 1px solid var(--tva-border);
-  border-radius: 999px;
+  border-radius: 2px;
   background: rgba(59, 42, 29, 0.85);
   color: var(--tva-cream);
   font-family: var(--font-display);
@@ -287,7 +287,7 @@ a:hover {
   justify-content: center;
   width: 1.45rem;
   height: 1.45rem;
-  border-radius: 50%;
+  border-radius: 2px;
   background: var(--tva-orange);
   color: var(--tva-ink);
   font-size: 0.62rem;
@@ -318,7 +318,7 @@ a:hover {
   min-width: 10rem;
   padding: 0.35rem 0;
   border: 1px solid var(--tva-border);
-  border-radius: 4px;
+  border-radius: 2px;
   background: linear-gradient(145deg, rgba(90, 64, 48, 0.95), rgba(36, 24, 16, 0.98));
   box-shadow: 0 8px 24px var(--tva-shadow);
   z-index: 200;

@@ -132,7 +132,9 @@ def service_create_view(request):
         card_slugs = set(
             Service.objects.exclude(catalog_slug="").values_list("catalog_slug", flat=True)
         )
-        for inst in InstalledService.objects.filter(status="running"):
+        for inst in InstalledService.objects.filter(
+            status__in=("running", "stopped")
+        ):
             if inst.slug not in card_slugs:
                 entry = get_service_by_slug(inst.slug)
                 if entry:
@@ -180,7 +182,7 @@ def service_create_view(request):
             host = services_host()
             port = catalog_entry.get("default_port")
             installed = InstalledService.objects.filter(
-                slug=catalog_slug, status="running"
+                slug=catalog_slug, status__in=("running", "stopped")
             ).first()
             if installed and installed.host_port:
                 port = installed.host_port

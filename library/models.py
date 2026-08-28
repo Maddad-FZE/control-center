@@ -17,6 +17,7 @@ class InstalledService(models.Model):
     class Status(models.TextChoices):
         INSTALLING = "installing", "Installing"
         RUNNING = "running", "Running"
+        STOPPED = "stopped", "Stopped"
         ERROR = "error", "Error"
 
     slug = models.CharField(max_length=64, unique=True)
@@ -26,6 +27,10 @@ class InstalledService(models.Model):
         max_length=16,
         choices=Status.choices,
         default=Status.INSTALLING,
+    )
+    managed = models.BooleanField(
+        default=True,
+        help_text="False when detected from an existing Docker container",
     )
     error = models.TextField(blank=True)
     installed_version = models.CharField(max_length=64, blank=True)

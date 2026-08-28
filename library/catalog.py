@@ -656,7 +656,11 @@ def build_catalog_items(
         )
     for entry in SERVICES:
         inst = installed_map.get(entry["slug"])
-        installed = inst is not None and inst.status == "running"
+        installed = inst is not None and inst.status in (
+            "running",
+            "stopped",
+            "installing",
+        )
         status = inst.status if inst else "none"
         service_id = service_cards.get(entry["slug"])
         items.append(
@@ -668,8 +672,11 @@ def build_catalog_items(
                 "icon_url": icon_url_for_entry(entry["slug"], entry.get("icon", "")),
                 "description": entry.get("tagline", ""),
                 "category": entry["category"],
-                "installed": installed,
+                "installed": installed and inst.status != "installing",
                 "status": status,
+                "managed": inst.managed if inst else True,
+                "host_port": inst.host_port if inst else 0,
+                "container_name": inst.container_name if inst else "",
                 "repo_url": f"https://github.com/{entry['repo']}",
                 "compose": entry.get("compose", ""),
                 "version": release_map.get(entry["repo"], ""),
