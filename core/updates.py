@@ -29,6 +29,16 @@ REQUEST_TIMEOUT = 10
 TAG_PATTERN = re.compile(r"^v?\d+(\.\d+){0,3}$")
 NO_RELEASES_MESSAGE = "No releases published yet."
 
+INSTALL_STEPS = [
+    ("prepare", "Prepare"),
+    ("fetch", "Fetch"),
+    ("checkout", "Checkout"),
+    ("deps", "Dependencies"),
+    ("migrate", "Migrate"),
+    ("collectstatic", "Collect static"),
+    ("restart", "Restart"),
+]
+
 
 def _parse_version(value):
     """Return a comparable tuple for a semver-ish string, or None."""
@@ -149,6 +159,22 @@ def update_available(status=None):
     return is_newer(status.latest_version, get_current_version())
 
 
+def _progress(status, log, index, label):
+    """Persist live progress so the UI can poll between steps."""
+    status.install_step = label
+    status.install_step_index = index
+    status.install_total_steps = len(INSTALL_STEPS)
+    status.install_log = "\n".join(log)[-20000:]
+    status.save(
+        update_fields=[
+            "install_step",
+            "install_step_index",
+            "install_total_steps",
+            "install_log",
+        ]
+    )
+
+
 def _run_step(label, args, log, cwd, timeout=900):
     log.append(f"$ {' '.join(args)}")
     try:
@@ -179,6 +205,9 @@ def _finish(status, state, log, installed_version="", restart_required=False):
     status.install_log = "\n".join(log)[-20000:]
     status.install_finished_at = timezone.now()
     status.restart_required = restart_required
+    if state == UpdateStatus.InstallState.SUCCESS:
+        status.install_step_index = len(INSTALL_STEPS)
+        status.install_step = "done"
     if installed_version:
         status.installed_version = installed_version
     status.save()
@@ -224,8 +253,11 @@ def _install_worker(target_tag, username):
     base_dir = str(settings.BASE_DIR)
     status = UpdateStatus.load()
     log = [f"Updating to {target_tag} (current {get_current_version()})"]
+    status.install_total_steps = len(INSTALL_STEPS)
+    status.save(update_fields=["install_total_steps"])
 
     try:
+        _progress(status, log, 1, "Prepare")
         if not (settings.BASE_DIR / ".git").exists():
             log.append("Not a git checkout — in-place updates are unavailable.")
             _finish(status, UpdateStatus.InstallState.FAILED, log)
@@ -250,22 +282,25 @@ def _install_worker(target_tag, username):
             _finish(status, UpdateStatus.InstallState.FAILED, log)
             return
 
-        steps = [
-            ("Fetch", ["git", "fetch", "--tags", "--prune", "origin"], 300),
-            ("Checkout", ["git", "checkout", target_tag], 300),
+        command_steps = [
+            (2, "Fetch", ["git", "fetch", "--tags", "--prune", "origin"], 300),
+            (3, "Checkout", ["git", "checkout", target_tag], 300),
             (
+                4,
                 "Dependencies",
                 [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"],
                 1800,
             ),
-            ("Migrate", [sys.executable, "manage.py", "migrate", "--noinput"], 600),
+            (5, "Migrate", [sys.executable, "manage.py", "migrate", "--noinput"], 600),
             (
-                "Collectstatic",
+                6,
+                "Collect static",
                 [sys.executable, "manage.py", "collectstatic", "--noinput"],
                 600,
             ),
         ]
-        for label, args, timeout in steps:
+        for index, label, args, timeout in command_steps:
+            _progress(status, log, index, label)
             if not _run_step(label, args, log, base_dir, timeout):
                 _finish(status, UpdateStatus.InstallState.FAILED, log)
                 log_audit(
@@ -275,7 +310,9 @@ def _install_worker(target_tag, username):
                 )
                 _notify(f"Update to {target_tag} failed", label)
                 return
+            _progress(status, log, index, label)
 
+        _progress(status, log, 7, "Restart")
         clear_version_cache()
         new_version = get_current_version()
         log.append(f"Updated to {new_version}")
@@ -328,6 +365,10 @@ def start_install(target_tag, username=""):
     status.install_finished_at = None
     status.install_log = f"Queued update to {target_tag}…"
     status.restart_required = False
+    status.install_step = "Prepare"
+    status.install_step_index = 0
+    status.install_total_steps = len(INSTALL_STEPS)
+    status.install_target_version = target_tag[:32]
     status.save()
 
     thread = threading.Thread(
@@ -343,6 +384,16 @@ def start_install(target_tag, username=""):
 def status_payload(status=None):
     status = status or UpdateStatus.load()
     current = get_current_version()
+    total = status.install_total_steps or len(INSTALL_STEPS)
+    index = status.install_step_index or 0
+    if status.install_state == UpdateStatus.InstallState.SUCCESS:
+        percent = 100
+    elif status.install_state == UpdateStatus.InstallState.IDLE:
+        percent = 0
+    elif total:
+        percent = min(99, round(index / total * 100))
+    else:
+        percent = 0
     return {
         "current_version": current,
         "latest_version": status.latest_version,
@@ -363,4 +414,13 @@ def status_payload(status=None):
         "installed_version": status.installed_version,
         "restart_required": status.restart_required,
         "install_allowed": settings.UPDATES_ALLOW_INSTALL,
+        "install_step": status.install_step,
+        "install_step_index": index,
+        "install_total_steps": total,
+        "install_target_version": status.install_target_version,
+        "install_started_at": (
+            status.install_started_at.isoformat() if status.install_started_at else None
+        ),
+        "install_steps": [{"id": sid, "label": label} for sid, label in INSTALL_STEPS],
+        "install_percent": percent,
     }

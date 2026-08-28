@@ -139,6 +139,17 @@
           {% endif %}
         </p>
 
+        <div class="update-progress settings-update-progress" id="settings-update-progress" hidden>
+          <div class="update-progress__header">
+            <span class="update-progress__label" id="settings-update-step">Preparing…</span>
+            <span class="update-progress__percent" id="settings-update-percent">0%</span>
+          </div>
+          <div class="update-progress__track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="settings-update-bar">
+            <div class="update-progress__fill" id="settings-update-fill" style="width: 0%"></div>
+          </div>
+        </div>
+        <ol class="update-steps" id="settings-update-steps"></ol>
+
         {% if update_status.release_notes %}
         <details class="update-notes"{% if update_ready %} open{% endif %}>
           <summary>Release notes</summary>
@@ -255,5 +266,4 @@
 {% endblock %}
 {% block extra_js %}
 <script src="{% static 'js/settings-tabs.js' %}" defer></script>
-<script src="{% static 'js/updates.js' %}" defer></script>
 {% endblock %}

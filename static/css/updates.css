@@ -1,0 +1,212 @@
+/* Update modal, progress bar, and step checklist */
+
+.update-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 240;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.update-modal[hidden] {
+  display: none;
+}
+
+.update-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 6, 4, 0.78);
+}
+
+.update-modal__panel {
+  position: relative;
+  width: min(440px, 92vw);
+  max-height: min(90vh, 640px);
+  overflow: auto;
+  padding: 1.1rem 1.15rem 1rem;
+  border: 1px solid var(--tva-border);
+  border-radius: 2px;
+  background: linear-gradient(145deg, rgba(90, 64, 48, 0.96), rgba(26, 18, 12, 0.98));
+  box-shadow: 0 12px 36px var(--tva-shadow);
+}
+
+.update-modal__head {
+  margin-bottom: 0.85rem;
+}
+
+.update-modal__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 0.92rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--tva-orange);
+}
+
+.update-modal__meta {
+  margin: 0.3rem 0 0;
+  font-size: 0.72rem;
+  color: var(--tva-muted);
+}
+
+.update-progress {
+  margin: 0.75rem 0 0.85rem;
+}
+
+.update-progress[hidden] {
+  display: none;
+}
+
+.update-progress__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.4rem;
+  font-family: var(--font-display);
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.update-progress__label {
+  color: var(--tva-amber);
+}
+
+.update-progress__percent {
+  color: var(--tva-orange);
+  font-variant-numeric: tabular-nums;
+}
+
+.update-progress__track {
+  height: 0.55rem;
+  overflow: hidden;
+  border: 1px solid rgba(232, 119, 34, 0.45);
+  border-radius: 2px;
+  background: rgba(20, 12, 8, 0.7);
+}
+
+.update-progress__fill {
+  height: 100%;
+  width: 0;
+  border-radius: 1px;
+  background: linear-gradient(90deg, #c45a12, var(--tva-orange), #f0c078);
+  box-shadow: 0 0 10px var(--phosphor-soft);
+  transition: width 0.35s ease;
+}
+
+.update-progress__fill.is-running {
+  background-size: 140% 100%;
+  animation: update-shimmer 1.4s linear infinite;
+}
+
+@keyframes update-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -40% 0; }
+}
+
+.update-steps {
+  margin: 0 0 0.85rem;
+  padding: 0;
+  list-style: none;
+}
+
+.update-step {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.28rem 0;
+  font-family: var(--font-display);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tva-muted);
+}
+
+.update-step__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.95rem;
+  height: 0.95rem;
+  border: 1px solid var(--tva-border);
+  border-radius: 2px;
+  font-size: 0.62rem;
+  line-height: 1;
+}
+
+.update-step.is-pending .update-step__mark {
+  color: transparent;
+}
+
+.update-step.is-active {
+  color: var(--tva-amber);
+}
+
+.update-step.is-active .update-step__mark {
+  border-color: var(--tva-orange);
+  color: var(--tva-orange);
+  animation: update-pulse 1.2s ease-in-out infinite;
+}
+
+.update-step.is-done {
+  color: var(--tva-cream);
+}
+
+.update-step.is-done .update-step__mark {
+  border-color: #6ee7a0;
+  color: #6ee7a0;
+}
+
+.update-step.is-failed {
+  color: #fca5a5;
+}
+
+.update-step.is-failed .update-step__mark {
+  border-color: #f87171;
+  color: #f87171;
+}
+
+@keyframes update-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.update-modal .update-banner {
+  margin: 0.35rem 0 0.75rem;
+}
+
+.update-modal .update-notes,
+.update-modal .update-log-wrap {
+  margin-bottom: 0.75rem;
+}
+
+.update-modal .update-log-wrap > summary,
+.update-modal .update-notes > summary {
+  padding: 0.4rem 0.55rem;
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--tva-orange);
+}
+
+.update-modal .update-log {
+  max-height: 10rem;
+}
+
+.update-modal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.update-modal__actions .btn[hidden] {
+  display: none;
+}
+
+.settings-update-progress {
+  margin: 0.75rem 0 1rem;
+}

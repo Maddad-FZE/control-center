@@ -38,13 +38,15 @@ Open http://127.0.0.1:8000/ and sign in.
 ## Updates
 
 The current version lives in `VERSION` and is shown in the footer. Settings >
-Updates compares it against the latest GitHub release, and can install a new
-release in place (git checkout, dependencies, migrations, static files, restart).
+Updates (and the footer **Update available** button) compare it against the
+latest GitHub release and can install in place with a progress popup.
 
 ```bash
 python manage.py check_updates          # respects the 12h throttle
 python manage.py check_updates --force  # check immediately
 python manage.py check_service_updates  # daily catalog release check (cron-friendly)
+python manage.py bump_version patch --dry-run   # preview VERSION + CHANGELOG bump
+python manage.py bump_version patch             # write files, then tag and push
 ```
 
 See [deploy.md](deploy.md) for the release process and cron setup.

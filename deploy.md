@@ -43,10 +43,12 @@ latest GitHub release of `GITHUB_REPO`.
 
 ### Cutting a release
 
-1. Bump `VERSION` (for example `0.2.0`)
-2. Move the `CHANGELOG.md` "Unreleased" entries under the new version
-3. Commit, then `git tag v0.2.0 && git push origin main --tags`
-4. Publish a GitHub release for the tag; the release body becomes the in-app notes
+1. `python manage.py bump_version patch` (or `minor` / `major`, or `--set 0.2.0`)
+   to write `VERSION` and roll `CHANGELOG.md` Unreleased into a dated heading
+2. Commit, then `git tag v0.2.0 && git push origin main --tags`
+3. Publish a GitHub release for the tag; the release body becomes the in-app notes
+
+Preview without writing files: `python manage.py bump_version patch --dry-run`.
 
 ### Scheduled checks
 
@@ -60,9 +62,11 @@ runs unattended:
 
 ### Installing from the UI
 
-Settings > Updates has "Check now" and "Install update". Installing runs
-`git fetch`, `git checkout <tag>`, `pip install -r requirements.txt`,
-`migrate`, `collectstatic`, then restarts the service.
+The footer **Update available** button and Settings > Updates both open a
+progress popup. Installing runs `git fetch`, `git checkout <tag>`,
+`pip install -r requirements.txt`, `migrate`, `collectstatic`, then restarts
+the service. A live log and step checklist update until the restart, then the
+popup offers Reload.
 
 Requirements and caveats:
 

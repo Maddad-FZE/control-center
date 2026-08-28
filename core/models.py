@@ -55,6 +55,10 @@ class UpdateStatus(models.Model):
     install_log = models.TextField(blank=True)
     installed_version = models.CharField(max_length=32, blank=True)
     restart_required = models.BooleanField(default=False)
+    install_step = models.CharField(max_length=64, blank=True)
+    install_step_index = models.PositiveSmallIntegerField(default=0)
+    install_total_steps = models.PositiveSmallIntegerField(default=0)
+    install_target_version = models.CharField(max_length=32, blank=True)
 
     class Meta:
         verbose_name = "Update status"

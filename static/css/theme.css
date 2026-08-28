@@ -509,7 +509,18 @@ a:hover {
 
 .footer-update {
   margin-left: 0.5rem;
+  padding: 0;
+  border: none;
+  background: none;
   color: var(--tva-orange);
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.footer-update:hover {
+  color: var(--tva-amber);
 }
 
 .settings-grid {

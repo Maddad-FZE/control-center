@@ -1,0 +1,39 @@
+<div class="update-modal" id="update-modal" hidden>
+  <div class="update-modal__backdrop" data-update-close></div>
+  <div class="update-modal__panel" role="dialog" aria-modal="true" aria-labelledby="update-modal-title">
+    <header class="update-modal__head">
+      <h2 class="update-modal__title" id="update-modal-title">Install update</h2>
+      <p class="update-modal__meta" id="update-modal-meta"></p>
+    </header>
+
+    <div class="update-progress" id="update-modal-progress" hidden>
+      <div class="update-progress__header">
+        <span class="update-progress__label" id="update-modal-step">Preparing…</span>
+        <span class="update-progress__percent" id="update-modal-percent">0%</span>
+      </div>
+      <div class="update-progress__track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="update-modal-bar">
+        <div class="update-progress__fill" id="update-modal-fill" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <ol class="update-steps" id="update-modal-steps"></ol>
+
+    <p class="update-banner" id="update-modal-banner">Checking for updates…</p>
+
+    <details class="update-notes" id="update-modal-notes-wrap" hidden>
+      <summary>Release notes</summary>
+      <pre class="update-notes__body" id="update-modal-notes"></pre>
+    </details>
+
+    <details class="update-log-wrap" id="update-modal-log-wrap" hidden>
+      <summary>Install log</summary>
+      <pre class="update-log" id="update-modal-log"></pre>
+    </details>
+
+    <div class="update-modal__actions">
+      <button type="button" class="btn secondary" data-update-close>Close</button>
+      <button type="button" class="btn" id="update-modal-install" hidden>Install update</button>
+      <button type="button" class="btn" id="update-modal-reload" hidden>Reload</button>
+    </div>
+  </div>
+</div>
