@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-29
+
+### Added
+
+- Header update chip to the left of weather; it appears only when a release is available and shakes every 7 seconds
+
+### Changed
+
+- In-app updates download the GitHub release archive instead of requiring a git checkout
+- Install keeps `data/`, `.env`, and `media/` in place, then migrates and restarts
+
 ## [0.1.2] - 2026-08-29
 
 ### Added

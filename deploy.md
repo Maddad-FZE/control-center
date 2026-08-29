@@ -63,33 +63,26 @@ runs unattended:
 ### Installing from the UI
 
 The footer **Update available** button and Settings > Updates both open a
-progress popup. Installing runs `git fetch`, `git checkout <tag>`,
-`pip install -r requirements.txt`, `migrate`, `collectstatic`, then restarts
-the service.
+progress popup. Installing downloads the GitHub release archive for the tag,
+overlays the app files, then runs `pip install -r requirements.txt`,
+`migrate`, `collectstatic`, and restarts. `data/`, `.env`, `media/`, and
+virtualenvs are left alone. A git checkout is not required.
 
-For Docker deploys, bind-mount the git checkout (`.:/app` in
-`docker-compose.yml`) so the checkout persists, and set
-`UPDATE_RESTART_COMMAND=docker restart control-center` (this is the default
-when running inside Docker). Rebuild once after this change:
-
-```bash
-git pull
-docker compose up -d
-```
-
-After that, later versions install from the UI with no manual pull.
+The container (or host) needs outbound HTTPS to GitHub. For Docker, bind-mount
+the project (`.:/app` in `docker-compose.yml`) so the new files persist, and
+set `UPDATE_RESTART_COMMAND=docker restart control-center` (this is the
+default when running inside Docker).
 
 Requirements and caveats:
 
-- The deploy must be a **git checkout** with a clean working tree; installs abort
-  if there are uncommitted changes
+- Publish a GitHub **release** for the tag (not only a tag). The installer
+  downloads `https://github.com/<repo>/archive/refs/tags/<tag>.tar.gz`
 - Set `UPDATE_RESTART_COMMAND` (for example `sudo systemctl restart control-center`)
   or run under gunicorn, where the master is sent `SIGHUP` for a graceful reload
 - Set `UPDATES_ALLOW_INSTALL=false` to disable in-app installs entirely
-- The `build: .` compose setup now bind-mounts the source (`.:/app`) so
-  in-app git checkouts persist. After the first `docker compose up -d`,
-  later updates install from the UI. Set `UPDATE_RESTART_COMMAND` if the
-  container is not named `control-center`.
+- Optional `GITHUB_TOKEN` raises API rate limits for the update *check*.
+  Archive downloads work without it
+- Set `UPDATE_RESTART_COMMAND` if the container is not named `control-center`
 ## Backups
 
 - Volume mount: `./data:/app/data`

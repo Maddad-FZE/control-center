@@ -39,7 +39,8 @@ Open http://127.0.0.1:8000/ and sign in.
 
 The current version lives in `VERSION` and is shown in the footer. Settings >
 Updates (and the footer **Update available** button) compare it against the
-latest GitHub release and can install in place with a progress popup.
+latest GitHub release and install that release archive in place. A git
+checkout is not required.
 
 ```bash
 python manage.py check_updates          # respects the 12h throttle

@@ -149,6 +149,7 @@ a:hover {
 
 .nav a,
 .weather-chip,
+.update-chip,
 .tva-clock,
 .user-chip {
   box-sizing: border-box;
@@ -255,6 +256,67 @@ a:hover {
   width: 0.45em;
   text-align: center;
   color: var(--tva-orange);
+}
+
+.update-chip {
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0 0.55rem;
+  background: linear-gradient(180deg, rgba(232, 119, 34, 0.22), rgba(36, 24, 16, 0.92));
+  border-color: var(--tva-orange);
+  font-family: var(--font-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--tva-orange);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.update-chip:hover {
+  color: var(--tva-amber);
+  box-shadow: 0 0 10px var(--phosphor-soft);
+}
+
+.update-chip__dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--tva-orange);
+  box-shadow: 0 0 6px rgba(232, 119, 34, 0.7);
+}
+
+.update-chip__label {
+  line-height: 1;
+}
+
+.update-chip[hidden] {
+  display: none;
+}
+
+@keyframes update-chip-shake {
+  0%,
+  8%,
+  100% {
+    transform: translateX(0) rotate(0);
+  }
+  1.5% {
+    transform: translateX(-3px) rotate(-2deg);
+  }
+  3% {
+    transform: translateX(3px) rotate(2deg);
+  }
+  4.5% {
+    transform: translateX(-2px) rotate(-1deg);
+  }
+  6% {
+    transform: translateX(2px) rotate(1deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .update-chip:not([hidden]) {
+    animation: update-chip-shake 7s ease-in-out infinite;
+  }
 }
 
 .weather-chip {

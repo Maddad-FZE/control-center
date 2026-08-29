@@ -178,6 +178,7 @@ NTFY_PASSWORD = os.environ.get("NTFY_PASSWORD", "")
 
 # Self-update via GitHub releases
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "Maddad-FZE/control-center")
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 UPDATE_CHECK_INTERVAL_HOURS = float(
     os.environ.get("UPDATE_CHECK_INTERVAL_HOURS", "12")
 )

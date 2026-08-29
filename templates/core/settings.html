@@ -138,6 +138,8 @@
         <p class="settings-hint">
           Releases are read from <code>{{ github_repo }}</code> on GitHub, including
           prereleases, at most once every {{ check_interval_hours|floatformat:"-1" }} hours.
+          Install downloads that release and applies it in place. Your database,
+          <code>.env</code>, and media stay put.
         </p>
 
         <div class="stat-row">

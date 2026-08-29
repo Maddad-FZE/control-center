@@ -1,13 +1,14 @@
 (function () {
   const modal = document.getElementById("update-modal");
   const footerBtn = document.getElementById("footer-update-btn");
+  const headerBtn = document.getElementById("header-update-btn");
   const checkBtn = document.getElementById("update-check-btn");
   const settingsInstallBtn = document.getElementById("update-install-btn");
   const modalInstallBtn = document.getElementById("update-modal-install");
   const modalReloadBtn = document.getElementById("update-modal-reload");
   const csrfMeta = document.querySelector('meta[name="csrf-token"]');
 
-  if (!modal && !checkBtn && !settingsInstallBtn) return;
+  if (!modal && !checkBtn && !settingsInstallBtn && !headerBtn && !footerBtn) return;
 
   let pollTimer = null;
   let restarting = false;
@@ -95,6 +96,19 @@
     if (footerBtn) {
       footerBtn.hidden = !data.update_available && data.install_state !== "running";
       footerBtn.textContent = running || restarting ? "Updating…" : "Update available";
+    }
+    if (headerBtn) {
+      headerBtn.hidden = !data.update_available && data.install_state !== "running" && !restarting;
+      const label = headerBtn.querySelector(".update-chip__label");
+      if (label) label.textContent = running || restarting ? "Updating" : "Update";
+      headerBtn.setAttribute(
+        "aria-label",
+        running || restarting
+          ? "Update in progress"
+          : data.latest_version
+            ? `Update ${data.latest_version} available`
+            : "Update available"
+      );
     }
 
     const installAllowed = !!data.install_allowed && !!data.update_available && !running && !restarting;
@@ -254,6 +268,12 @@
 
   if (footerBtn) {
     footerBtn.addEventListener("click", () => {
+      openModal();
+    });
+  }
+
+  if (headerBtn) {
+    headerBtn.addEventListener("click", () => {
       openModal();
     });
   }

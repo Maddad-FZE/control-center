@@ -1,15 +1,19 @@
-"""Version checking against GitHub Releases and in-place git updates."""
+"""Version checking against GitHub Releases and in-place archive installs."""
 
 import logging
 import os
 import re
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
+import tarfile
+import tempfile
 import threading
 from datetime import datetime, timezone as dt_timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 from django.conf import settings
@@ -28,12 +32,39 @@ INSTALL_LOCK_KEY = "update:install_lock"
 INSTALL_LOCK_TTL = 1800
 REQUEST_TIMEOUT = 10
 TAG_PATTERN = re.compile(r"^v?\d+(\.\d+){0,3}$")
+REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 NO_RELEASES_MESSAGE = "No releases published yet."
+DOWNLOAD_TIMEOUT = 300
+DOWNLOAD_CHUNK = 1024 * 64
+ALLOWED_ARCHIVE_HOSTS = {
+    "github.com",
+    "codeload.github.com",
+    "objects.githubusercontent.com",
+    "release-assets.githubusercontent.com",
+}
+# Local state that must survive an update. Top-level names only.
+PRESERVE_TOP = frozenset(
+    {
+        "data",
+        "media",
+        ".env",
+        ".venv",
+        "venv",
+        "staticfiles",
+        ".git",
+        ".cursor",
+        ".idea",
+        ".vscode",
+        "__pycache__",
+        ".pytest_cache",
+    }
+)
+SKIP_NAMES = frozenset({"__pycache__", ".git", ".pytest_cache"})
 
 INSTALL_STEPS = [
     ("prepare", "Prepare"),
-    ("fetch", "Fetch"),
-    ("checkout", "Checkout"),
+    ("download", "Download"),
+    ("apply", "Apply"),
     ("deps", "Dependencies"),
     ("migrate", "Migrate"),
     ("collectstatic", "Collect static"),
@@ -103,9 +134,20 @@ def _newest_release(releases):
     )
 
 
+def _github_headers():
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "control-center-updater",
+    }
+    token = getattr(settings, "GITHUB_TOKEN", "") or os.environ.get("GITHUB_TOKEN", "")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
 def _fetch_latest_release(repo):
     """Return (payload, error). Includes prereleases; /releases/latest ignores them."""
-    headers = {"Accept": "application/vnd.github+json"}
+    headers = _github_headers()
     list_url = f"{GITHUB_API_ROOT}/repos/{repo}/releases?per_page=30"
     try:
         resp, payload = _github_json(list_url, headers)
@@ -276,8 +318,136 @@ def _under_gunicorn():
     return any("gunicorn" in arg for arg in sys.argv)
 
 
+def archive_url(repo, tag):
+    if not REPO_PATTERN.match(repo or ""):
+        raise ValueError("Invalid GitHub repository.")
+    if not TAG_PATTERN.match(tag or ""):
+        raise ValueError("Invalid release tag.")
+    return f"https://github.com/{repo}/archive/refs/tags/{tag}.tar.gz"
+
+
+def _host_allowed(url):
+    host = (urlparse(url).hostname or "").lower()
+    return host in ALLOWED_ARCHIVE_HOSTS
+
+
+def download_archive(url, dest, log, timeout=DOWNLOAD_TIMEOUT):
+    if not _host_allowed(url):
+        raise ValueError(f"Refusing to download from {urlparse(url).hostname}")
+    log.append(f"Downloading {url}")
+    with requests.get(
+        url,
+        headers=_github_headers(),
+        stream=True,
+        timeout=timeout,
+        allow_redirects=True,
+    ) as resp:
+        if not _host_allowed(resp.url):
+            raise ValueError(f"Refusing redirect to {urlparse(resp.url).hostname}")
+        if resp.status_code == 404:
+            raise ValueError("Release archive not found. Publish a GitHub release for this tag.")
+        resp.raise_for_status()
+        written = 0
+        with dest.open("wb") as handle:
+            for chunk in resp.iter_content(DOWNLOAD_CHUNK):
+                if not chunk:
+                    continue
+                handle.write(chunk)
+                written += len(chunk)
+    if written < 32:
+        raise ValueError("Downloaded archive is empty.")
+    log.append(f"Downloaded {written} bytes")
+    return written
+
+
+def _safe_tar_members(tar, dest):
+    dest = dest.resolve()
+    members = []
+    for member in tar.getmembers():
+        if member.name.startswith("/") or member.name.startswith("\\"):
+            raise ValueError(f"Unsafe path in archive: {member.name}")
+        target = (dest / member.name).resolve()
+        if target != dest and not str(target).startswith(str(dest) + os.sep):
+            raise ValueError(f"Unsafe path in archive: {member.name}")
+        if member.issym() or member.islnk():
+            continue
+        members.append(member)
+    return members
+
+
+def extract_release_tarball(archive_path, dest):
+    dest.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(archive_path, "r:gz") as tar:
+        tar.extractall(dest, members=_safe_tar_members(tar, dest), filter="data")
+    roots = [p for p in dest.iterdir() if p.is_dir()]
+    if len(roots) == 1:
+        return roots[0]
+    raise ValueError("Release archive did not contain a single project folder.")
+
+
+def _sync_tree(src, dest):
+    dest.mkdir(parents=True, exist_ok=True)
+    incoming = {child.name for child in src.iterdir() if child.name not in SKIP_NAMES}
+    for child in list(dest.iterdir()):
+        if child.name in SKIP_NAMES or child.name in PRESERVE_TOP:
+            continue
+        if child.name not in incoming:
+            if child.is_dir() and not child.is_symlink():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+    for child in src.iterdir():
+        if child.name in SKIP_NAMES:
+            continue
+        target = dest / child.name
+        if child.is_dir():
+            _sync_tree(child, target)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(child, target)
+
+
+def apply_release_tree(src_root, dest_root, log):
+    """Replace app files from a release tree. Local state directories are kept."""
+    copied = 0
+    for child in src_root.iterdir():
+        if child.name in PRESERVE_TOP or child.name in SKIP_NAMES:
+            continue
+        target = dest_root / child.name
+        if child.is_dir():
+            _sync_tree(child, target)
+            copied += 1
+        else:
+            shutil.copy2(child, target)
+            copied += 1
+    log.append(f"Applied {copied} top-level items from the release")
+    return copied
+
+
+def verify_installed_version(dest_root, target_tag):
+    version_file = dest_root / "VERSION"
+    if not version_file.is_file():
+        raise ValueError("Release is missing a VERSION file.")
+    actual = version_file.read_text(encoding="utf-8").strip()
+    expected = target_tag.strip().lstrip("vV")
+    if actual != expected:
+        raise ValueError(f"VERSION is {actual}, expected {expected}.")
+    return actual
+
+
+def _fail_install(status, log, target_tag, username, label):
+    _finish(status, UpdateStatus.InstallState.FAILED, log)
+    log_audit(
+        "admin",
+        message=f"Update to {target_tag} failed at {label.lower()}",
+        username=username,
+    )
+    _notify(f"Update to {target_tag} failed", label)
+
+
 def _install_worker(target_tag, username):
-    base_dir = str(settings.BASE_DIR)
+    dest_root = Path(settings.BASE_DIR)
+    base_dir = str(dest_root)
     status = UpdateStatus.load()
     log = [f"Updating to {target_tag} (current {get_current_version()})"]
     status.install_total_steps = len(INSTALL_STEPS)
@@ -285,33 +455,43 @@ def _install_worker(target_tag, username):
 
     try:
         _progress(status, log, 1, "Prepare")
-        if not (settings.BASE_DIR / ".git").exists():
-            log.append("Not a git checkout — in-place updates are unavailable.")
-            _finish(status, UpdateStatus.InstallState.FAILED, log)
+        repo = settings.GITHUB_REPO
+        if not REPO_PATTERN.match(repo or ""):
+            log.append("GITHUB_REPO is not a valid owner/name value.")
+            _fail_install(status, log, target_tag, username, "Prepare")
+            return
+        try:
+            url = archive_url(repo, target_tag)
+        except ValueError as exc:
+            log.append(str(exc))
+            _fail_install(status, log, target_tag, username, "Prepare")
             return
 
-        dirty = subprocess.run(
-            ["git", "status", "--porcelain"],
-            cwd=base_dir,
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        if dirty.returncode != 0:
-            log.append("Could not read git status; aborting.")
-            _finish(status, UpdateStatus.InstallState.FAILED, log)
-            return
-        if dirty.stdout.strip():
-            log.append(
-                "Working tree has uncommitted changes. Commit or stash them "
-                "before installing an update."
-            )
-            _finish(status, UpdateStatus.InstallState.FAILED, log)
-            return
+        with tempfile.TemporaryDirectory(prefix="cc-update-") as tmp:
+            tmp_path = Path(tmp)
+            archive_path = tmp_path / "release.tar.gz"
+            extract_dir = tmp_path / "src"
+
+            _progress(status, log, 2, "Download")
+            try:
+                download_archive(url, archive_path, log)
+            except Exception as exc:  # noqa: BLE001 - surface download errors in the log
+                log.append(f"Download failed: {exc}")
+                _fail_install(status, log, target_tag, username, "Download")
+                return
+
+            _progress(status, log, 3, "Apply")
+            try:
+                src_root = extract_release_tarball(archive_path, extract_dir)
+                apply_release_tree(src_root, dest_root, log)
+                installed = verify_installed_version(dest_root, target_tag)
+                log.append(f"Release tree is {installed}")
+            except Exception as exc:  # noqa: BLE001 - surface apply errors in the log
+                log.append(f"Apply failed: {exc}")
+                _fail_install(status, log, target_tag, username, "Apply")
+                return
 
         command_steps = [
-            (2, "Fetch", ["git", "fetch", "--tags", "--prune", "origin"], 300),
-            (3, "Checkout", ["git", "checkout", target_tag], 300),
             (
                 4,
                 "Dependencies",
@@ -329,13 +509,7 @@ def _install_worker(target_tag, username):
         for index, label, args, timeout in command_steps:
             _progress(status, log, index, label)
             if not _run_step(label, args, log, base_dir, timeout):
-                _finish(status, UpdateStatus.InstallState.FAILED, log)
-                log_audit(
-                    "admin",
-                    message=f"Update to {target_tag} failed at {label.lower()}",
-                    username=username,
-                )
-                _notify(f"Update to {target_tag} failed", label)
+                _fail_install(status, log, target_tag, username, label)
                 return
             _progress(status, log, index, label)
 

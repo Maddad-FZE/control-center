@@ -44,6 +44,12 @@
     </nav>
   {% endif %}
     <div class="topbar-actions">
+      {% if is_admin %}
+      <button type="button" class="update-chip" id="header-update-btn"{% if not update_available %} hidden{% endif %} aria-label="Update available">
+        <span class="update-chip__dot" aria-hidden="true"></span>
+        <span class="update-chip__label">Update</span>
+      </button>
+      {% endif %}
       {% if weather_configured %}
       <span class="weather-chip" id="weather-chip" hidden aria-live="polite"></span>
       {% endif %}

@@ -44,7 +44,7 @@ const TIPS = {
   ],
   settings_updates: [
     { text: "This page checks GitHub for new versions, including prereleases.", target: "#update-latest" },
-    { text: "Check now looks for a newer release. Install only shows up when you are behind.", target: "#update-check-btn" },
+    { text: "Check now looks for a newer release. Install downloads it from GitHub — no git checkout needed.", target: "#update-check-btn" },
   ],
   settings_site: [
     { text: "Title, tagline, logo, and weather are set here. So is the wizard.", target: "#id_title" },
