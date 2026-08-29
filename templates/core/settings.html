@@ -122,8 +122,8 @@
       <section class="settings-pane{% if active_section == 'updates' %} is-active{% endif %}" id="settings-updates" data-section="updates">
         <h2 class="settings-section-title">Updates</h2>
         <p class="settings-hint">
-          Releases are read from <code>{{ github_repo }}</code> on GitHub, at most once every
-          {{ check_interval_hours|floatformat:"-1" }} hours.
+          Releases are read from <code>{{ github_repo }}</code> on GitHub, including
+          prereleases, at most once every {{ check_interval_hours|floatformat:"-1" }} hours.
         </p>
 
         <div class="stat-row">

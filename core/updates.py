@@ -78,6 +78,54 @@ def _parse_published_at(value):
     return parsed.replace(tzinfo=dt_timezone.utc)
 
 
+def _github_json(url, headers):
+    resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+    try:
+        payload = resp.json()
+    except ValueError:
+        payload = None
+    return resp, payload
+
+
+def _newest_release(releases):
+    candidates = [
+        row
+        for row in releases
+        if isinstance(row, dict)
+        and not row.get("draft")
+        and (row.get("tag_name") or "").strip()
+    ]
+    if not candidates:
+        return None
+    return max(
+        candidates,
+        key=lambda row: _parse_version(row.get("tag_name")) or (0, 0, 0),
+    )
+
+
+def _fetch_latest_release(repo):
+    """Return (payload, error). Includes prereleases; /releases/latest ignores them."""
+    headers = {"Accept": "application/vnd.github+json"}
+    list_url = f"{GITHUB_API_ROOT}/repos/{repo}/releases?per_page=30"
+    try:
+        resp, payload = _github_json(list_url, headers)
+    except requests.RequestException as exc:
+        logger.warning("Update check failed: %s", exc)
+        return None, str(exc)[:255]
+
+    if resp.status_code == 404:
+        return None, NO_RELEASES_MESSAGE
+    if not resp.ok:
+        return None, f"GitHub returned {resp.status_code}"
+    if not isinstance(payload, list):
+        return None, "Malformed response from GitHub"
+
+    newest = _newest_release(payload)
+    if newest:
+        return newest, ""
+    return None, NO_RELEASES_MESSAGE
+
+
 def check_for_update():
     """Fetch the latest release from GitHub and persist the result."""
     status = UpdateStatus.load()
@@ -88,37 +136,13 @@ def check_for_update():
         status.save()
         return status
 
-    url = f"{GITHUB_API_ROOT}/repos/{repo}/releases/latest"
-    headers = {"Accept": "application/vnd.github+json"}
-    try:
-        resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
-    except requests.RequestException as exc:
-        logger.warning("Update check failed: %s", exc)
-        status.check_error = str(exc)[:255]
-        status.last_checked_at = timezone.now()
-        status.save()
-        return status
-
-    if resp.status_code == 404:
-        status.check_error = NO_RELEASES_MESSAGE
+    payload, error = _fetch_latest_release(repo)
+    if error or not payload:
+        status.check_error = error or NO_RELEASES_MESSAGE
         status.latest_version = ""
         status.release_url = ""
         status.release_notes = ""
         status.release_published_at = None
-        status.last_checked_at = timezone.now()
-        status.save()
-        return status
-
-    if not resp.ok:
-        status.check_error = f"GitHub returned {resp.status_code}"
-        status.last_checked_at = timezone.now()
-        status.save()
-        return status
-
-    try:
-        payload = resp.json()
-    except ValueError:
-        status.check_error = "Malformed response from GitHub"
         status.last_checked_at = timezone.now()
         status.save()
         return status
