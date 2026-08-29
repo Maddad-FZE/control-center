@@ -72,7 +72,7 @@
           <div class="form-group">
             <label for="{{ site_form.weather_location.id_for_label }}">Weather location</label>
             {{ site_form.weather_location }}
-            <p class="settings-hint">City name for the weather chip in the header (signed-in users).</p>
+            <p class="settings-hint">City name for the weather chip in the header. This is the server location, shown to everyone including guests.</p>
           </div>
           <div class="form-group">
             <label for="{{ site_form.services_host.id_for_label }}">Services host</label>
@@ -84,6 +84,20 @@
               {{ site_form.crt_enabled }}
               <span>CRT scanline effect (site-wide)</span>
             </label>
+          </div>
+          <div class="form-group form-group--checkbox">
+            <label class="checkbox-label">
+              {{ site_form.wizard_enabled }}
+              <span>Call in the Wizard</span>
+            </label>
+            <p class="settings-hint">Shows Merlin on signed-in pages. Click him for a tip about the page you are on.</p>
+          </div>
+          <div class="form-group form-group--checkbox form-group--nested" id="wizard-notify-group">
+            <label class="checkbox-label">
+              {{ site_form.wizard_notify }}
+              <span>Let the wizard notify me</span>
+            </label>
+            <p class="settings-hint">Merlin reads site messages instead of showing toast popups.</p>
           </div>
           <button type="submit" class="btn">Save site settings</button>
         </form>

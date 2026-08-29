@@ -12,6 +12,7 @@
     data-service-name="{{ service.name|lower }}"
     data-service-desc="{{ service.display_description|lower }} {{ service.category.name|lower }}"
     data-service-down="{% if s and not s.is_up %}1{% else %}0{% endif %}"
+    data-service-up="{% if s and s.is_up %}1{% else %}0{% endif %}"
     data-widget-type="{{ service.widget_type }}"
     title="{{ service.name }}{% if s and s.response_ms %} · {{ s.response_ms }}ms{% endif %}"
   >

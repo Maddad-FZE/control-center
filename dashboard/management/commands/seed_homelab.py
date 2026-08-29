@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 
-from dashboard.models import Bookmark, Service, ServiceCategory
+from dashboard.models import Service, ServiceCategory
 
 
 DEFAULT_DATA = {
@@ -109,7 +109,7 @@ BOOKMARKS = [
 
 
 class Command(BaseCommand):
-    help = "Seed dashboard services and bookmarks from homelab defaults"
+    help = "Seed dashboard services from homelab defaults"
 
     def add_arguments(self, parser):
         parser.add_argument("--yaml", type=str, help="Optional Homepage services.yaml to import")
@@ -154,13 +154,23 @@ class Command(BaseCommand):
                         "widget_api_key": svc.get("widget_api_key", ""),
                     },
                 )
+        tools, _ = ServiceCategory.objects.get_or_create(
+            name="Tools",
+            defaults={"sort_order": 2, "layout": ServiceCategory.Layout.GRID},
+        )
+        existing = {name.lower() for name in Service.objects.values_list("name", flat=True)}
         for idx, bm in enumerate(BOOKMARKS):
-            Bookmark.objects.update_or_create(
+            if bm["name"].lower() in existing:
+                continue
+            Service.objects.update_or_create(
+                category=tools,
                 name=bm["name"],
                 defaults={
                     "href": bm["href"],
                     "icon": bm.get("icon", ""),
-                    "sort_order": idx,
+                    "health_check_url": bm["href"],
+                    "is_misc": True,
+                    "sort_order": 100 + idx,
                     "enabled": True,
                 },
             )

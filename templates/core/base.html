@@ -22,7 +22,7 @@
   {% endif %}
   {% block extra_css %}{% endblock %}
 </head>
-<body class="theme-{{ user_theme }}{% if crt_enabled %} crt-on{% endif %}">
+<body class="theme-{{ user_theme }}{% if crt_enabled %} crt-on{% endif %}{% if wizard_enabled and wizard_notify %} wizard-notify{% endif %}"{% if wizard_enabled %} data-wizard="1" data-wizard-notify="{% if wizard_notify %}1{% endif %}" data-wizard-page="{{ wizard_page }}" data-clippy-index="{% static 'vendor/clippyjs/index.mjs' %}" data-clippy-merlin="{% static 'vendor/clippyjs/agents/merlin/index.mjs' %}"{% endif %}>
   <a class="skip-link" href="#main-content">Skip to content</a>
   <header class="topbar">
     <div class="brand">
@@ -44,11 +44,11 @@
     </nav>
   {% endif %}
     <div class="topbar-actions">
-      {% if user.is_authenticated and weather_configured %}
+      {% if weather_configured %}
       <span class="weather-chip" id="weather-chip" hidden aria-live="polite"></span>
       {% endif %}
+      <time class="tva-clock" id="tva-clock" datetime="" data-timezone="{{ server_timezone }}"></time>
       {% if user.is_authenticated %}
-      <time class="tva-clock" id="tva-clock" datetime=""></time>
       <div class="user-menu" id="user-menu">
         <button type="button" class="user-chip" id="user-menu-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="user-menu-dropdown">
           <span class="user-chip-avatar" aria-hidden="true">{{ user.username|slice:":1"|upper }}</span>
@@ -97,19 +97,22 @@
   {% if is_admin %}
   {% include "core/_update_modal.html" %}
   {% endif %}
-  {% if user.is_authenticated %}
   <script src="{% vstatic 'js/clock.js' %}" defer></script>
-  <script src="{% vstatic 'js/user-menu.js' %}" defer></script>
   {% if weather_configured %}
   <script src="{% vstatic 'js/weather.js' %}" defer></script>
   {% endif %}
+  {% if user.is_authenticated %}
+  <script src="{% vstatic 'js/user-menu.js' %}" defer></script>
   {% endif %}
   {% if is_admin %}
   <script src="{% vstatic 'js/updates.js' %}" defer></script>
   {% endif %}
   {% block extra_js %}{% endblock %}
-  {% if messages %}
+  {% if messages and not wizard_notify %}
   <script src="{% vstatic 'js/toasts.js' %}" defer></script>
+  {% endif %}
+  {% if wizard_enabled %}
+  <script type="module" src="{% vstatic 'js/wizard.js' %}"></script>
   {% endif %}
   <script src="{% vstatic 'js/sw-register.js' %}" defer></script>
 </body>

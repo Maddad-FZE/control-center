@@ -45,7 +45,7 @@ class Service(models.Model):
     is_public = models.BooleanField(default=False)
     is_misc = models.BooleanField(
         default=False,
-        help_text="Show this card in Misc as a compact bookmark instead of Apps or Tracked",
+        help_text="Show this card in Misc instead of Apps or Tracked",
     )
     sort_order = models.PositiveIntegerField(default=0)
     enabled = models.BooleanField(default=True)

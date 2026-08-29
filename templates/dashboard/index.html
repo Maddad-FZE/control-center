@@ -16,8 +16,8 @@
       <span class="sync-chip__label">Sync</span>
       <time class="sync-chip__time" datetime="">––:––:––</time>
     </span>
-    <span class="status-chip status-chip--up" id="stat-up">{{ services_up|default:0 }} up</span>
-    <button type="button" class="status-chip status-chip--down status-chip--clickable" id="stat-down">{{ services_down|default:0 }} down</button>
+    <button type="button" class="status-chip status-chip--up status-chip--clickable" id="stat-up" aria-pressed="false">{{ services_up|default:0 }} up</button>
+    <button type="button" class="status-chip status-chip--down status-chip--clickable" id="stat-down" aria-pressed="false">{{ services_down|default:0 }} down</button>
     {% if services_unknown %}<span class="status-chip status-chip--unknown" id="stat-unknown">{{ services_unknown }} unknown</span>{% endif %}
     {% if not is_guest %}
     <span class="status-divider" aria-hidden="true">·</span>
@@ -30,7 +30,7 @@
   </div>
   <div class="status-strip__actions">
     <label class="filter-label" for="service-filter">Filter</label>
-    <input type="search" id="service-filter" class="service-filter" placeholder="Filter services ( / )" autocomplete="off" spellcheck="false">
+    <input type="search" id="service-filter" class="service-filter" placeholder="Filter" autocomplete="off" spellcheck="false">
     {% if is_admin %}
     <a href="{% url 'service_create' %}" class="btn status-strip__add">+ Add card</a>
     {% endif %}
@@ -65,7 +65,7 @@
         <div class="bookmarks">
           {% for service in misc_services %}
             {% with s=status|get_item:service.id %}
-            <div class="service-card-wrap service-card-wrap--misc">
+            <div class="service-card-wrap service-card-wrap--misc{% if is_admin %} service-card-wrap--has-menu{% endif %}">
               {% include "dashboard/_card_menu.html" %}
               <a
                 class="bookmark bookmark--service{% if s and not s.is_up %} bookmark--down{% endif %}"
@@ -76,6 +76,7 @@
                 data-service-name="{{ service.name|lower }}"
                 data-service-desc="{{ service.description|lower }}"
                 data-service-down="{% if s and not s.is_up %}1{% else %}0{% endif %}"
+                data-service-up="{% if s and s.is_up %}1{% else %}0{% endif %}"
               >
                 <img
                   src="{{ service.display_icon }}"
@@ -87,14 +88,8 @@
             </div>
             {% endwith %}
           {% endfor %}
-          {% for bm in bookmarks %}
-            <a class="bookmark" href="{{ bm.href }}" target="_blank" rel="noopener" data-service-name="{{ bm.name|lower }}">
-              {% if bm.icon %}<img src="{{ bm.icon }}" alt="">{% endif %}
-              {{ bm.name }}
-            </a>
-          {% endfor %}
         </div>
-        <p class="section-empty" data-empty="Nothing in Misc right now. Check back later."{% if bookmarks or misc_services %} hidden{% endif %}>Nothing in Misc right now. Check back later.</p>
+        <p class="section-empty" data-empty="Nothing in Misc right now. Check back later."{% if misc_services %} hidden{% endif %}>Nothing in Misc right now. Check back later.</p>
       </section>
     </div>
   </div>

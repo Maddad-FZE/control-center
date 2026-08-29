@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-29
+
+### Added
+
+- Optional Merlin wizard with page tips and spoken site messages
+- Site settings to call in the wizard and let him notify instead of toasts
+- Misc chips with edit, visibility, and delete (bookmarks migrate to services)
+- Weather and clock in the header for guests, using the server timezone
+- Clickable Up filter (`is:up`) alongside Down
+- Red status lights flash while a health check is in progress
+
+### Changed
+
+- Down cards fade instead of using a hazard stripe
+- Misc kebab sits beside the icon and stays vertically centered
+- Weather API is public so guests see the same site location
+
 ## [0.1.1] - 2026-08-29
 
 ### Added

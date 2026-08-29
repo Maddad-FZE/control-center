@@ -22,6 +22,21 @@
       const url = new URL(window.location.href);
       url.searchParams.set("section", section);
       history.replaceState(null, "", url);
+      window.dispatchEvent(new Event("cc-wizard-section"));
     });
   });
+
+  const master = document.querySelector("[data-wizard-master]");
+  const notify = document.querySelector("[data-wizard-notify]");
+  const notifyGroup = document.getElementById("wizard-notify-group");
+
+  function syncWizardNotify() {
+    if (!master || !notify) return;
+    const on = master.checked;
+    notify.disabled = !on;
+    notifyGroup?.classList.toggle("is-disabled", !on);
+  }
+
+  master?.addEventListener("change", syncWizardNotify);
+  syncWizardNotify();
 })();

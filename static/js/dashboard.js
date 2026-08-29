@@ -81,12 +81,15 @@ function applyServiceFilter() {
   if (!input) return;
   const q = input.value.trim().toLowerCase();
   const downOnly = q === "is:down";
+  const upOnly = q === "is:up";
 
   function matches(node) {
     const name = node.dataset.serviceName || "";
     const desc = node.dataset.serviceDesc || "";
     const isDown = node.dataset.serviceDown === "1";
+    const isUp = node.dataset.serviceUp === "1";
     if (downOnly) return isDown;
+    if (upOnly) return isUp;
     if (q) return name.includes(q) || desc.includes(q);
     return true;
   }
@@ -97,23 +100,14 @@ function applyServiceFilter() {
     const match = matches(target);
     wrap.classList.toggle("hidden-by-filter", !match);
     target.classList.toggle("hidden-by-filter", !match);
-    target.classList.toggle("filter-match", !!q && match && !downOnly);
-  });
-
-  document.querySelectorAll(".bookmarks > .bookmark").forEach((bm) => {
-    if (bm.closest(".service-card-wrap")) return;
-    const match = matches(bm);
-    bm.classList.toggle("hidden-by-filter", !match);
+    target.classList.toggle("filter-match", !!q && match && !downOnly && !upOnly);
   });
 
   document.querySelectorAll(".services-group").forEach((group) => {
     const wraps = Array.from(group.querySelectorAll(".service-card-wrap")).filter(
       (node) => !node.classList.contains("hidden-by-filter")
     );
-    const loose = Array.from(group.querySelectorAll(".bookmarks > .bookmark")).filter(
-      (node) => !node.classList.contains("hidden-by-filter") && !node.closest(".service-card-wrap")
-    );
-    const visible = wraps.length + loose.length;
+    const visible = wraps.length;
     const empty = group.querySelector(".section-empty");
     if (empty) {
       empty.hidden = visible > 0;
@@ -122,6 +116,17 @@ function applyServiceFilter() {
         : empty.dataset.empty || "Nothing here right now. Check back later.";
     }
   });
+
+  const upChip = el("stat-up");
+  const downChip = el("stat-down");
+  if (upChip) {
+    upChip.classList.toggle("is-pressed", upOnly);
+    upChip.setAttribute("aria-pressed", upOnly ? "true" : "false");
+  }
+  if (downChip) {
+    downChip.classList.toggle("is-pressed", downOnly);
+    downChip.setAttribute("aria-pressed", downOnly ? "true" : "false");
+  }
 }
 
 function updateGroupTitles() {
@@ -239,16 +244,23 @@ function renderHealth(data) {
     const card = dot ? dot.closest(".service-card") : null;
     const latency = document.querySelector(`.service-latency[data-service-id="${s.id}"]`);
 
-    if (dot) {
-      dot.classList.remove("up", "down");
-      dot.classList.add(s.is_up ? "up" : "down");
-      dot.setAttribute("aria-label", `${s.name}: ${s.is_up ? "up" : "down"}`);
-    }
+    document.querySelectorAll(`.status-dot[data-service-id="${s.id}"]`).forEach((node) => {
+      node.classList.remove("up", "down", "is-checking");
+      node.classList.add(s.is_up ? "up" : "down");
+      node.setAttribute("aria-label", `${s.name}: ${s.is_up ? "up" : "down"}`);
+    });
     if (card) {
       card.classList.toggle("service-card--down", !s.is_up);
       card.dataset.serviceDown = s.is_up ? "0" : "1";
+      card.dataset.serviceUp = s.is_up ? "1" : "0";
       const latencyText = s.response_ms != null ? ` · ${s.response_ms}ms` : "";
       card.title = `${s.name}${latencyText}`;
+    }
+    const bookmark = document.querySelector(`.bookmark[data-service-id="${s.id}"]`);
+    if (bookmark) {
+      bookmark.classList.toggle("bookmark--down", !s.is_up);
+      bookmark.dataset.serviceDown = s.is_up ? "0" : "1";
+      bookmark.dataset.serviceUp = s.is_up ? "1" : "0";
     }
     if (latency && s.response_ms != null) {
       latency.textContent = `${s.response_ms}ms`;
@@ -483,14 +495,20 @@ function initStatusChips() {
     });
   }
 
+  function toggleStatusFilter(token) {
+    const input = el("service-filter");
+    if (!input) return;
+    input.value = input.value.trim().toLowerCase() === token ? "" : token;
+    applyServiceFilter();
+  }
+
+  const upChip = el("stat-up");
+  if (upChip) {
+    upChip.addEventListener("click", () => toggleStatusFilter("is:up"));
+  }
+
   if (downChip) {
-    downChip.addEventListener("click", () => {
-      const input = el("service-filter");
-      if (!input) return;
-      input.value = "is:down";
-      applyServiceFilter();
-      input.focus();
-    });
+    downChip.addEventListener("click", () => toggleStatusFilter("is:down"));
   }
 }
 
@@ -615,16 +633,39 @@ async function pollFast() {
   }
 }
 
+function beginDownCheckPulse() {
+  document.querySelectorAll(".status-dot.down").forEach((dot) => {
+    dot.classList.add("is-checking");
+  });
+  document.querySelectorAll(".bookmark--down").forEach((chip) => {
+    chip.classList.add("is-checking");
+    const wrap = chip.closest(".service-card-wrap--misc");
+    if (wrap) wrap.classList.add("is-checking");
+  });
+}
+
+function endDownCheckPulse() {
+  document.querySelectorAll(".is-checking").forEach((node) => {
+    node.classList.remove("is-checking");
+  });
+}
+
 async function pollSlow() {
+  const started = Date.now();
+  beginDownCheckPulse();
   try {
     const [healthR, uptimeR] = await Promise.all([
       fetchWithCache("/api/health/", "health"),
       fetchWithCache("/api/uptime/", "uptime"),
     ]);
+    const wait = Math.max(0, 700 - (Date.now() - started));
+    if (wait) await new Promise((resolve) => window.setTimeout(resolve, wait));
     renderHealth(healthR.data);
     renderUptime(uptimeR.data);
   } catch (e) {
     console.warn("dashboard slow poll failed", e);
+  } finally {
+    endDownCheckPulse();
   }
 }
 
@@ -639,6 +680,7 @@ async function poll() {
 if (IS_GUEST) {
   hydrateFromCache();
   initFilter();
+  initStatusChips();
   pollGuest();
   setInterval(pollGuest, 15000);
 } else {

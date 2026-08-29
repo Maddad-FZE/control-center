@@ -19,7 +19,7 @@ from library.models import InstalledService
 from library.versions import maybe_check_daily, update_map_for_services
 
 from .forms import ServiceForm, ServiceMetricFormSet
-from .models import Alert, Bookmark, Service, ServiceCategory
+from .models import Alert, Service, ServiceCategory
 from .presets import apply_preset_metrics
 from . import services
 
@@ -98,14 +98,11 @@ def dashboard_view(request):
             if status.get(svc.id, {}).get("is_up") is False:
                 down_section_ids.add(bucket)
 
-    bookmarks = Bookmark.objects.filter(enabled=True) if not is_guest else []
-
     visible_status = [row for row in status.values() if row]
     context = {
         "tracked_services": tracked_services,
         "app_services": app_services,
         "misc_services": misc_services,
-        "bookmarks": bookmarks,
         "status": status,
         "is_guest": is_guest,
         "is_admin": is_admin,
@@ -377,6 +374,4 @@ def api_icons(request):
 @login_not_required
 @require_GET
 def api_weather(request):
-    if not request.user.is_authenticated:
-        return JsonResponse({"configured": False})
     return JsonResponse(services.fetch_weather())

@@ -34,6 +34,8 @@ class SiteSettingsForm(forms.ModelForm):
             "favicon",
             "weather_location",
             "crt_enabled",
+            "wizard_enabled",
+            "wizard_notify",
             "services_host",
         )
         widgets = {
@@ -46,7 +48,15 @@ class SiteSettingsForm(forms.ModelForm):
                 attrs={"placeholder": "e.g. 192.168.0.40"}
             ),
             "crt_enabled": forms.CheckboxInput(),
+            "wizard_enabled": forms.CheckboxInput(attrs={"data-wizard-master": "1"}),
+            "wizard_notify": forms.CheckboxInput(attrs={"data-wizard-notify": "1"}),
         }
+
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get("wizard_enabled") and self.instance.pk:
+            cleaned["wizard_notify"] = self.instance.wizard_notify
+        return cleaned
 
 
 class SetupAdminForm(forms.Form):

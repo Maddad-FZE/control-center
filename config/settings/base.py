@@ -159,6 +159,7 @@ CONTENT_SECURITY_POLICY = {
         "img-src": ("'self'", "data:", "https:"),
         "font-src": ("'self'",),
         "connect-src": ("'self'",),
+        "media-src": ("'self'", "data:"),
         "frame-ancestors": ("'none'",),
     }
 }

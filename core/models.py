@@ -11,6 +11,8 @@ class SiteSettings(models.Model):
     weather_lat = models.FloatField(null=True, blank=True)
     weather_lon = models.FloatField(null=True, blank=True)
     crt_enabled = models.BooleanField(default=True)
+    wizard_enabled = models.BooleanField(default=False)
+    wizard_notify = models.BooleanField(default=True)
     services_host = models.CharField(
         max_length=255,
         blank=True,
