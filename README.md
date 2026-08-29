@@ -51,7 +51,16 @@ python manage.py bump_version patch --dry-run   # preview VERSION + CHANGELOG bu
 python manage.py bump_version patch             # write files, then tag and push
 ```
 
-See [deploy.md](deploy.md) for the release process and cron setup.
+On Docker, **Install** overlays the running container and sends SIGHUP to
+gunicorn. That is enough when `.:/app` is bind-mounted (the compose default).
+If only `data/` is mounted, the overlay lasts until the container is recreated —
+rebuild the image for a lasting upgrade:
+
+```bash
+docker compose build && docker compose up -d
+```
+
+See [deploy.md](deploy.md) for the release process, Docker vs in-app updates, and cron.
 
 ## Legacy apps (phase 1)
 

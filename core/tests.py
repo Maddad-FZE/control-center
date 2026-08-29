@@ -1,11 +1,19 @@
+import os
+import sys
 import tarfile
 import tempfile
 import unittest
+from datetime import timedelta
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
-from django.test import SimpleTestCase
+from django.conf import settings
+from django.core.cache import cache
+from django.test import SimpleTestCase, TestCase
+from django.utils import timezone
 
 from core import updates
+from core.models import UpdateStatus
 
 
 def _write(path, text):
@@ -87,6 +95,155 @@ class ExtractArchiveTests(SimpleTestCase):
                 tar.addfile(info, fileobj=__import__("io").BytesIO(data))
             with self.assertRaises(ValueError):
                 updates.extract_release_tarball(archive, tmp / "out")
+
+
+class FakeStatus:
+    def __init__(self):
+        self.install_step = ""
+        self.install_step_index = 0
+        self.install_total_steps = 0
+        self.install_log = ""
+        self.saves = 0
+
+    def save(self, update_fields=None):
+        self.saves += 1
+
+
+class RunStepTests(SimpleTestCase):
+    def test_streams_output_into_log(self):
+        log = []
+        status = FakeStatus()
+        ok = updates._run_step(
+            "Echo",
+            [sys.executable, "-c", "print('line-one'); print('line-two')"],
+            log,
+            cwd=".",
+            timeout=10,
+            status=status,
+            step_index=4,
+        )
+        self.assertTrue(ok)
+        joined = "\n".join(log)
+        self.assertIn("line-one", joined)
+        self.assertIn("line-two", joined)
+        self.assertGreaterEqual(status.saves, 1)
+
+    def test_nonzero_exit_is_failure(self):
+        log = []
+        ok = updates._run_step(
+            "Fail",
+            [sys.executable, "-c", "raise SystemExit(3)"],
+            log,
+            cwd=".",
+            timeout=10,
+        )
+        self.assertFalse(ok)
+        self.assertTrue(any("exit code 3" in row for row in log))
+
+
+class RestartTests(SimpleTestCase):
+    def test_missing_restart_binary_falls_back(self):
+        log = []
+        with self.settings(UPDATE_RESTART_COMMAND="definitely-not-a-cc-binary restart"):
+            with patch.object(updates, "_find_gunicorn_master", return_value=None):
+                ok = updates._restart_application(log)
+        self.assertFalse(ok)
+        self.assertTrue(any("not available" in row for row in log))
+
+    def test_empty_command_does_not_invoke_docker(self):
+        log = []
+        with self.settings(UPDATE_RESTART_COMMAND=""):
+            with patch.object(updates, "_find_gunicorn_master", return_value=None):
+                with patch.object(updates.subprocess, "Popen") as popen:
+                    updates._restart_application(log)
+        popen.assert_not_called()
+        self.assertTrue(any("manually" in row.lower() for row in log))
+
+    def test_sighup_when_gunicorn_master_found(self):
+        log = []
+        with self.settings(UPDATE_RESTART_COMMAND=""):
+            with patch.object(updates, "_find_gunicorn_master", return_value=4242):
+                with patch.object(updates.os, "kill") as kill:
+                    ok = updates._restart_application(log)
+        self.assertTrue(ok)
+        kill.assert_called_once()
+        self.assertEqual(kill.call_args[0][0], 4242)
+
+
+class EphemeralAppDirTests(SimpleTestCase):
+    def test_host_is_not_ephemeral(self):
+        self.assertFalse(updates.app_dir_is_ephemeral("/app", in_docker=False, mountinfo=""))
+
+    def test_docker_without_app_bind_is_ephemeral(self):
+        mountinfo = "123 1 8:1 / / rw - overlay overlay rw\n456 123 8:1 / /app/data rw - ext4 /dev/sda1 rw\n"
+        self.assertTrue(
+            updates.app_dir_is_ephemeral("/app", in_docker=True, mountinfo=mountinfo)
+        )
+
+    def test_docker_with_app_bind_is_durable(self):
+        mountinfo = "123 1 8:1 / / rw - overlay overlay rw\n456 123 8:1 /home/pi/app /app rw - ext4 /dev/sda1 rw\n"
+        self.assertFalse(
+            updates.app_dir_is_ephemeral("/app", in_docker=True, mountinfo=mountinfo)
+        )
+
+
+class RecoverInstallTests(TestCase):
+    def test_marks_dead_running_install_failed(self):
+        status = UpdateStatus.load()
+        status.install_state = UpdateStatus.InstallState.RUNNING
+        status.install_started_at = timezone.now() - timedelta(minutes=5)
+        status.install_log = "stuck at Dependencies"
+        status.save()
+        lock = Path(settings.BASE_DIR) / "data" / "update-install.lock"
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.write_text("999999", encoding="utf-8")
+        try:
+            self.assertTrue(updates.recover_stale_install())
+            status.refresh_from_db()
+            self.assertEqual(status.install_state, UpdateStatus.InstallState.FAILED)
+            self.assertIn("stopped before it finished", status.install_log)
+            self.assertFalse(lock.exists())
+        finally:
+            lock.unlink(missing_ok=True)
+
+    def test_leaves_live_lock_alone(self):
+        status = UpdateStatus.load()
+        status.install_state = UpdateStatus.InstallState.RUNNING
+        status.install_started_at = timezone.now()
+        status.save()
+        lock = Path(settings.BASE_DIR) / "data" / "update-install.lock"
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.write_text(str(os.getpid()), encoding="utf-8")
+        try:
+            self.assertFalse(updates.recover_stale_install())
+            status.refresh_from_db()
+            self.assertEqual(status.install_state, UpdateStatus.InstallState.RUNNING)
+        finally:
+            lock.unlink(missing_ok=True)
+
+
+class StartInstallTests(TestCase):
+    def test_spawns_install_update_command(self):
+        status = UpdateStatus.load()
+        status.latest_version = "v9.9.9"
+        status.install_state = UpdateStatus.InstallState.IDLE
+        status.save()
+        fake = MagicMock()
+        fake.pid = 4321
+        with self.settings(UPDATES_ALLOW_INSTALL=True):
+            with patch.object(updates.subprocess, "Popen", return_value=fake) as popen:
+                started, message = updates.start_install("v9.9.9", "admin")
+        self.assertTrue(started)
+        self.assertIn("v9.9.9", message)
+        args = popen.call_args[0][0]
+        self.assertIn("install_update", args)
+        self.assertIn("v9.9.9", args)
+        lock = Path(settings.BASE_DIR) / "data" / "update-install.lock"
+        try:
+            self.assertEqual(lock.read_text(encoding="utf-8").strip(), "4321")
+        finally:
+            lock.unlink(missing_ok=True)
+            cache.delete(updates.INSTALL_LOCK_KEY)
 
 
 if __name__ == "__main__":

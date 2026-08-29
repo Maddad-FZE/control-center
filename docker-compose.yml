@@ -11,6 +11,7 @@ services:
       - DJANGO_SETTINGS_MODULE=config.settings.prod
     volumes:
       - ./data:/app/data
+      # Bind-mount so in-app updates persist. Data-only mounts need an image rebuild.
       - .:/app
       - /var/run/docker.sock:/var/run/docker.sock
     command: >

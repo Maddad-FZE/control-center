@@ -139,7 +139,9 @@
           Releases are read from <code>{{ github_repo }}</code> on GitHub, including
           prereleases, at most once every {{ check_interval_hours|floatformat:"-1" }} hours.
           Install downloads that release and applies it in place. Your database,
-          <code>.env</code>, and media stay put.
+          <code>.env</code>, and media stay put. On Docker, Install reloads
+          gunicorn in the running container. If the project is not bind-mounted
+          (<code>.:/app</code>), rebuild the image for a lasting upgrade.
         </p>
 
         <div class="stat-row">

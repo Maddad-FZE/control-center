@@ -3,6 +3,7 @@
 import logging
 import os
 import re
+import select
 import shlex
 import shutil
 import signal
@@ -10,7 +11,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import threading
+import time
 from datetime import datetime, timezone as dt_timezone
 from pathlib import Path
 from urllib.parse import urlparse
@@ -29,7 +30,9 @@ GITHUB_API_ROOT = "https://api.github.com"
 CHECK_LOCK_KEY = "update:check_lock"
 CHECK_LOCK_TTL = 120
 INSTALL_LOCK_KEY = "update:install_lock"
-INSTALL_LOCK_TTL = 1800
+INSTALL_LOCK_TTL = 60
+STALE_INSTALL_GRACE_SECONDS = 120
+LOCK_HEARTBEAT_SECONDS = 15
 REQUEST_TIMEOUT = 10
 TAG_PATTERN = re.compile(r"^v?\d+(\.\d+){0,3}$")
 REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -226,8 +229,96 @@ def update_available(status=None):
     return is_newer(status.latest_version, get_current_version())
 
 
+def _lock_path():
+    return Path(settings.BASE_DIR) / "data" / "update-install.lock"
+
+
+def _pid_is_running(pid):
+    if not pid or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _lock_pid():
+    path = _lock_path()
+    try:
+        return int(path.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+
+
+def acquire_install_lock(pid=None):
+    """Record the update process pid. Replaces a stale lock from a dead pid."""
+    path = _lock_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    current = _lock_pid()
+    if current and _pid_is_running(current) and current != (pid or os.getpid()):
+        return False
+    path.write_text(str(pid or os.getpid()), encoding="utf-8")
+    return True
+
+
+def release_install_lock():
+    path = _lock_path()
+    try:
+        stored = _lock_pid()
+        if stored in (None, os.getpid()):
+            path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def recover_stale_install():
+    """Mark a RUNNING install failed when the worker process is gone."""
+    status = UpdateStatus.load()
+    if status.install_state != UpdateStatus.InstallState.RUNNING:
+        return False
+    pid = _lock_pid()
+    if _pid_is_running(pid):
+        return False
+    if pid is None and status.install_started_at:
+        age = (timezone.now() - status.install_started_at).total_seconds()
+        if age < STALE_INSTALL_GRACE_SECONDS:
+            return False
+    log = [status.install_log.strip(), "Update process stopped before it finished."]
+    _finish(status, UpdateStatus.InstallState.FAILED, [line for line in log if line])
+    try:
+        _lock_path().unlink(missing_ok=True)
+    except OSError:
+        pass
+    logger.warning("Cleared a stale in-app update")
+    return True
+
+
+def app_dir_is_ephemeral(app_dir=None, *, in_docker=None, mountinfo=None):
+    """True in Docker when the app directory is not bind-mounted from the host."""
+    if in_docker is None:
+        in_docker = Path("/.dockerenv").exists()
+    if not in_docker:
+        return False
+    app = str(Path(app_dir or settings.BASE_DIR).resolve())
+    if mountinfo is None:
+        try:
+            mountinfo = Path("/proc/self/mountinfo").read_text(encoding="utf-8")
+        except OSError:
+            return True
+    for line in mountinfo.splitlines():
+        parts = line.split()
+        if len(parts) < 5:
+            continue
+        if parts[4] == app:
+            return False
+    return True
+
+
 def _progress(status, log, index, label):
     """Persist live progress so the UI can poll between steps."""
+    if status is None:
+        return
     status.install_step = label
     status.install_step_index = index
     status.install_total_steps = len(INSTALL_STEPS)
@@ -242,27 +333,71 @@ def _progress(status, log, index, label):
     )
 
 
-def _run_step(label, args, log, cwd, timeout=900):
+def _run_step(label, args, log, cwd, timeout=900, status=None, step_index=None):
+    """Run a command and stream stdout/stderr into the install log."""
     log.append(f"$ {' '.join(args)}")
+    _progress(status, log, step_index if step_index is not None else 0, label)
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    env.setdefault("PIP_DISABLE_PIP_VERSION_CHECK", "1")
     try:
-        result = subprocess.run(
+        proc = subprocess.Popen(
             args,
             cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            env=env,
         )
-    except subprocess.TimeoutExpired:
-        log.append(f"{label} timed out after {timeout}s")
-        return False
     except OSError as exc:
         log.append(f"{label} could not start: {exc}")
         return False
-    output = (result.stdout or "") + (result.stderr or "")
-    if output.strip():
-        log.append(output.strip())
-    if result.returncode != 0:
-        log.append(f"{label} failed with exit code {result.returncode}")
+
+    deadline = time.monotonic() + timeout
+    started = time.monotonic()
+    last_output = started
+    last_flush = started
+    try:
+        while True:
+            now = time.monotonic()
+            if now > deadline:
+                proc.kill()
+                proc.wait(timeout=10)
+                log.append(f"{label} timed out after {timeout}s")
+                return False
+            ready, _, _ = select.select([proc.stdout], [], [], 1.0)
+            if ready:
+                chunk = proc.stdout.readline()
+                if chunk:
+                    log.append(chunk.decode("utf-8", errors="replace").rstrip())
+                    last_output = now
+                elif proc.poll() is not None:
+                    leftover = proc.stdout.read()
+                    if leftover:
+                        text = leftover.decode("utf-8", errors="replace").rstrip()
+                        if text:
+                            log.append(text)
+                    break
+            elif proc.poll() is not None:
+                leftover = proc.stdout.read()
+                if leftover:
+                    text = leftover.decode("utf-8", errors="replace").rstrip()
+                    if text:
+                        log.append(text)
+                break
+            elif now - last_output >= LOCK_HEARTBEAT_SECONDS:
+                log.append(f"{label} still running ({int(now - started)}s)…")
+                last_output = now
+            if status is not None and now - last_flush >= 1:
+                _progress(status, log, step_index if step_index is not None else 0, label)
+                last_flush = now
+        proc.wait(timeout=10)
+    except Exception as exc:  # noqa: BLE001 - surface in the install log
+        log.append(f"{label} stopped: {exc}")
+        if proc.poll() is None:
+            proc.kill()
+        return False
+    if proc.returncode != 0:
+        log.append(f"{label} failed with exit code {proc.returncode}")
         return False
     return True
 
@@ -281,11 +416,53 @@ def _finish(status, state, log, installed_version="", restart_required=False):
     return status
 
 
+def _command_available(command):
+    args = shlex.split(command)
+    return bool(args) and shutil.which(args[0]) is not None
+
+
+def _under_gunicorn():
+    return any("gunicorn" in arg for arg in sys.argv)
+
+
+def _find_gunicorn_master():
+    """Return the gunicorn master pid, including when we are a sidecar process."""
+    if _under_gunicorn():
+        return os.getppid()
+    proc_root = Path("/proc")
+    if not proc_root.is_dir():
+        return None
+    candidates = []
+    for entry in proc_root.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            raw = (entry / "cmdline").read_bytes().replace(b"\x00", b" ")
+            cmdline = raw.decode("utf-8", errors="replace").strip()
+        except OSError:
+            continue
+        lower = cmdline.lower()
+        if "gunicorn" not in lower:
+            continue
+        if "install_update" in lower or "manage.py" in lower:
+            continue
+        if "gunicorn: worker" in lower:
+            continue
+        candidates.append(int(entry.name))
+    if not candidates:
+        return None
+    return min(candidates)
+
+
 def _restart_application(log):
-    """Restart the server so the new code is loaded."""
+    """Reload the server. Prefer a configured host command, then gunicorn SIGHUP."""
     command = settings.UPDATE_RESTART_COMMAND.strip()
-    if not command and Path("/.dockerenv").exists():
-        command = "docker restart control-center"
+    if command and not _command_available(command):
+        log.append(
+            f"UPDATE_RESTART_COMMAND ({command}) is not available here; "
+            "falling back to a graceful reload."
+        )
+        command = ""
     if command:
         args = shlex.split(command)
         log.append(f"$ {' '.join(args)}")
@@ -300,11 +477,11 @@ def _restart_application(log):
             log.append(f"Restart command failed: {exc}")
             return False
 
-    if "gunicorn" in os.environ.get("SERVER_SOFTWARE", "").lower() or _under_gunicorn():
-        parent = os.getppid()
-        log.append(f"Sending SIGHUP to gunicorn master (pid {parent})")
+    master = _find_gunicorn_master()
+    if master:
+        log.append(f"Sending SIGHUP to gunicorn master (pid {master})")
         try:
-            os.kill(parent, signal.SIGHUP)
+            os.kill(master, signal.SIGHUP)
             return True
         except OSError as exc:
             log.append(f"Could not signal gunicorn master: {exc}")
@@ -312,10 +489,6 @@ def _restart_application(log):
 
     log.append("No restart command configured — restart the service manually.")
     return False
-
-
-def _under_gunicorn():
-    return any("gunicorn" in arg for arg in sys.argv)
 
 
 def archive_url(repo, tag):
@@ -445,11 +618,21 @@ def _fail_install(status, log, target_tag, username, label):
     _notify(f"Update to {target_tag} failed", label)
 
 
-def _install_worker(target_tag, username):
+def run_install(target_tag, username=""):
+    """Apply a release. Called from `manage.py install_update`, not the web worker."""
     dest_root = Path(settings.BASE_DIR)
     base_dir = str(dest_root)
+    acquire_install_lock()
     status = UpdateStatus.load()
-    log = [f"Updating to {target_tag} (current {get_current_version()})"]
+    log = [
+        f"Updating to {target_tag} (current {get_current_version()})",
+        f"Update process pid {os.getpid()}",
+    ]
+    if app_dir_is_ephemeral(dest_root):
+        log.append(
+            "App directory is not bind-mounted. This update lasts until the "
+            "container is recreated. Rebuild the image for a durable Docker upgrade."
+        )
     status.install_total_steps = len(INSTALL_STEPS)
     status.save(update_fields=["install_total_steps"])
 
@@ -495,7 +678,7 @@ def _install_worker(target_tag, username):
             (
                 4,
                 "Dependencies",
-                [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"],
+                [sys.executable, "-u", "-m", "pip", "install", "-r", "requirements.txt"],
                 1800,
             ),
             (5, "Migrate", [sys.executable, "manage.py", "migrate", "--noinput"], 600),
@@ -508,7 +691,9 @@ def _install_worker(target_tag, username):
         ]
         for index, label, args, timeout in command_steps:
             _progress(status, log, index, label)
-            if not _run_step(label, args, log, base_dir, timeout):
+            if not _run_step(
+                label, args, log, base_dir, timeout, status=status, step_index=index
+            ):
                 _fail_install(status, log, target_tag, username, label)
                 return
             _progress(status, log, index, label)
@@ -517,25 +702,31 @@ def _install_worker(target_tag, username):
         clear_version_cache()
         new_version = get_current_version()
         log.append(f"Updated to {new_version}")
-        restarted = _restart_application(log)
+        log.append("Saving status, then reloading the app…")
         _finish(
             status,
             UpdateStatus.InstallState.SUCCESS,
             log,
             installed_version=new_version,
-            restart_required=not restarted,
+            restart_required=False,
         )
         log_audit(
             "admin",
             message=f"Installed update {target_tag}",
             username=username,
         )
+        restarted = _restart_application(log)
+        status = UpdateStatus.load()
+        status.restart_required = not restarted
+        status.install_log = "\n".join(log)[-20000:]
+        status.save(update_fields=["restart_required", "install_log"])
         _notify(f"Control Center updated to {new_version}", "Update installed")
-    except Exception as exc:  # noqa: BLE001 - background thread must not die silently
+    except Exception as exc:  # noqa: BLE001 - background process must not die silently
         logger.exception("Update install crashed")
         log.append(f"Unexpected error: {exc}")
         _finish(status, UpdateStatus.InstallState.FAILED, log)
     finally:
+        release_install_lock()
         cache.delete(INSTALL_LOCK_KEY)
 
 
@@ -549,10 +740,11 @@ def _notify(title, message):
 
 
 def start_install(target_tag, username=""):
-    """Kick off an update install in the background.
+    """Queue an update in a detached process so gunicorn can keep serving.
 
     Returns ``(started, message)``.
     """
+    recover_stale_install()
     if not settings.UPDATES_ALLOW_INSTALL:
         return False, "In-app updates are disabled."
     if not target_tag or not TAG_PATTERN.match(target_tag):
@@ -561,6 +753,13 @@ def start_install(target_tag, username=""):
         return False, "An update is already running."
 
     status = UpdateStatus.load()
+    if status.install_state == UpdateStatus.InstallState.RUNNING:
+        cache.delete(INSTALL_LOCK_KEY)
+        return False, "An update is already running."
+    if _pid_is_running(_lock_pid()):
+        cache.delete(INSTALL_LOCK_KEY)
+        return False, "An update is already running."
+
     status.install_state = UpdateStatus.InstallState.RUNNING
     status.install_started_at = timezone.now()
     status.install_finished_at = None
@@ -572,18 +771,31 @@ def start_install(target_tag, username=""):
     status.install_target_version = target_tag[:32]
     status.save()
 
-    thread = threading.Thread(
-        target=_install_worker,
-        args=(target_tag, username),
-        name="update-install",
-        daemon=True,
-    )
-    thread.start()
+    manage = Path(settings.BASE_DIR) / "manage.py"
+    args = [sys.executable, str(manage), "install_update", target_tag, "--username", username or ""]
+    try:
+        proc = subprocess.Popen(
+            args,
+            cwd=str(settings.BASE_DIR),
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env={**os.environ, "PYTHONUNBUFFERED": "1"},
+        )
+    except OSError as exc:
+        cache.delete(INSTALL_LOCK_KEY)
+        log = [status.install_log, f"Could not start update process: {exc}"]
+        _finish(status, UpdateStatus.InstallState.FAILED, log)
+        return False, f"Could not start update process: {exc}"
+    acquire_install_lock(pid=proc.pid)
     return True, f"Installing {target_tag}."
 
 
 def status_payload(status=None):
-    status = status or UpdateStatus.load()
+    recovered = recover_stale_install()
+    if status is None or recovered:
+        status = UpdateStatus.load()
     current = get_current_version()
     total = status.install_total_steps or len(INSTALL_STEPS)
     index = status.install_step_index or 0

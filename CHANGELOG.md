@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- In-app update streams pip output so Dependencies does not look stuck
+- Docker installs reload gunicorn with SIGHUP instead of calling a missing `docker` CLI
+- A dead update worker is marked failed instead of leaving the UI on “running”
+
+### Changed
+
+- Install runs as `manage.py install_update` outside the gunicorn request worker
+- Docker: in-app update is for bind-mounted or current-container overlays; image rebuild is the durable path
+
 ## [0.2.1] - 2026-08-30
 
 ### Changed

@@ -12,6 +12,9 @@ class Command(BaseCommand):
     help = "Cheap periodic maintenance for health, updates, catalog versions, and detect."
 
     def handle(self, *args, **options):
+        if updates.recover_stale_install():
+            self.stdout.write(self.style.WARNING("Cleared a stale in-app update"))
+
         health = services.maybe_run_health_tick()
         self.stdout.write(f"Health: {len(health)} services")
 
