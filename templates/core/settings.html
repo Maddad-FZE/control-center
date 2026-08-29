@@ -1,5 +1,5 @@
 {% extends "core/base.html" %}
-{% load static %}
+{% load static assets %}
 {% block title %}Settings — {{ site_title }}{% endblock %}
 {% block content %}
 <meta name="csrf-token" content="{{ csrf_token }}">
@@ -46,6 +46,16 @@
           <input type="hidden" name="form" value="site">
           <input type="hidden" name="section" value="site">
           <div class="form-group">
+            <label for="{{ site_form.title.id_for_label }}">Title</label>
+            {{ site_form.title }}
+            <p class="settings-hint">Shown in the header and browser tab. Leave blank to use the default.</p>
+          </div>
+          <div class="form-group">
+            <label for="{{ site_form.tagline.id_for_label }}">Tagline</label>
+            {{ site_form.tagline }}
+            <p class="settings-hint">Optional line under the title in the header.</p>
+          </div>
+          <div class="form-group">
             <label for="{{ site_form.logo.id_for_label }}">Logo</label>
             {{ site_form.logo }}
             {% if site_settings.logo %}
@@ -67,7 +77,7 @@
           <div class="form-group">
             <label for="{{ site_form.services_host.id_for_label }}">Services host</label>
             {{ site_form.services_host }}
-            <p class="settings-hint">LAN IP or hostname used for library-installed service cards (auto-detected on first install if empty).</p>
+            <p class="settings-hint">LAN IP or hostname for library-installed cards (for example 192.168.0.40). Docker bridge IPs like 172.18.0.x are ignored. Leave blank to auto-detect from the address you used to open this site.</p>
           </div>
           <div class="form-group form-group--checkbox">
             <label class="checkbox-label">
@@ -140,15 +150,11 @@
         </p>
 
         <div class="update-progress settings-update-progress" id="settings-update-progress" hidden>
-          <div class="update-progress__header">
-            <span class="update-progress__label" id="settings-update-step">Preparing…</span>
-            <span class="update-progress__percent" id="settings-update-percent">0%</span>
-          </div>
           <div class="update-progress__track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="settings-update-bar">
-            <div class="update-progress__fill" id="settings-update-fill" style="width: 0%"></div>
+            <div class="update-progress__fill" id="settings-update-fill"></div>
           </div>
+          <p class="update-progress__status" id="settings-update-step">[000%] PREPARING</p>
         </div>
-        <ol class="update-steps" id="settings-update-steps"></ol>
 
         {% if update_status.release_notes %}
         <details class="update-notes"{% if update_ready %} open{% endif %}>
@@ -265,5 +271,5 @@
 </section>
 {% endblock %}
 {% block extra_js %}
-<script src="{% static 'js/settings-tabs.js' %}" defer></script>
+<script src="{% vstatic 'js/settings-tabs.js' %}" defer></script>
 {% endblock %}

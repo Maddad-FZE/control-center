@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - One-click update popup with live progress bar, step checklist, and install log
 - `manage.py bump_version` to roll VERSION and CHANGELOG for a release
+- Library install popup with indeterminate progress while Docker pulls
+- Card URLs prefer the LAN host used to open the site (not Docker bridge IPs)
 
 ## [0.1.0] - 2026-08-28
 

@@ -24,4 +24,5 @@ urlpatterns = [
     path("api/uptime/", views.api_uptime, name="api_uptime"),
     path("api/widgets/", views.api_widgets, name="api_widgets"),
     path("api/weather/", views.api_weather, name="api_weather"),
+    path("api/icons/", views.api_icons, name="api_icons"),
 ]

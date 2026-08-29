@@ -7,16 +7,11 @@
     </header>
 
     <div class="update-progress" id="update-modal-progress" hidden>
-      <div class="update-progress__header">
-        <span class="update-progress__label" id="update-modal-step">Preparing…</span>
-        <span class="update-progress__percent" id="update-modal-percent">0%</span>
-      </div>
       <div class="update-progress__track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="update-modal-bar">
-        <div class="update-progress__fill" id="update-modal-fill" style="width: 0%"></div>
+        <div class="update-progress__fill" id="update-modal-fill"></div>
       </div>
+      <p class="update-progress__status" id="update-modal-step">[000%] PREPARING</p>
     </div>
-
-    <ol class="update-steps" id="update-modal-steps"></ol>
 
     <p class="update-banner" id="update-modal-banner">Checking for updates…</p>
 

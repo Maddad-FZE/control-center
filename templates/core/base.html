@@ -1,4 +1,4 @@
-{% load static %}
+{% load static assets %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -14,11 +14,11 @@
   {% else %}
   <link rel="icon" href="{% static 'img/favicon.svg' %}" type="image/svg+xml">
   {% endif %}
-  <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
-  <link rel="stylesheet" href="{% static 'css/theme.css' %}">
-  <link rel="stylesheet" href="{% static 'css/crt.css' %}">
+  <link rel="stylesheet" href="{% vstatic 'css/fonts.css' %}">
+  <link rel="stylesheet" href="{% vstatic 'css/theme.css' %}">
+  <link rel="stylesheet" href="{% vstatic 'css/crt.css' %}">
   {% if is_admin %}
-  <link rel="stylesheet" href="{% static 'css/updates.css' %}">
+  <link rel="stylesheet" href="{% vstatic 'css/updates.css' %}">
   {% endif %}
   {% block extra_css %}{% endblock %}
 </head>
@@ -31,7 +31,10 @@
       {% else %}
       <img class="brand-logo" src="{% static 'img/logo.png' %}" alt="Logo" onerror="this.style.display='none'">
       {% endif %}
-      <h1>{{ site_title }}</h1>
+      <div class="brand-copy">
+        <h1>{{ site_title }}</h1>
+        {% if site_tagline %}<p class="brand-tagline">{{ site_tagline }}</p>{% endif %}
+      </div>
     </div>
     {% if user.is_authenticated %}
     <nav class="nav" aria-label="Main navigation">
@@ -45,7 +48,7 @@
       <span class="weather-chip" id="weather-chip" hidden aria-live="polite"></span>
       {% endif %}
       {% if user.is_authenticated %}
-      <time class="tva-clock" id="tva-clock" datetime="">FILED: —</time>
+      <time class="tva-clock" id="tva-clock" datetime=""></time>
       <div class="user-menu" id="user-menu">
         <button type="button" class="user-chip" id="user-menu-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="user-menu-dropdown">
           <span class="user-chip-avatar" aria-hidden="true">{{ user.username|slice:":1"|upper }}</span>
@@ -68,36 +71,46 @@
       {% endif %}
     </div>
   </header>
-  <main class="wrap{% if request.resolver_match.url_name == 'dashboard' %} wrap--dashboard{% endif %}" id="main-content">
-    {% if messages %}
-    <ul class="messages">
-      {% for message in messages %}
-        <li class="{{ message.tags }}">{{ message }}</li>
-      {% endfor %}
-    </ul>
-    {% endif %}
+  <main class="wrap{% if request.resolver_match.url_name == 'dashboard' %} wrap--dashboard{% endif %}{% if request.resolver_match.url_name == 'library' %} wrap--library{% endif %}{% if request.resolver_match.url_name == 'service_create' or request.resolver_match.url_name == 'service_edit' %} wrap--card-form{% endif %}" id="main-content">
     {% block content %}{% endblock %}
   </main>
+  {% if messages %}
+  <div class="toast-stack" id="toast-stack" aria-live="polite">
+    {% for message in messages %}
+    <div class="toast {{ message.tags }}" role="status">
+      <p class="toast__text">{{ message }}</p>
+      <button type="button" class="toast__close" aria-label="Close notification">×</button>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
   <footer class="footer">
-    Homelab Control Center
-    <span class="footer-version">v{{ app_version }}</span>
-    {% if is_admin %}
-    <button type="button" class="footer-update" id="footer-update-btn"{% if not update_available %} hidden{% endif %}>Update available</button>
-    {% endif %}
+    <div class="footer-brand">
+      Homelab Control Center
+      <span class="footer-version">v{{ app_version }}</span>
+      {% if is_admin %}
+      <button type="button" class="footer-update" id="footer-update-btn"{% if not update_available %} hidden{% endif %}>Update available</button>
+      {% endif %}
+    </div>
+    {% block footer_actions %}{% endblock %}
   </footer>
   {% if is_admin %}
   {% include "core/_update_modal.html" %}
   {% endif %}
   {% if user.is_authenticated %}
-  <script src="{% static 'js/user-menu.js' %}" defer></script>
+  <script src="{% vstatic 'js/clock.js' %}" defer></script>
+  <script src="{% vstatic 'js/user-menu.js' %}" defer></script>
   {% if weather_configured %}
-  <script src="{% static 'js/weather.js' %}" defer></script>
+  <script src="{% vstatic 'js/weather.js' %}" defer></script>
   {% endif %}
   {% endif %}
   {% if is_admin %}
-  <script src="{% static 'js/updates.js' %}" defer></script>
+  <script src="{% vstatic 'js/updates.js' %}" defer></script>
   {% endif %}
   {% block extra_js %}{% endblock %}
-  <script src="{% static 'js/sw-register.js' %}" defer></script>
+  {% if messages %}
+  <script src="{% vstatic 'js/toasts.js' %}" defer></script>
+  {% endif %}
+  <script src="{% vstatic 'js/sw-register.js' %}" defer></script>
 </body>
 </html>

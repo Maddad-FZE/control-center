@@ -1,35 +1,41 @@
-/* Control Center service worker — offline shell + API cache fallback */
-const SHELL_CACHE = "cc-shell-v1";
-const STATIC_CACHE = "cc-static-v1";
-const API_CACHE = "cc-api-v1";
+/* Control Center service worker — versioned caches, CSS/JS always revalidated */
+const ASSET_VERSION = "__ASSET_VERSION__";
+const SHELL_CACHE = `cc-shell-${ASSET_VERSION}`;
+const STATIC_CACHE = `cc-static-${ASSET_VERSION}`;
+const API_CACHE = `cc-api-${ASSET_VERSION}`;
+const LIVE_CACHES = [SHELL_CACHE, STATIC_CACHE, API_CACHE];
 
 const PRECACHE_STATIC = [
-  "/static/css/fonts.css",
-  "/static/css/theme.css",
-  "/static/css/crt.css",
-  "/static/css/dashboard.css",
-  "/static/js/dashboard-cache.js",
-  "/static/js/dashboard.js",
-  "/static/js/user-menu.js",
+  `/static/css/fonts.css?v=${ASSET_VERSION}`,
+  `/static/css/theme.css?v=${ASSET_VERSION}`,
+  `/static/css/crt.css?v=${ASSET_VERSION}`,
+  `/static/css/dashboard.css?v=${ASSET_VERSION}`,
+  `/static/js/dashboard-cache.js?v=${ASSET_VERSION}`,
+  `/static/js/dashboard.js?v=${ASSET_VERSION}`,
+  `/static/js/clock.js?v=${ASSET_VERSION}`,
+  `/static/js/user-menu.js?v=${ASSET_VERSION}`,
   "/static/img/favicon.svg",
   "/static/img/service-default.svg",
 ];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => cache.addAll(PRECACHE_STATIC)).then(() => self.skipWaiting())
+    caches
+      .open(STATIC_CACHE)
+      .then((cache) => cache.addAll(PRECACHE_STATIC))
+      .catch(() => undefined)
+      .then(() => self.skipWaiting())
   );
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys
-          .filter((key) => ![SHELL_CACHE, STATIC_CACHE, API_CACHE].includes(key))
-          .map((key) => caches.delete(key))
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(keys.filter((key) => !LIVE_CACHES.includes(key)).map((key) => caches.delete(key)))
       )
-    ).then(() => self.clients.claim())
+      .then(() => self.clients.claim())
   );
 });
 
@@ -39,6 +45,14 @@ function isDashboardNavigation(request, url) {
 
 function isApiRequest(url) {
   return url.pathname.startsWith("/api/");
+}
+
+function isStyleOrScript(url) {
+  return (
+    url.pathname.startsWith("/static/css/") ||
+    url.pathname.startsWith("/static/js/") ||
+    url.pathname === "/sw.js"
+  );
 }
 
 function isStaticRequest(url) {
@@ -51,27 +65,10 @@ async function cachePut(cacheName, request, response) {
   await cache.put(request, response);
 }
 
-async function networkFirstNavigation(request) {
+async function networkFirst(request, cacheName) {
   try {
-    const response = await fetch(request);
-    await cachePut(SHELL_CACHE, request, response.clone());
-    return response;
-  } catch {
-    const cached = await caches.match(request);
-    if (cached) return cached;
-    const root = await caches.match("/");
-    if (root) return root;
-    return new Response("Offline — no cached dashboard.", {
-      status: 503,
-      headers: { "Content-Type": "text/plain" },
-    });
-  }
-}
-
-async function networkFirstApi(request) {
-  try {
-    const response = await fetch(request);
-    await cachePut(API_CACHE, request, response.clone());
+    const response = await fetch(request, { cache: "no-cache" });
+    await cachePut(cacheName, request, response.clone());
     return response;
   } catch {
     const cached = await caches.match(request);
@@ -80,12 +77,12 @@ async function networkFirstApi(request) {
   }
 }
 
-async function cacheFirstStatic(request) {
+async function cacheFirst(request, cacheName) {
   const cached = await caches.match(request);
   if (cached) return cached;
   try {
     const response = await fetch(request);
-    await cachePut(STATIC_CACHE, request, response.clone());
+    await cachePut(cacheName, request, response.clone());
     return response;
   } catch {
     return cached || new Response("", { status: 504 });
@@ -100,23 +97,40 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (isDashboardNavigation(request, url)) {
-    event.respondWith(networkFirstNavigation(request));
+    event.respondWith(
+      networkFirst(request, SHELL_CACHE).catch(async () => {
+        const cached = await caches.match(request);
+        if (cached) return cached;
+        return new Response("Offline — no cached dashboard.", {
+          status: 503,
+          headers: { "Content-Type": "text/plain" },
+        });
+      })
+    );
     return;
   }
 
   if (isApiRequest(url)) {
     event.respondWith(
-      networkFirstApi(request).catch(() =>
-        new Response(JSON.stringify({ offline: true }), {
-          status: 503,
-          headers: { "Content-Type": "application/json" },
-        })
+      networkFirst(request, API_CACHE).catch(
+        () =>
+          new Response(JSON.stringify({ offline: true }), {
+            status: 503,
+            headers: { "Content-Type": "application/json" },
+          })
       )
     );
     return;
   }
 
+  if (isStyleOrScript(url)) {
+    event.respondWith(
+      networkFirst(request, STATIC_CACHE).catch(() => new Response("", { status: 504 }))
+    );
+    return;
+  }
+
   if (isStaticRequest(url)) {
-    event.respondWith(cacheFirstStatic(request));
+    event.respondWith(cacheFirst(request, STATIC_CACHE));
   }
 });

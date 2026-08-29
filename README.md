@@ -30,7 +30,7 @@ Open http://127.0.0.1:8000/ and sign in.
 - Alerts + ntfy push on service down (configure `.env`)
 - Audit log in Settings (filter, search, pagination)
 - App library: unified grid of Addons and Services with Install/Uninstall, version badges, and daily update checks
-- One-click Docker install for catalog services (auto port, auto dashboard card); compose snippets still available
+- One-click Docker install for catalog services (auto port, auto dashboard card)
 - Notes mini-app example (first bundled addon)
 - Public subdomain routing for mini-apps (Cloudflare tunnel)
 - Version reporting with GitHub release checks every 12 hours and one-click updates from Settings

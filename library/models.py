@@ -57,3 +57,24 @@ class CatalogRelease(models.Model):
 
     def __str__(self):
         return f"{self.repo} ({self.latest_version or 'unknown'})"
+
+
+class LibraryNote(models.Model):
+    body = models.TextField(blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Library note"
+        verbose_name_plural = "Library notes"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def __str__(self):
+        return "Library notes"

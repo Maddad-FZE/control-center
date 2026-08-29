@@ -65,8 +65,19 @@ runs unattended:
 The footer **Update available** button and Settings > Updates both open a
 progress popup. Installing runs `git fetch`, `git checkout <tag>`,
 `pip install -r requirements.txt`, `migrate`, `collectstatic`, then restarts
-the service. A live log and step checklist update until the restart, then the
-popup offers Reload.
+the service.
+
+For Docker deploys, bind-mount the git checkout (`.:/app` in
+`docker-compose.yml`) so the checkout persists, and set
+`UPDATE_RESTART_COMMAND=docker restart control-center` (this is the default
+when running inside Docker). Rebuild once after this change:
+
+```bash
+git pull
+docker compose up -d
+```
+
+After that, later versions install from the UI with no manual pull.
 
 Requirements and caveats:
 
@@ -75,10 +86,10 @@ Requirements and caveats:
 - Set `UPDATE_RESTART_COMMAND` (for example `sudo systemctl restart control-center`)
   or run under gunicorn, where the master is sent `SIGHUP` for a graceful reload
 - Set `UPDATES_ALLOW_INSTALL=false` to disable in-app installs entirely
-- The `build: .` compose setup bakes source into the image, so the in-app
-  installer does not persist across container recreation. Either bind-mount the
-  source or rebuild the image with `docker compose up -d --build` after tagging
-
+- The `build: .` compose setup now bind-mounts the source (`.:/app`) so
+  in-app git checkouts persist. After the first `docker compose up -d`,
+  later updates install from the UI. Set `UPDATE_RESTART_COMMAND` if the
+  container is not named `control-center`.
 ## Backups
 
 - Volume mount: `./data:/app/data`

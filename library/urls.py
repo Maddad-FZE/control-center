@@ -8,4 +8,5 @@ urlpatterns = [
     path("api/services/<slug:slug>/install/", views.api_service_install, name="api_service_install"),
     path("api/services/<slug:slug>/uninstall/", views.api_service_uninstall, name="api_service_uninstall"),
     path("api/services/<slug:slug>/status/", views.api_service_status, name="api_service_status"),
+    path("api/notes/", views.api_library_notes, name="api_library_notes"),
 ]

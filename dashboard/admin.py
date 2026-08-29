@@ -24,10 +24,11 @@ class ServiceAdmin(admin.ModelAdmin):
         "host",
         "port",
         "is_public",
+        "is_misc",
         "enabled",
         "sort_order",
     )
-    list_filter = ("category", "widget_type", "is_public", "enabled")
+    list_filter = ("category", "widget_type", "is_public", "is_misc", "enabled")
     search_fields = ("name", "href", "host")
     inlines = [ServiceMetricInline]
     fieldsets = (
@@ -49,7 +50,7 @@ class ServiceAdmin(admin.ModelAdmin):
         ),
         (
             "Health & visibility",
-            {"fields": ("health_check_url", "is_public", "enabled", "sort_order")},
+            {"fields": ("health_check_url", "is_public", "is_misc", "enabled", "sort_order")},
         ),
         (
             "Widget",

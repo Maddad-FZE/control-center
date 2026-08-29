@@ -186,6 +186,7 @@ UPDATES_ALLOW_INSTALL = os.environ.get("UPDATES_ALLOW_INSTALL", "true").lower() 
     "yes",
 )
 UPDATE_RESTART_COMMAND = os.environ.get("UPDATE_RESTART_COMMAND", "")
+SERVICES_HOST = os.environ.get("SERVICES_HOST", "")
 
 # Public subdomain → Django app name (notes, etc.)
 HOST_APP_MAP = {

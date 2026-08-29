@@ -4,6 +4,7 @@ from . import views
 
 urlpatterns = [
     path("sw.js", views.service_worker_view, name="service_worker"),
+    path("media/<path:path>", views.public_media_view, name="public_media"),
     path("login/", views.ThemedLoginView.as_view(), name="login"),
     path("logout/", views.ThemedLogoutView.as_view(), name="logout"),
     path("setup/", views.setup_view, name="setup"),

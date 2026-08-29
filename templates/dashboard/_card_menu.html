@@ -1,0 +1,16 @@
+{% if is_admin %}
+<div class="service-card-menu" data-service-id="{{ service.id }}">
+  <button type="button" class="service-kebab" aria-label="Card options" aria-haspopup="true" aria-expanded="false">
+    <span class="service-kebab-dot"></span>
+    <span class="service-kebab-dot"></span>
+    <span class="service-kebab-dot"></span>
+  </button>
+  <div class="service-card-dropdown" hidden role="menu">
+    <button type="button" class="service-card-dropdown__item" data-action="visibility" role="menuitem">
+      {% if service.is_public %}Make private{% else %}Make public{% endif %}
+    </button>
+    <a href="{% url 'service_edit' service.id %}" class="service-card-dropdown__item" role="menuitem">Edit card</a>
+    <button type="button" class="service-card-dropdown__item service-card-dropdown__item--danger" data-action="delete" role="menuitem">Delete card</button>
+  </div>
+</div>
+{% endif %}

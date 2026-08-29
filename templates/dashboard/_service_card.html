@@ -1,0 +1,55 @@
+{% load static dashboard_extras %}
+{% with s=status|get_item:service.id %}
+{% with update_info=service_updates|get_item:service.id %}
+<div class="service-card-wrap">
+  {% include "dashboard/_card_menu.html" %}
+  <a
+    class="service-card service-card--{{ variant }}{% if s and not s.is_up %} service-card--down{% endif %}{% if service.is_public %} service-card--public{% endif %}{% if update_info %} service-card--has-update{% endif %}"
+    href="{{ service.href }}"
+    target="_blank"
+    rel="noopener"
+    data-service-id="{{ service.id }}"
+    data-service-name="{{ service.name|lower }}"
+    data-service-desc="{{ service.display_description|lower }} {{ service.category.name|lower }}"
+    data-service-down="{% if s and not s.is_up %}1{% else %}0{% endif %}"
+    data-widget-type="{{ service.widget_type }}"
+    title="{{ service.name }}{% if s and s.response_ms %} · {{ s.response_ms }}ms{% endif %}"
+  >
+    {% if update_info %}
+    <span class="service-update-icon" title="Update available: {{ update_info.latest }}" aria-label="Update available">
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path fill="currentColor" d="M8 2.5a.5.5 0 0 1 .5.5v7.793l2.146-2.147a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L7.5 10.793V3a.5.5 0 0 1 .5-.5z"/>
+      </svg>
+    </span>
+    <span class="service-update-banner">Update Available</span>
+    {% endif %}
+    <span class="status-dot {% if s %}{% if s.is_up %}up{% else %}down{% endif %}{% endif %}" data-service-id="{{ service.id }}" aria-label="{{ service.name }}: {% if s %}{% if s.is_up %}up{% else %}down{% endif %}{% else %}unknown{% endif %}"></span>
+    <header class="service-card__header">
+      <div class="service-icon-wrap">
+        <img
+          class="service-icon"
+          src="{{ service.display_icon }}"
+          alt=""
+          onerror="this.onerror=null;this.src='{% static 'img/service-default.svg' %}';"
+        >
+      </div>
+      <div class="service-card__identity">
+        <div class="service-name">{{ service.name }}</div>
+        {% if variant == "app" %}
+        <span class="service-category">{{ service.category.name }}</span>
+        {% endif %}
+      </div>
+    </header>
+    {% if variant == "app" %}
+    <p class="service-desc">{{ service.display_description|default:"" }}</p>
+    {% elif service.description %}
+    <div class="service-desc">{{ service.description }}</div>
+    {% endif %}
+    {% if variant == "tracked" %}
+    <div class="service-card__stats" data-widget-service-id="{{ service.id }}" aria-label="{{ service.name }} stats"></div>
+    {% endif %}
+    <span class="service-latency" data-service-id="{{ service.id }}" hidden>{% if s and s.response_ms %}{{ s.response_ms }}ms{% endif %}</span>
+  </a>
+</div>
+{% endwith %}
+{% endwith %}

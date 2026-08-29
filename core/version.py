@@ -41,6 +41,23 @@ def get_git_revision():
     return result.stdout.strip()
 
 
+def get_asset_token():
+    """Cache-bust token for CSS/JS. In DEBUG, follow file mtimes so edits apply immediately."""
+    version = get_current_version()
+    from django.conf import settings
+
+    if not settings.DEBUG:
+        return version
+    newest = 0
+    for folder in (BASE_DIR / "static" / "css", BASE_DIR / "static" / "js"):
+        if not folder.exists():
+            continue
+        for path in folder.iterdir():
+            if path.is_file():
+                newest = max(newest, int(path.stat().st_mtime))
+    return f"{version}.{newest}" if newest else version
+
+
 def clear_version_cache():
     get_current_version.cache_clear()
     get_git_revision.cache_clear()

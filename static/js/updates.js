@@ -12,15 +12,6 @@
   let pollTimer = null;
   let restarting = false;
   let lastData = null;
-  const DEFAULT_STEPS = [
-    { id: "prepare", label: "Prepare" },
-    { id: "fetch", label: "Fetch" },
-    { id: "checkout", label: "Checkout" },
-    { id: "deps", label: "Dependencies" },
-    { id: "migrate", label: "Migrate" },
-    { id: "collectstatic", label: "Collect static" },
-    { id: "restart", label: "Restart" },
-  ];
 
   function getCsrfToken() {
     if (csrfMeta) return csrfMeta.content;
@@ -48,57 +39,33 @@
     el.classList.toggle("update-banner--available", !!available);
   }
 
+  function padPercent(n) {
+    return String(Math.max(0, Math.min(100, Math.round(n)))).padStart(3, "0");
+  }
+
+  function stepLine(percent, label) {
+    return `[${padPercent(percent)}%] ${(label || "PREPARING").toUpperCase()}`;
+  }
+
   function setProgress(prefix, data) {
     const wrap = document.getElementById(`${prefix}-progress`);
     const fill = document.getElementById(`${prefix}-fill`);
     const bar = document.getElementById(`${prefix}-bar`);
-    const percentEl = document.getElementById(`${prefix}-percent`);
     const stepEl = document.getElementById(`${prefix}-step`);
     const running = data.install_state === "running" || restarting;
     const show = running || data.install_state === "success" || data.install_state === "failed";
     if (wrap) wrap.hidden = !show;
     const percent = restarting ? Math.max(data.install_percent || 0, 90) : data.install_percent || 0;
     if (fill) {
+      fill.classList.remove("is-running");
       fill.style.width = `${percent}%`;
-      fill.classList.toggle("is-running", running);
     }
     if (bar) bar.setAttribute("aria-valuenow", String(percent));
-    if (percentEl) percentEl.textContent = `${percent}%`;
-    if (stepEl) {
-      if (restarting) stepEl.textContent = "Restarting the service";
-      else if (data.install_state === "success") stepEl.textContent = "Update complete";
-      else if (data.install_state === "failed") stepEl.textContent = "Update failed";
-      else stepEl.textContent = data.install_step || "Preparing…";
-    }
-  }
-
-  function renderSteps(container, data) {
-    if (!container) return;
-    const steps = data.install_steps && data.install_steps.length ? data.install_steps : DEFAULT_STEPS;
-    const index = data.install_step_index || 0;
-    const failed = data.install_state === "failed";
-    const success = data.install_state === "success";
-    container.innerHTML = steps
-      .map((step, i) => {
-        const n = i + 1;
-        let state = "pending";
-        let mark = "";
-        if (success || n < index) {
-          state = "done";
-          mark = "✓";
-        } else if (failed && n === index) {
-          state = "failed";
-          mark = "!";
-        } else if ((data.install_state === "running" || restarting) && n === index) {
-          state = "active";
-          mark = "•";
-        } else if (restarting && n === steps.length) {
-          state = "active";
-          mark = "•";
-        }
-        return `<li class="update-step is-${state}"><span class="update-step__mark" aria-hidden="true">${mark}</span><span>${step.label}</span></li>`;
-      })
-      .join("");
+    let label = data.install_step || "Preparing";
+    if (restarting) label = "Restart";
+    else if (data.install_state === "success") label = "Complete";
+    else if (data.install_state === "failed") label = "Failed";
+    if (stepEl) stepEl.textContent = stepLine(percent, label);
   }
 
   function bannerText(data) {
@@ -153,8 +120,6 @@
 
     setProgress("update-modal", data);
     setProgress("settings-update", data);
-    renderSteps(document.getElementById("update-modal-steps"), data);
-    renderSteps(document.getElementById("settings-update-steps"), data);
 
     const notesWrap = document.getElementById("update-modal-notes-wrap");
     const notesEl = document.getElementById("update-modal-notes");

@@ -27,8 +27,18 @@ class AppearanceForm(forms.ModelForm):
 class SiteSettingsForm(forms.ModelForm):
     class Meta:
         model = SiteSettings
-        fields = ("logo", "favicon", "weather_location", "crt_enabled", "services_host")
+        fields = (
+            "title",
+            "tagline",
+            "logo",
+            "favicon",
+            "weather_location",
+            "crt_enabled",
+            "services_host",
+        )
         widgets = {
+            "title": forms.TextInput(attrs={"placeholder": "Home Server Command Center"}),
+            "tagline": forms.TextInput(attrs={"placeholder": "Short line under the title"}),
             "weather_location": forms.TextInput(
                 attrs={"placeholder": "City name, e.g. Dubai"}
             ),

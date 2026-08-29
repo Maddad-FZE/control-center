@@ -12,7 +12,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from core.models import AuditEvent, log_audit
 
-from library.catalog import get_service_by_slug
+from library.catalog import LIBRARY_DESCRIPTIONS, get_service_by_slug
 from library.icons import icon_url_for_entry
 from library.installer import services_host
 from library.models import InstalledService
@@ -80,23 +80,42 @@ def dashboard_view(request):
             all_services.extend(cat.filtered_services)
         service_updates = update_map_for_services(all_services)
 
-    bookmarks = Bookmark.objects.filter(enabled=True) if not is_guest else []
-    down_category_ids = set()
+    tracked_services = []
+    app_services = []
+    misc_services = []
+    down_section_ids = set()
     for cat in categories:
         for svc in cat.filtered_services:
+            if svc.is_misc:
+                misc_services.append(svc)
+                bucket = "misc"
+            elif svc.has_widget:
+                tracked_services.append(svc)
+                bucket = "tracked"
+            else:
+                app_services.append(svc)
+                bucket = "apps"
             if status.get(svc.id, {}).get("is_up") is False:
-                down_category_ids.add(cat.id)
-                break
+                down_section_ids.add(bucket)
 
+    bookmarks = Bookmark.objects.filter(enabled=True) if not is_guest else []
+
+    visible_status = [row for row in status.values() if row]
     context = {
-        "categories": categories,
+        "tracked_services": tracked_services,
+        "app_services": app_services,
+        "misc_services": misc_services,
         "bookmarks": bookmarks,
         "status": status,
         "is_guest": is_guest,
         "is_admin": is_admin,
-        "down_category_ids": down_category_ids,
+        "down_section_ids": down_section_ids,
         "categories_list": ServiceCategory.objects.order_by("sort_order", "name"),
         "service_updates": service_updates,
+        "services_up": sum(1 for row in visible_status if row.get("is_up") is True),
+        "services_down": sum(1 for row in visible_status if row.get("is_up") is False),
+        "services_unknown": sum(1 for row in visible_status if row.get("is_up") is None),
+        "unack_alerts": 0,
     }
 
     if not is_guest:
@@ -147,7 +166,7 @@ def service_create_view(request):
                         }
                     )
     if request.method == "POST":
-        form = ServiceForm(request.POST, request.FILES)
+        form = ServiceForm(request.POST, request.FILES, request=request)
         metric_formset = ServiceMetricFormSet(request.POST, prefix="metrics")
         if form.is_valid():
             svc = form.save()
@@ -179,7 +198,7 @@ def service_create_view(request):
         initial = {}
         preset = "none"
         if catalog_entry:
-            host = services_host()
+            host = services_host(request)
             port = catalog_entry.get("default_port")
             installed = InstalledService.objects.filter(
                 slug=catalog_slug, status__in=("running", "stopped")
@@ -188,7 +207,8 @@ def service_create_view(request):
                 port = installed.host_port
             initial = {
                 "name": catalog_entry["name"],
-                "description": catalog_entry.get("tagline", ""),
+                "description": LIBRARY_DESCRIPTIONS.get(catalog_slug)
+                or catalog_entry.get("tagline", ""),
                 "icon": catalog_entry.get("icon", ""),
                 "host": host,
                 "port": port,
@@ -201,7 +221,7 @@ def service_create_view(request):
                 preset = "pihole"
             elif widget_type == "speedtest":
                 preset = "speedtest"
-        form = ServiceForm(initial=initial)
+        form = ServiceForm(initial=initial, request=request)
         if preset != "none":
             form.fields["preset"].initial = preset
         metric_formset = ServiceMetricFormSet(prefix="metrics")
@@ -214,6 +234,7 @@ def service_create_view(request):
             "is_new": True,
             "catalog_entry": catalog_entry,
             "installed_without_cards": installed_without_cards,
+            "link_meta": form.link_meta,
         },
     )
 
@@ -223,10 +244,10 @@ def service_edit_view(request, service_id):
     if not request.user.is_superuser:
         return redirect("dashboard")
     service = get_object_or_404(Service, pk=service_id)
-    form = ServiceForm(instance=service)
+    form = ServiceForm(instance=service, request=request)
     metric_formset = ServiceMetricFormSet(instance=service, prefix="metrics")
     if request.method == "POST":
-        form = ServiceForm(request.POST, request.FILES, instance=service)
+        form = ServiceForm(request.POST, request.FILES, instance=service, request=request)
         metric_formset = ServiceMetricFormSet(
             request.POST, instance=service, prefix="metrics"
         )
@@ -248,6 +269,7 @@ def service_edit_view(request, service_id):
             "metric_formset": metric_formset,
             "is_new": False,
             "service": service,
+            "link_meta": form.link_meta,
         },
     )
 
@@ -335,6 +357,21 @@ def api_uptime(request):
 def api_widgets(request):
     public_only = not request.user.is_authenticated
     return JsonResponse({"widgets": services.fetch_all_widgets(public_only=public_only)})
+
+
+@login_required
+@require_GET
+def api_icons(request):
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Forbidden"}, status=403)
+    from .icon_library import icon_url, search_simpleicons
+
+    query = (request.GET.get("q") or "").strip()
+    icons = [
+        {"title": row["title"], "slug": row["slug"], "url": icon_url(row["slug"])}
+        for row in search_simpleicons(query, limit=420)
+    ]
+    return JsonResponse({"icons": icons})
 
 
 @login_not_required

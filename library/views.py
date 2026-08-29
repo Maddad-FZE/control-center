@@ -1,6 +1,10 @@
+import json
+from html.parser import HTMLParser
+
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
+from django.utils.html import escape
 from django.views.decorators.http import require_GET, require_POST
 
 from core.models import log_audit
@@ -11,9 +15,56 @@ from .addons import addon_states_for_catalog, get_addon_by_slug, is_addon_enable
 from .catalog import build_catalog_items, all_categories
 from .detect import maybe_sync_detected
 from .icons import default_icon_url
-from .installer import start_install, status_payload, uninstall
-from .models import CatalogRelease, InstalledService
+from .installer import detect_services_host, start_install, status_payload, uninstall
+from .models import CatalogRelease, InstalledService, LibraryNote
 from .versions import maybe_check_daily
+
+_ALLOWED_TAGS = {
+    "b",
+    "strong",
+    "i",
+    "em",
+    "u",
+    "s",
+    "ul",
+    "ol",
+    "li",
+    "p",
+    "br",
+    "div",
+    "span",
+    "h3",
+    "h4",
+}
+
+
+class _NoteSanitizer(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self._out = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag not in _ALLOWED_TAGS:
+            return
+        self._out.append(f"<{tag}>")
+
+    def handle_endtag(self, tag):
+        if tag not in _ALLOWED_TAGS:
+            return
+        self._out.append(f"</{tag}>")
+
+    def handle_data(self, data):
+        self._out.append(escape(data))
+
+    def result(self):
+        return "".join(self._out)
+
+
+def sanitize_note_html(raw):
+    parser = _NoteSanitizer()
+    parser.feed(raw or "")
+    parser.close()
+    return parser.result()[:20000]
 
 
 @login_required
@@ -23,6 +74,7 @@ def library_view(request):
 
     maybe_check_daily()
     maybe_sync_detected()
+    detect_services_host(request)
 
     addon_states = addon_states_for_catalog()
     installed_map = {row.slug: row for row in InstalledService.objects.all()}
@@ -49,6 +101,7 @@ def library_view(request):
             "catalog_items": catalog_items,
             "categories": all_categories(),
             "default_app_icon": default_icon_url(),
+            "library_note": LibraryNote.load(),
         },
     )
 
@@ -77,7 +130,7 @@ def api_addon_toggle(request, slug):
 def api_service_install(request, slug):
     if not request.user.is_superuser:
         return JsonResponse({"error": "Forbidden"}, status=403)
-    started, message = start_install(slug)
+    started, message = start_install(slug, request=request)
     if not started:
         return JsonResponse({"error": message}, status=409)
     log_audit(
@@ -113,3 +166,18 @@ def api_service_status(request, slug):
     if not request.user.is_superuser:
         return JsonResponse({"error": "Forbidden"}, status=403)
     return JsonResponse(status_payload(slug))
+
+
+@login_required
+@require_POST
+def api_library_notes(request):
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Forbidden"}, status=403)
+    try:
+        payload = json.loads(request.body.decode() or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+    note = LibraryNote.load()
+    note.body = sanitize_note_html(payload.get("body") or "")
+    note.save()
+    return JsonResponse({"ok": True, "body": note.body})

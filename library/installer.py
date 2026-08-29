@@ -1,7 +1,8 @@
 """Docker install/uninstall and dashboard card sync for library services."""
 
+import ipaddress
 import logging
-import re
+import os
 import socket
 import threading
 
@@ -13,38 +14,107 @@ from core.site_settings import clear_site_settings_cache, get_site_settings
 from dashboard.models import Service, ServiceCategory
 from dashboard.presets import apply_preset_metrics
 
-from .catalog import get_docker_spec, get_service_by_slug
+from .catalog import LIBRARY_DESCRIPTIONS, get_docker_spec, get_service_by_slug
 from .models import InstalledService
 
 logger = logging.getLogger(__name__)
 
 DOCKER_LABEL_SLUG = "control-center.slug"
+PRIVATE_NETS = (
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+)
+DOCKER_NETS = (
+    ipaddress.ip_network("172.17.0.0/16"),
+    ipaddress.ip_network("172.18.0.0/16"),
+    ipaddress.ip_network("172.19.0.0/16"),
+    ipaddress.ip_network("172.20.0.0/14"),
+)
 
 
 def get_docker_client():
     return docker.DockerClient(base_url=settings.DOCKER_HOST)
 
 
-def detect_services_host():
-    site = SiteSettings.load()
-    if site.services_host.strip():
-        return site.services_host.strip()
+def _is_usable_lan_host(value):
+    raw = (value or "").strip()
+    if not raw or raw in ("localhost", "127.0.0.1", "::1"):
+        return False
+    try:
+        addr = ipaddress.ip_address(raw)
+    except ValueError:
+        return "." in raw or raw[0].isalpha()
+    if addr.is_loopback or addr.is_link_local or addr.is_unspecified:
+        return False
+    for net in DOCKER_NETS:
+        if addr in net:
+            return False
+    if addr.version == 4:
+        return any(addr in net for net in PRIVATE_NETS) or not addr.is_private
+    return True
+
+
+def _host_from_request(request):
+    if request is None:
+        return ""
+    forwarded = (request.META.get("HTTP_X_FORWARDED_HOST") or "").split(",")[0].strip()
+    host = forwarded or request.get_host()
+    host = host.split(":")[0].strip("[]")
+    return host if _is_usable_lan_host(host) else ""
+
+
+def _host_from_interfaces():
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.connect(("8.8.8.8", 80))
         host = sock.getsockname()[0]
         sock.close()
-        site.services_host = host
+        if _is_usable_lan_host(host):
+            return host
+    except OSError:
+        pass
+    return ""
+
+
+def remember_services_host(host):
+    host = (host or "").strip()
+    if not _is_usable_lan_host(host):
+        return ""
+    site = SiteSettings.load()
+    if site.services_host.strip() == host:
+        return host
+    site.services_host = host
+    site.save(update_fields=["services_host"])
+    clear_site_settings_cache()
+    return host
+
+
+def detect_services_host(request=None):
+    site = SiteSettings.load()
+    stored = site.services_host.strip()
+    if _is_usable_lan_host(stored):
+        return stored
+    if stored:
+        site.services_host = ""
         site.save(update_fields=["services_host"])
         clear_site_settings_cache()
-        return host
-    except OSError:
-        return "127.0.0.1"
+
+    for candidate in (
+        _host_from_request(request),
+        os.environ.get("SERVICES_HOST", "").strip() or getattr(settings, "SERVICES_HOST", ""),
+        _host_from_interfaces(),
+    ):
+        if _is_usable_lan_host(candidate):
+            return remember_services_host(candidate) or candidate
+    return "127.0.0.1"
 
 
-def services_host():
-    host = get_site_settings().services_host.strip()
-    return host or detect_services_host()
+def services_host(request=None):
+    stored = get_site_settings().services_host.strip()
+    if _is_usable_lan_host(stored):
+        return stored
+    return detect_services_host(request)
 
 
 def _collect_used_ports(client):
@@ -143,7 +213,7 @@ def create_dashboard_card(slug, entry, host_port):
     service = Service(
         category=category,
         name=entry["name"],
-        description=entry.get("tagline", ""),
+        description=LIBRARY_DESCRIPTIONS.get(slug) or entry.get("tagline", ""),
         host=host,
         port=host_port,
         path=entry.get("path", "/") or "/",
@@ -239,7 +309,7 @@ def _install_worker(slug):
         )
 
 
-def start_install(slug):
+def start_install(slug, request=None):
     entry = get_service_by_slug(slug)
     if not entry:
         return False, "Unknown service"
@@ -251,6 +321,8 @@ def start_install(slug):
         return False, "Already installed"
     if existing and existing.status == InstalledService.Status.INSTALLING:
         return False, "Install already in progress"
+
+    detect_services_host(request)
 
     container_name = f"cc-{slug}"
     InstalledService.objects.update_or_create(

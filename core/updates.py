@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 from datetime import datetime, timezone as dt_timezone
+from pathlib import Path
 
 import requests
 from django.conf import settings
@@ -217,6 +218,8 @@ def _finish(status, state, log, installed_version="", restart_required=False):
 def _restart_application(log):
     """Restart the server so the new code is loaded."""
     command = settings.UPDATE_RESTART_COMMAND.strip()
+    if not command and Path("/.dockerenv").exists():
+        command = "docker restart control-center"
     if command:
         args = shlex.split(command)
         log.append(f"$ {' '.join(args)}")

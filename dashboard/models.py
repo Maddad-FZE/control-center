@@ -34,7 +34,7 @@ class Service(models.Model):
         ServiceCategory, on_delete=models.CASCADE, related_name="services"
     )
     name = models.CharField(max_length=100)
-    description = models.CharField(max_length=255, blank=True)
+    description = models.CharField(max_length=512, blank=True)
     href = models.URLField(blank=True)
     host = models.CharField(max_length=255, blank=True, help_text="IP or hostname")
     port = models.PositiveIntegerField(null=True, blank=True)
@@ -43,6 +43,10 @@ class Service(models.Model):
     logo = models.ImageField(upload_to="service_logos/", blank=True)
     health_check_url = models.URLField(blank=True, help_text="Leave blank to skip checks")
     is_public = models.BooleanField(default=False)
+    is_misc = models.BooleanField(
+        default=False,
+        help_text="Show this card in Misc as a compact bookmark instead of Apps or Tracked",
+    )
     sort_order = models.PositiveIntegerField(default=0)
     enabled = models.BooleanField(default=True)
     widget_type = models.CharField(
@@ -133,6 +137,31 @@ class Service(models.Model):
         from library.icons import default_icon_url
 
         return default_icon_url()
+
+    @property
+    def has_widget(self):
+        if self.widget_type and self.widget_type != self.WidgetType.NONE:
+            return True
+        cache = getattr(self, "_prefetched_objects_cache", None)
+        if cache is not None and "metrics" in cache:
+            return bool(cache["metrics"])
+        return self.metrics.exists()
+
+    @property
+    def display_description(self):
+        from library.catalog import LIBRARY_DESCRIPTIONS, SERVICES
+
+        if self.catalog_slug:
+            blurb = LIBRARY_DESCRIPTIONS.get(self.catalog_slug)
+            if blurb:
+                return blurb
+        name = (self.name or "").strip().lower()
+        for entry in SERVICES:
+            if entry["name"].lower() == name:
+                blurb = LIBRARY_DESCRIPTIONS.get(entry["slug"])
+                if blurb:
+                    return blurb
+        return self.description
 
 
 class ServiceMetric(models.Model):

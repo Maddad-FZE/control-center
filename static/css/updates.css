@@ -78,8 +78,18 @@
   font-variant-numeric: tabular-nums;
 }
 
+.update-progress__status {
+  margin: 0.55rem 0 0;
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--tva-orange);
+}
+
 .update-progress__track {
-  height: 0.55rem;
+  height: 0.7rem;
   overflow: hidden;
   border: 1px solid rgba(232, 119, 34, 0.45);
   border-radius: 2px;
@@ -96,13 +106,17 @@
 }
 
 .update-progress__fill.is-running {
-  background-size: 140% 100%;
-  animation: update-shimmer 1.4s linear infinite;
+  width: 40%;
+  animation: update-indet 1.4s ease-in-out infinite;
 }
 
-@keyframes update-shimmer {
-  from { background-position: 100% 0; }
-  to { background-position: -40% 0; }
+.update-progress__track--indeterminate .update-progress__fill.is-running {
+  width: 40%;
+}
+
+@keyframes update-indet {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(280%); }
 }
 
 .update-steps {
@@ -112,64 +126,24 @@
 }
 
 .update-step {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  padding: 0.28rem 0;
-  font-family: var(--font-display);
+  padding: 0.22rem 0;
+  font-family: var(--font-mono);
   font-size: 0.68rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--tva-muted);
 }
 
-.update-step__mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 0.95rem;
-  height: 0.95rem;
-  border: 1px solid var(--tva-border);
-  border-radius: 2px;
-  font-size: 0.62rem;
-  line-height: 1;
-}
-
-.update-step.is-pending .update-step__mark {
-  color: transparent;
-}
-
 .update-step.is-active {
   color: var(--tva-amber);
-}
-
-.update-step.is-active .update-step__mark {
-  border-color: var(--tva-orange);
-  color: var(--tva-orange);
-  animation: update-pulse 1.2s ease-in-out infinite;
 }
 
 .update-step.is-done {
   color: var(--tva-cream);
 }
 
-.update-step.is-done .update-step__mark {
-  border-color: #6ee7a0;
-  color: #6ee7a0;
-}
-
 .update-step.is-failed {
   color: #fca5a5;
-}
-
-.update-step.is-failed .update-step__mark {
-  border-color: #f87171;
-  color: #f87171;
-}
-
-@keyframes update-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
 }
 
 .update-modal .update-banner {

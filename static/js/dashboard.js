@@ -82,23 +82,45 @@ function applyServiceFilter() {
   const q = input.value.trim().toLowerCase();
   const downOnly = q === "is:down";
 
-  document.querySelectorAll(".service-card").forEach((card) => {
-    const name = card.dataset.serviceName || "";
-    const desc = card.dataset.serviceDesc || "";
-    const isDown = card.dataset.serviceDown === "1";
-    let match = true;
-    if (downOnly) {
-      match = isDown;
-    } else if (q) {
-      match = name.includes(q) || desc.includes(q);
-    }
-    card.classList.toggle("hidden-by-filter", !match);
-    card.classList.toggle("filter-match", !!q && match && !downOnly);
+  function matches(node) {
+    const name = node.dataset.serviceName || "";
+    const desc = node.dataset.serviceDesc || "";
+    const isDown = node.dataset.serviceDown === "1";
+    if (downOnly) return isDown;
+    if (q) return name.includes(q) || desc.includes(q);
+    return true;
+  }
+
+  document.querySelectorAll(".service-card-wrap").forEach((wrap) => {
+    const target = wrap.querySelector(".service-card, .bookmark");
+    if (!target) return;
+    const match = matches(target);
+    wrap.classList.toggle("hidden-by-filter", !match);
+    target.classList.toggle("hidden-by-filter", !match);
+    target.classList.toggle("filter-match", !!q && match && !downOnly);
+  });
+
+  document.querySelectorAll(".bookmarks > .bookmark").forEach((bm) => {
+    if (bm.closest(".service-card-wrap")) return;
+    const match = matches(bm);
+    bm.classList.toggle("hidden-by-filter", !match);
   });
 
   document.querySelectorAll(".services-group").forEach((group) => {
-    const visible = group.querySelectorAll(".service-card:not(.hidden-by-filter)").length;
-    group.classList.toggle("hidden-by-filter", visible === 0 && !!q);
+    const wraps = Array.from(group.querySelectorAll(".service-card-wrap")).filter(
+      (node) => !node.classList.contains("hidden-by-filter")
+    );
+    const loose = Array.from(group.querySelectorAll(".bookmarks > .bookmark")).filter(
+      (node) => !node.classList.contains("hidden-by-filter") && !node.closest(".service-card-wrap")
+    );
+    const visible = wraps.length + loose.length;
+    const empty = group.querySelector(".section-empty");
+    if (empty) {
+      empty.hidden = visible > 0;
+      empty.textContent = q && visible === 0
+        ? "Nothing matches this filter. Check back later or try another search."
+        : empty.dataset.empty || "Nothing here right now. Check back later.";
+    }
   });
 }
 
@@ -106,7 +128,7 @@ function updateGroupTitles() {
   document.querySelectorAll(".services-group").forEach((group) => {
     const title = group.querySelector(".group-title");
     if (!title) return;
-    const hasDown = group.querySelector(".service-card--down") !== null;
+    const hasDown = group.querySelector(".service-card--down, .bookmark--down") !== null;
     title.classList.toggle("group-title--alert", hasDown);
   });
 }
@@ -344,29 +366,47 @@ function setOfflineBanner(show) {
   banner.hidden = !show;
 }
 
-function setRefreshState(ok, fromCache) {
+function setRefreshChip(state, labelText, timeText, when) {
   const indicator = el("refresh-indicator");
   if (!indicator) return;
+  const label = indicator.querySelector(".sync-chip__label");
+  const time = indicator.querySelector(".sync-chip__time");
+  indicator.dataset.state = state;
+  indicator.classList.toggle("stale", state === "stale" || state === "down");
+  if (label) label.textContent = labelText;
+  if (time) {
+    time.textContent = timeText;
+    if (when) time.setAttribute("datetime", when.toISOString());
+    else time.removeAttribute("datetime");
+  }
+}
+
+function setRefreshState(ok, fromCache) {
   if (ok) {
     pollFailCount = 0;
     offlineMode = false;
     lastLiveAt = new Date();
     setOfflineBanner(false);
-    indicator.textContent = `Updated ${formatTime24(lastLiveAt)}`;
-    indicator.classList.remove("stale");
+    setRefreshChip("live", "Live", formatTime24(lastLiveAt), lastLiveAt);
   } else if (fromCache) {
     offlineMode = true;
     setOfflineBanner(true);
-    const stamp = lastLiveAt ? formatTime24(lastLiveAt) : "cached";
-    indicator.textContent = `Offline — ${stamp}`;
-    indicator.classList.add("stale");
+    setRefreshChip(
+      "stale",
+      "Hold",
+      lastLiveAt ? formatTime24(lastLiveAt) : "––:––:––",
+      lastLiveAt
+    );
   } else {
     pollFailCount += 1;
     offlineMode = true;
     setOfflineBanner(true);
-    indicator.textContent =
-      pollFailCount > 1 ? "Offline — retrying" : "Sync failed — retrying";
-    indicator.classList.add("stale");
+    setRefreshChip(
+      "down",
+      pollFailCount > 1 ? "Retry" : "Fail",
+      lastLiveAt ? formatTime24(lastLiveAt) : "––:––:––",
+      lastLiveAt
+    );
   }
 }
 
@@ -390,6 +430,7 @@ async function fetchWithCache(url, cacheKey) {
 
 function hydrateFromCache() {
   if (!window.dashboardCache) return;
+  if (navigator.onLine) return;
   let newestSavedAt = 0;
   window.dashboardCache.hydrateKeys.forEach((key) => {
     const entry = window.dashboardCache.load(key);
@@ -404,19 +445,6 @@ function hydrateFromCache() {
     else if (key === "widgets") renderWidgets(data);
   });
   if (newestSavedAt) lastLiveAt = new Date(newestSavedAt);
-}
-
-function updateClock() {
-  const clock = el("tva-clock");
-  if (!clock) return;
-  const now = new Date();
-  const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-  const date = `${months[now.getMonth()]} ${String(now.getDate()).padStart(2, "0")} ${now.getFullYear()}`;
-  const h = String(now.getHours()).padStart(2, "0");
-  const m = String(now.getMinutes()).padStart(2, "0");
-  const s = String(now.getSeconds()).padStart(2, "0");
-  clock.innerHTML = `FILED: ${date} / ${h}<span class="clock-colon">:</span>${m}<span class="clock-colon">:</span>${s}`;
-  clock.setAttribute("datetime", now.toISOString());
 }
 
 function initFilter() {
@@ -608,11 +636,9 @@ async function poll() {
   }
 }
 
-updateClock();
-setInterval(updateClock, 1000);
-
 if (IS_GUEST) {
   hydrateFromCache();
+  initFilter();
   pollGuest();
   setInterval(pollGuest, 15000);
 } else {

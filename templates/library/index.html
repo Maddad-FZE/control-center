@@ -1,43 +1,101 @@
 {% extends "core/base.html" %}
-{% load static %}
+{% load static assets %}
 {% block title %}Library — {{ site_title }}{% endblock %}
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/library.css' %}">
+<link rel="stylesheet" href="{% vstatic 'css/library.css' %}">
+<link rel="stylesheet" href="{% vstatic 'css/updates.css' %}">
 {% endblock %}
 {% block content %}
-<meta name="csrf-token" content="{{ csrf_token }}">
 <section class="library-page">
-  <header class="library-header">
-    <h1 class="library-title">App library</h1>
-    <p class="settings-hint">Install bundled addons or self-hosted services. Cards are created automatically when a service is installed.</p>
-  </header>
-
-  <div class="library-filters">
-    <div class="library-filters__field">
-      <label class="filter-label" for="library-type-filter">Type</label>
-      <select id="library-type-filter" class="library-filter-select">
-        <option value="">All</option>
-        <option value="addon">Addons</option>
-        <option value="service">Services</option>
-      </select>
+  <article class="panel library-info">
+    <div class="panel-head">Information</div>
+    <div class="panel-body">
+      <p>The library is the catalog of addons and self-hosted services for this homelab.</p>
+      <p>Install a service to pull its image, start the container, and add a dashboard card automatically. Containers already running on this host are detected and listed here. Uninstall stops and removes the container; you can also delete its data volumes.</p>
+      <p>Addons are built-in apps. Enable or disable them without Docker. Use the filters in Apps to narrow the catalog by type, category, or install status.</p>
     </div>
-    <div class="library-filters__field">
-      <label class="filter-label" for="library-category-filter">Category</label>
-      <select id="library-category-filter" class="library-filter-select">
-        <option value="">All categories</option>
-        {% for category in categories %}
-        <option value="{{ category }}">{{ category }}</option>
+  </article>
+
+  <article class="panel library-apps">
+    <div class="panel-head library-apps-head">
+      <span>Apps</span>
+      <div class="library-filters">
+        <div class="library-filters__field">
+          <label class="filter-label" for="library-type-filter">Type</label>
+          <select id="library-type-filter" class="library-filter-select">
+            <option value="">All</option>
+            <option value="addon">Addons</option>
+            <option value="service">Services</option>
+          </select>
+        </div>
+        <div class="library-filters__field">
+          <label class="filter-label" for="library-category-filter">Category</label>
+          <select id="library-category-filter" class="library-filter-select">
+            <option value="">All categories</option>
+            {% for category in categories %}
+            <option value="{{ category }}">{{ category }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="library-filters__field">
+          <label class="filter-label" for="library-installed-filter">Status</label>
+          <select id="library-installed-filter" class="library-filter-select">
+            <option value="">All</option>
+            <option value="1">Installed</option>
+            <option value="0">Not installed</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="panel-body library-apps-body">
+      <div class="library-grid" id="library-grid">
+        {% for item in catalog_items %}
+        {% include "library/_card.html" with item=item %}
         {% endfor %}
-      </select>
+      </div>
+    </div>
+  </article>
+
+  <article class="panel library-notes">
+    <div class="panel-head">
+      <span>Notes</span>
+      <span class="library-notes-status" id="library-notes-status" aria-live="polite"></span>
+    </div>
+    <div class="panel-body library-notes-body">
+      <div class="library-notes-toolbar" role="toolbar" aria-label="Notes formatting">
+        <button type="button" class="library-notes-fmt" data-cmd="bold" title="Bold"><strong>B</strong></button>
+        <button type="button" class="library-notes-fmt" data-cmd="italic" title="Italic"><em>I</em></button>
+        <button type="button" class="library-notes-fmt" data-cmd="underline" title="Underline"><u>U</u></button>
+        <button type="button" class="library-notes-fmt" data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+        <button type="button" class="library-notes-fmt" data-cmd="insertUnorderedList" title="Bullet list">•</button>
+        <button type="button" class="library-notes-fmt" data-cmd="insertOrderedList" title="Numbered list">1.</button>
+        <button type="button" class="library-notes-fmt" data-cmd="formatBlock" data-value="<h3>" title="Heading">H</button>
+      </div>
+      <div
+        class="library-notes-editor"
+        id="library-notes-editor"
+        contenteditable="true"
+        role="textbox"
+        aria-multiline="true"
+        aria-label="Library notes"
+        data-placeholder="Scratch notes for this library…"
+      >{{ library_note.body|safe }}</div>
+    </div>
+  </article>
+</section>
+
+<div class="library-modal" id="install-progress-modal" hidden>
+  <div class="library-modal__backdrop"></div>
+  <div class="library-modal__panel" role="dialog" aria-labelledby="install-progress-title" aria-modal="true">
+    <h2 class="library-modal__title" id="install-progress-title">Installing</h2>
+    <p class="settings-hint" id="install-progress-desc">Please wait…</p>
+    <div class="update-progress">
+      <div class="update-progress__track update-progress__track--indeterminate" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div class="update-progress__fill is-running"></div>
+      </div>
     </div>
   </div>
-
-  <div class="library-grid" id="library-grid">
-    {% for item in catalog_items %}
-    {% include "library/_card.html" with item=item %}
-    {% endfor %}
-  </div>
-</section>
+</div>
 
 <div class="library-modal" id="uninstall-modal" hidden>
   <div class="library-modal__backdrop" data-modal-close></div>
@@ -56,5 +114,5 @@
 </div>
 {% endblock %}
 {% block extra_js %}
-<script src="{% static 'js/library.js' %}" defer></script>
+<script src="{% vstatic 'js/library.js' %}" defer></script>
 {% endblock %}

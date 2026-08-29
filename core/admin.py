@@ -20,7 +20,7 @@ admin.site.register(User, UserAdmin)
 
 @admin.register(SiteSettings)
 class SiteSettingsAdmin(admin.ModelAdmin):
-    list_display = ("weather_location", "weather_lat", "weather_lon")
+    list_display = ("title", "tagline", "weather_location")
 
 
 @admin.register(UpdateStatus)

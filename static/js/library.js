@@ -1,42 +1,45 @@
 (function () {
   const typeFilter = document.getElementById("library-type-filter");
   const categoryFilter = document.getElementById("library-category-filter");
+  const installedFilter = document.getElementById("library-installed-filter");
   const cards = document.querySelectorAll(".library-card");
 
   function applyFilters() {
     const typeVal = typeFilter ? typeFilter.value : "";
     const catVal = categoryFilter ? categoryFilter.value : "";
+    const instVal = installedFilter ? installedFilter.value : "";
     cards.forEach((card) => {
       const typeMatch = !typeVal || card.dataset.type === typeVal;
       const catMatch = !catVal || card.dataset.category === catVal;
-      card.classList.toggle("hidden-by-filter", !typeMatch || !catMatch);
+      const isInstalled = card.dataset.installed === "1" || card.dataset.status === "installing";
+      const instMatch = !instVal || (instVal === "1" ? isInstalled : !isInstalled);
+      card.classList.toggle("hidden-by-filter", !typeMatch || !catMatch || !instMatch);
     });
   }
 
   if (typeFilter) typeFilter.addEventListener("change", applyFilters);
   if (categoryFilter) categoryFilter.addEventListener("change", applyFilters);
+  if (installedFilter) installedFilter.addEventListener("change", applyFilters);
 
   function getCsrfToken() {
     const meta = document.querySelector('meta[name="csrf-token"]');
-    return meta ? meta.content : "";
+    if (meta && meta.content) return meta.content;
+    const cookie = document.cookie.split("; ").find((row) => row.startsWith("csrftoken="));
+    return cookie ? decodeURIComponent(cookie.split("=")[1]) : "";
   }
 
-  document.querySelectorAll(".library-copy-btn").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const target = document.getElementById(btn.dataset.copyTarget);
-      if (!target) return;
-      try {
-        await navigator.clipboard.writeText(target.textContent);
-        const original = btn.textContent;
-        btn.textContent = "Copied";
-        setTimeout(() => {
-          btn.textContent = original;
-        }, 1500);
-      } catch (e) {
-        console.warn("copy failed", e);
-      }
-    });
-  });
+  const installModal = document.getElementById("install-progress-modal");
+  const installDesc = document.getElementById("install-progress-desc");
+
+  function showInstallModal(name) {
+    if (!installModal) return;
+    if (installDesc) installDesc.textContent = `Installing ${name}. Please wait…`;
+    installModal.hidden = false;
+  }
+
+  function hideInstallModal() {
+    if (installModal) installModal.hidden = true;
+  }
 
   const modal = document.getElementById("uninstall-modal");
   const modalDesc = document.getElementById("uninstall-modal-desc");
@@ -116,15 +119,18 @@
       const resp = await fetch(`/library/api/services/${slug}/status/`);
       const data = await resp.json();
       if (data.status === "running") {
+        hideInstallModal();
         window.location.reload();
         return;
       }
       if (data.status === "error") {
+        hideInstallModal();
         alert(data.error || "Install failed");
         window.location.reload();
         return;
       }
     }
+    hideInstallModal();
     window.location.reload();
   }
 
@@ -135,6 +141,9 @@
       if (!slug) return;
       btn.disabled = true;
       btn.textContent = type === "addon" ? "Enabling…" : "Installing…";
+      const card = btn.closest(".library-card");
+      const name = card?.querySelector(".library-card__name")?.textContent || slug;
+      if (type === "service") showInstallModal(name);
       try {
         const url =
           type === "addon"
@@ -153,6 +162,7 @@
         }
       } catch (e) {
         console.warn("install failed", e);
+        hideInstallModal();
         btn.disabled = false;
         btn.textContent = "Install";
         alert(e.message || "Install failed");
@@ -163,7 +173,91 @@
   document.querySelectorAll(".library-card[data-status='installing']").forEach((card) => {
     const slug = card.dataset.slug;
     if (card.dataset.type === "service" && slug) {
+      const name = card.querySelector(".library-card__name")?.textContent || slug;
+      showInstallModal(name);
       pollInstall(slug);
     }
+  });
+
+  const notesEditor = document.getElementById("library-notes-editor");
+  const notesStatus = document.getElementById("library-notes-status");
+  let notesTimer = null;
+  let notesInFlight = false;
+  let notesQueued = false;
+  let lastSaved = notesEditor ? notesEditor.innerHTML : "";
+
+  function setNotesStatus(text) {
+    if (notesStatus) notesStatus.textContent = text;
+  }
+
+  function notesBody() {
+    return notesEditor ? notesEditor.innerHTML : "";
+  }
+
+  async function saveNotes(opts) {
+    if (!notesEditor) return;
+    const immediate = opts && opts.immediate;
+    const body = notesBody();
+    if (body === lastSaved) {
+      if (!notesInFlight) setNotesStatus(lastSaved ? "Saved" : "");
+      return;
+    }
+    if (notesInFlight) {
+      notesQueued = true;
+      return;
+    }
+    notesInFlight = true;
+    setNotesStatus("Saving…");
+    try {
+      const resp = await fetch("/library/api/notes/", {
+        method: "POST",
+        headers: {
+          "X-CSRFToken": getCsrfToken(),
+          "Content-Type": "application/json",
+        },
+        keepalive: !!immediate,
+        body: JSON.stringify({ body }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || "Save failed");
+      lastSaved = body;
+      setNotesStatus("Saved");
+    } catch (e) {
+      console.warn("notes save failed", e);
+      setNotesStatus("Save failed");
+    } finally {
+      notesInFlight = false;
+      if (notesQueued) {
+        notesQueued = false;
+        saveNotes();
+      }
+    }
+  }
+
+  function scheduleNotesSave() {
+    setNotesStatus("Saving…");
+    clearTimeout(notesTimer);
+    notesTimer = setTimeout(() => saveNotes(), 180);
+  }
+
+  document.querySelectorAll(".library-notes-fmt").forEach((btn) => {
+    btn.addEventListener("mousedown", (event) => event.preventDefault());
+    btn.addEventListener("click", () => {
+      if (!notesEditor) return;
+      notesEditor.focus();
+      const cmd = btn.dataset.cmd;
+      const value = btn.dataset.value || null;
+      document.execCommand(cmd, false, value);
+      scheduleNotesSave();
+    });
+  });
+
+  ["input", "paste", "keyup"].forEach((eventName) => {
+    notesEditor?.addEventListener(eventName, scheduleNotesSave);
+  });
+  notesEditor?.addEventListener("blur", () => saveNotes({ immediate: true }));
+  window.addEventListener("pagehide", () => saveNotes({ immediate: true }));
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") saveNotes({ immediate: true });
   });
 })();

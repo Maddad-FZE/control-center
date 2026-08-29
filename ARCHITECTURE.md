@@ -34,7 +34,7 @@ The Library UI (superuser → **Library** → **Addons**) toggles visibility via
 
 Library services are installed via Docker on the Control Center host (`DOCKER_HOST`). The compose socket must be writable. `InstalledService` tracks container name, host port, and image version. Uninstall removes the container and dashboard card; optional data volume wipe.
 
-`SiteSettings.services_host` is the LAN IP used for auto-created cards (auto-detected on first install).
+`SiteSettings.services_host` is the LAN IP used for auto-created cards. Docker bridge IPs (172.17–172.20) are ignored; the host is taken from the browser request (`192.168.0.40`), `SERVICES_HOST`, or a non-Docker interface.
 
 Daily `check_service_updates` (or opportunistic check on Library/dashboard load) fetches GitHub releases for catalog repos. Library cards show the latest version; dashboard cards show an **Update** pill when a newer release exists.
 

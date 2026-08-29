@@ -3,6 +3,8 @@ from django.contrib.auth.models import User
 
 
 class SiteSettings(models.Model):
+    title = models.CharField(max_length=120, blank=True)
+    tagline = models.CharField(max_length=200, blank=True)
     logo = models.ImageField(upload_to="branding/", blank=True)
     favicon = models.FileField(upload_to="branding/", blank=True)
     weather_location = models.CharField(max_length=120, blank=True)

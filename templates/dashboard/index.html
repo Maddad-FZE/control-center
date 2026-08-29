@@ -1,71 +1,74 @@
 {% extends "core/base.html" %}
-{% load static dashboard_extras %}
+{% load static assets dashboard_extras %}
 {% block title %}{% if not is_guest and services_down %}({{ services_down }} DOWN) {% endif %}{{ site_title }}{% endblock %}
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
+<link rel="stylesheet" href="{% vstatic 'css/dashboard.css' %}">
 {% endblock %}
 {% block content %}
 {% if not is_guest %}<meta name="csrf-token" content="{{ csrf_token }}">{% endif %}
-{% if is_admin %}
-<div class="dashboard-admin-bar">
-  <a href="{% url 'service_create' %}" class="btn">+ Add card</a>
-</div>
-{% endif %}
 <div id="offline-banner" class="offline-banner" hidden role="status" aria-live="polite">
   Server unreachable — showing cached data. Retrying…
 </div>
-{% if not is_guest %}
 <div class="status-strip" id="status-strip" role="status" aria-live="polite">
   <div class="status-strip__metrics">
-    <span class="status-chip status-chip--up" id="stat-up">{{ services_up }} up</span>
-    <button type="button" class="status-chip status-chip--down status-chip--clickable" id="stat-down">{{ services_down }} down</button>
+    <span class="sync-chip" id="refresh-indicator" data-state="sync" title="Last live sync">
+      <span class="sync-chip__dot" aria-hidden="true"></span>
+      <span class="sync-chip__label">Sync</span>
+      <time class="sync-chip__time" datetime="">––:––:––</time>
+    </span>
+    <span class="status-chip status-chip--up" id="stat-up">{{ services_up|default:0 }} up</span>
+    <button type="button" class="status-chip status-chip--down status-chip--clickable" id="stat-down">{{ services_down|default:0 }} down</button>
     {% if services_unknown %}<span class="status-chip status-chip--unknown" id="stat-unknown">{{ services_unknown }} unknown</span>{% endif %}
+    {% if not is_guest %}
     <span class="status-divider" aria-hidden="true">·</span>
     <button type="button" class="status-chip status-chip--clickable" id="stat-alerts">{{ unack_alerts }} alert{% if unack_alerts != 1 %}s{% endif %}</button>
     <span class="status-divider" aria-hidden="true">·</span>
     <span class="status-chip" id="stat-uptime-24h">24H —</span>
     <span class="status-divider" aria-hidden="true">·</span>
     <span class="status-chip" id="stat-host-uptime">Host uptime —</span>
+    {% endif %}
   </div>
   <div class="status-strip__actions">
     <label class="filter-label" for="service-filter">Filter</label>
     <input type="search" id="service-filter" class="service-filter" placeholder="Filter services ( / )" autocomplete="off" spellcheck="false">
-    <span class="refresh-indicator" id="refresh-indicator">Syncing…</span>
+    {% if is_admin %}
+    <a href="{% url 'service_create' %}" class="btn status-strip__add">+ Add card</a>
+    {% endif %}
   </div>
 </div>
-{% endif %}
 
 <div class="dashboard-page{% if is_guest %} dashboard-page--guest{% endif %}">
   <div class="dashboard-main">
     <div class="services-board">
-      {% for category in categories %}
       <section class="services-group">
-        <h2 class="group-title{% if category.id in down_category_ids %} group-title--alert{% endif %}">
-          {{ forloop.counter }} - {{ category.name }}
-        </h2>
-        <div class="service-grid{% if category.layout == 'rows' %} service-grid--wide{% endif %}">
-          {% for service in category.filtered_services %}
+        <h2 class="group-title{% if 'tracked' in down_section_ids %} group-title--alert{% endif %}">1 - Tracked</h2>
+        <div class="service-grid service-grid--tracked">
+          {% for service in tracked_services %}
+            {% include "dashboard/_service_card.html" with service=service variant="tracked" %}
+          {% endfor %}
+        </div>
+        <p class="section-empty" data-empty="Nothing tracked right now. Check back later."{% if tracked_services %} hidden{% endif %}>Nothing tracked right now. Check back later.</p>
+      </section>
+
+      <section class="services-group">
+        <h2 class="group-title{% if 'apps' in down_section_ids %} group-title--alert{% endif %}">2 - Apps</h2>
+        <div class="service-grid service-grid--apps">
+          {% for service in app_services %}
+            {% include "dashboard/_service_card.html" with service=service variant="app" %}
+          {% endfor %}
+        </div>
+        <p class="section-empty" data-empty="No apps to show yet. Check back later."{% if app_services %} hidden{% endif %}>No apps to show yet. Check back later.</p>
+      </section>
+
+      <section class="services-group services-group--misc">
+        <h2 class="group-title{% if 'misc' in down_section_ids %} group-title--alert{% endif %}">3 - Misc</h2>
+        <div class="bookmarks">
+          {% for service in misc_services %}
             {% with s=status|get_item:service.id %}
-            {% with update_info=service_updates|get_item:service.id %}
-            <div class="service-card-wrap">
-              {% if is_admin %}
-              <div class="service-card-menu" data-service-id="{{ service.id }}">
-                <button type="button" class="service-kebab" aria-label="Card options" aria-haspopup="true" aria-expanded="false">
-                  <span class="service-kebab-dot"></span>
-                  <span class="service-kebab-dot"></span>
-                  <span class="service-kebab-dot"></span>
-                </button>
-                <div class="service-card-dropdown" hidden role="menu">
-                  <button type="button" class="service-card-dropdown__item" data-action="visibility" role="menuitem">
-                    {% if service.is_public %}Make private{% else %}Make public{% endif %}
-                  </button>
-                  <a href="{% url 'service_edit' service.id %}" class="service-card-dropdown__item" role="menuitem">Edit card</a>
-                  <button type="button" class="service-card-dropdown__item service-card-dropdown__item--danger" data-action="delete" role="menuitem">Delete card</button>
-                </div>
-              </div>
-              {% endif %}
+            <div class="service-card-wrap service-card-wrap--misc">
+              {% include "dashboard/_card_menu.html" %}
               <a
-                class="service-card{% if s and not s.is_up %} service-card--down{% endif %}{% if service.widget_type != 'none' or service.metrics.exists %} service-card--widget{% endif %}{% if service.is_public %} service-card--public{% endif %}{% if update_info %} service-card--has-update{% endif %}"
+                class="bookmark bookmark--service{% if s and not s.is_up %} bookmark--down{% endif %}"
                 href="{{ service.href }}"
                 target="_blank"
                 rel="noopener"
@@ -73,64 +76,27 @@
                 data-service-name="{{ service.name|lower }}"
                 data-service-desc="{{ service.description|lower }}"
                 data-service-down="{% if s and not s.is_up %}1{% else %}0{% endif %}"
-                data-widget-type="{{ service.widget_type }}"
-                title="{{ service.name }}{% if s and s.response_ms %} · {{ s.response_ms }}ms{% endif %}"
               >
-                {% if update_info %}
-                <span class="service-update-icon" title="Update available: {{ update_info.latest }}" aria-label="Update available">
-                  <svg viewBox="0 0 16 16" aria-hidden="true">
-                    <path fill="currentColor" d="M8 2.5a.5.5 0 0 1 .5.5v7.793l2.146-2.147a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L7.5 10.793V3a.5.5 0 0 1 .5-.5z"/>
-                  </svg>
-                </span>
-                <span class="service-update-banner">Update Available</span>
-                {% endif %}
-                <span class="status-dot {% if s %}{% if s.is_up %}up{% else %}down{% endif %}{% endif %}" data-service-id="{{ service.id }}" aria-label="{{ service.name }}: {% if s %}{% if s.is_up %}up{% else %}down{% endif %}{% else %}unknown{% endif %}"></span>
-                <header class="service-card__header">
-                  <div class="service-icon-wrap">
-                    <img
-                      class="service-icon"
-                      src="{{ service.display_icon }}"
-                      alt=""
-                      onerror="this.onerror=null;this.src='{% static 'img/service-default.svg' %}';"
-                    >
-                  </div>
-                  <div class="service-card__identity">
-                    <div class="service-name">{{ service.name }}</div>
-                    {% if service.description %}<div class="service-desc">{{ service.description }}</div>{% endif %}
-                  </div>
-                </header>
-                <div class="service-card__stats" data-widget-service-id="{{ service.id }}" aria-label="{{ service.name }} stats"></div>
-                <span class="service-latency" data-service-id="{{ service.id }}" hidden>{% if s and s.response_ms %}{{ s.response_ms }}ms{% endif %}</span>
+                <img
+                  src="{{ service.display_icon }}"
+                  alt=""
+                  onerror="this.onerror=null;this.src='{% static 'img/service-default.svg' %}';"
+                >
+                {{ service.name }}
               </a>
             </div>
             {% endwith %}
-            {% endwith %}
-          {% empty %}
-            <p class="empty-group">No services in this group.</p>
+          {% endfor %}
+          {% for bm in bookmarks %}
+            <a class="bookmark" href="{{ bm.href }}" target="_blank" rel="noopener" data-service-name="{{ bm.name|lower }}">
+              {% if bm.icon %}<img src="{{ bm.icon }}" alt="">{% endif %}
+              {{ bm.name }}
+            </a>
           {% endfor %}
         </div>
+        <p class="section-empty" data-empty="Nothing in Misc right now. Check back later."{% if bookmarks or misc_services %} hidden{% endif %}>Nothing in Misc right now. Check back later.</p>
       </section>
-      {% empty %}
-      <section class="services-group">
-        <h2 class="group-title">1 - Services</h2>
-        <p class="empty-group">No public services to show.</p>
-      </section>
-      {% endfor %}
     </div>
-
-    {% if bookmarks %}
-    <section class="bookmarks-bar">
-      <h2>Misc</h2>
-      <div class="bookmarks">
-        {% for bm in bookmarks %}
-          <a class="bookmark" href="{{ bm.href }}" target="_blank" rel="noopener">
-            {% if bm.icon %}<img src="{{ bm.icon }}" alt="">{% endif %}
-            {{ bm.name }}
-          </a>
-        {% endfor %}
-      </div>
-    </section>
-    {% endif %}
   </div>
 
   {% if not is_guest %}
@@ -213,9 +179,9 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/dashboard-cache.js' %}"></script>
-<script src="{% static 'js/dashboard.js' %}"></script>
+<script src="{% vstatic 'js/dashboard-cache.js' %}"></script>
+<script src="{% vstatic 'js/dashboard.js' %}"></script>
 {% if is_admin %}
-<script src="{% static 'js/card-menu.js' %}"></script>
+<script src="{% vstatic 'js/card-menu.js' %}"></script>
 {% endif %}
 {% endblock %}

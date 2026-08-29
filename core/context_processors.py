@@ -34,7 +34,8 @@ def site(request):
         update_ready = update_available()
 
     return {
-        "site_title": settings.SITE_TITLE,
+        "site_title": (site_settings.title or "").strip() or settings.SITE_TITLE,
+        "site_tagline": (site_settings.tagline or "").strip(),
         "nav_apps": nav_apps,
         "crt_enabled": crt_enabled,
         "user_theme": user_theme,

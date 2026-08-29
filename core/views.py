@@ -7,7 +7,7 @@ from django.contrib.auth.views import LoginView, LogoutView, PasswordChangeView
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db.models import Q
-from django.http import FileResponse, HttpResponse, JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils.decorators import method_decorator
@@ -143,7 +143,7 @@ def settings_view(request):
                 return redirect(reverse("settings") + "?section=site")
 
     platform = {
-        "site_title": django_settings.SITE_TITLE,
+        "site_title": (site_settings.title or "").strip() or django_settings.SITE_TITLE,
         "health_check_enabled": django_settings.HEALTH_CHECK_ENABLED,
         "debug": django_settings.DEBUG,
         "ntfy_configured": bool(django_settings.NTFY_URL and django_settings.NTFY_TOPIC),
@@ -223,8 +223,19 @@ def api_update_install(request):
 @login_not_required
 @require_GET
 def service_worker_view(request):
+    from .version import get_asset_token
+
     sw_path = django_settings.BASE_DIR / "static" / "js" / "sw.js"
-    response = FileResponse(sw_path.open("rb"), content_type="application/javascript")
+    body = sw_path.read_text(encoding="utf-8").replace("__ASSET_VERSION__", get_asset_token())
+    response = HttpResponse(body, content_type="application/javascript")
     response["Service-Worker-Allowed"] = "/"
     response["Cache-Control"] = "no-cache"
     return response
+
+
+@login_not_required
+@require_GET
+def public_media_view(request, path):
+    from django.views.static import serve
+
+    return serve(request, path, document_root=django_settings.MEDIA_ROOT)

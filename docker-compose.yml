@@ -11,6 +11,7 @@ services:
       - DJANGO_SETTINGS_MODULE=config.settings.prod
     volumes:
       - ./data:/app/data
+      - .:/app
       - /var/run/docker.sock:/var/run/docker.sock
     command: >
       sh -c "python manage.py migrate &&
