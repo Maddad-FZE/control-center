@@ -108,7 +108,7 @@ def _check_worker():
         cache.delete(CHECK_LOCK_KEY)
 
 
-def maybe_check_daily():
+def maybe_check_daily(background=True):
     oldest = CatalogRelease.objects.order_by("checked_at").first()
     if oldest and oldest.checked_at:
         age = timezone.now() - oldest.checked_at
@@ -116,8 +116,13 @@ def maybe_check_daily():
             return
     if not cache.add(CHECK_LOCK_KEY, "1", CHECK_LOCK_TTL):
         return
-    thread = threading.Thread(target=_check_worker, name="catalog-version-check", daemon=True)
-    thread.start()
+    if background:
+        thread = threading.Thread(
+            target=_check_worker, name="catalog-version-check", daemon=True
+        )
+        thread.start()
+        return
+    _check_worker()
 
 
 def latest_version_for_repo(repo):

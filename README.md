@@ -43,9 +43,10 @@ latest GitHub release and install that release archive in place. A git
 checkout is not required.
 
 ```bash
+python manage.py tick                   # health, prune, due GitHub/detect checks
 python manage.py check_updates          # respects the 12h throttle
 python manage.py check_updates --force  # check immediately
-python manage.py check_service_updates  # daily catalog release check (cron-friendly)
+python manage.py check_service_updates  # daily catalog release check
 python manage.py bump_version patch --dry-run   # preview VERSION + CHANGELOG bump
 python manage.py bump_version patch             # write files, then tag and push
 ```

@@ -22,6 +22,12 @@ def get_site_settings():
 
 def clear_site_settings_cache():
     cache.delete(SITE_SETTINGS_CACHE_KEY)
+    try:
+        from library.addons import clear_addon_cache
+
+        clear_addon_cache()
+    except ImportError:
+        pass
 
 
 def geocode_location(location: str):

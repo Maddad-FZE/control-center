@@ -15,4 +15,21 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     command: >
       sh -c "python manage.py migrate &&
-             gunicorn config.wsgi:application --bind 0.0.0.0:8099 --workers 1 --timeout 120"
+             gunicorn config.wsgi:application --bind 0.0.0.0:8099 --workers 1 --threads 2 --timeout 120"
+
+  tick:
+    build: .
+    container_name: control-center-tick
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.prod
+    volumes:
+      - ./data:/app/data
+      - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: >
+      sh -c "while true; do python manage.py tick; sleep 60; done"
+    depends_on:
+      - control-center

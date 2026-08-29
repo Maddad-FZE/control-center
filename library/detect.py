@@ -1,8 +1,11 @@
 """Detect already-running Docker containers and match them to library catalog entries."""
 
 import logging
+import time
+from pathlib import Path
 
 import docker
+from django.conf import settings
 from django.core.cache import cache
 
 from .catalog import SERVICES, get_docker_spec
@@ -12,7 +15,8 @@ from .models import InstalledService
 logger = logging.getLogger(__name__)
 
 SYNC_LOCK_KEY = "library:detect_sync"
-SYNC_LOCK_TTL = 30
+SYNC_LOCK_TTL = 900
+DETECT_STAMP = "detect.stamp"
 
 
 def _normalize_image_repo(image_ref):
@@ -184,9 +188,23 @@ def sync_detected_services():
     }
 
 
-def maybe_sync_detected():
-    """Run detection if the short-lived cache lock is available."""
+def _detect_due():
     if not cache.add(SYNC_LOCK_KEY, "1", SYNC_LOCK_TTL):
+        return False
+    stamp = Path(settings.BASE_DIR) / "data" / DETECT_STAMP
+    try:
+        if stamp.exists() and time.time() - stamp.stat().st_mtime < SYNC_LOCK_TTL:
+            return False
+        stamp.parent.mkdir(parents=True, exist_ok=True)
+        stamp.write_text(str(int(time.time())), encoding="utf-8")
+    except OSError:
+        pass
+    return True
+
+
+def maybe_sync_detected():
+    """Run detection at most every SYNC_LOCK_TTL seconds."""
+    if not _detect_due():
         return None
     try:
         return sync_detected_services()

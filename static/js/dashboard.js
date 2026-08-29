@@ -6,7 +6,6 @@ const cpuHistory = [];
 const MAX_CPU_HISTORY = 30;
 let prevNet = null;
 let pollFailCount = 0;
-let healthPollCounter = 0;
 let offlineMode = false;
 let lastLiveAt = null;
 const BASE_TITLE = document.title.replace(/^\(\d+ DOWN\) /, "");
@@ -650,48 +649,89 @@ function endDownCheckPulse() {
   });
 }
 
+let lastHealthStamp = "";
+let fastTimer = null;
+let slowTimer = null;
+let widgetTimer = null;
+
+function healthJustRan(data) {
+  let newest = "";
+  (data.services || []).forEach((s) => {
+    if (s.checked_at && s.checked_at > newest) newest = s.checked_at;
+  });
+  if (!newest) return false;
+  if (!lastHealthStamp) {
+    lastHealthStamp = newest;
+    return false;
+  }
+  if (newest === lastHealthStamp) return false;
+  lastHealthStamp = newest;
+  return true;
+}
+
 async function pollSlow() {
-  const started = Date.now();
-  beginDownCheckPulse();
   try {
     const [healthR, uptimeR] = await Promise.all([
       fetchWithCache("/api/health/", "health"),
       fetchWithCache("/api/uptime/", "uptime"),
     ]);
-    const wait = Math.max(0, 700 - (Date.now() - started));
-    if (wait) await new Promise((resolve) => window.setTimeout(resolve, wait));
+    const fresh = healthJustRan(healthR.data || {});
+    if (fresh) beginDownCheckPulse();
     renderHealth(healthR.data);
     renderUptime(uptimeR.data);
+    if (fresh) window.setTimeout(endDownCheckPulse, 700);
   } catch (e) {
     console.warn("dashboard slow poll failed", e);
-  } finally {
     endDownCheckPulse();
   }
 }
 
-async function poll() {
-  await pollFast();
-  healthPollCounter += 1;
-  if (healthPollCounter === 1 || healthPollCounter % 3 === 0) {
-    await pollSlow();
-  }
+function stopDashboardTimers() {
+  if (fastTimer) window.clearInterval(fastTimer);
+  if (slowTimer) window.clearInterval(slowTimer);
+  if (widgetTimer) window.clearInterval(widgetTimer);
+  fastTimer = null;
+  slowTimer = null;
+  widgetTimer = null;
 }
 
-if (IS_GUEST) {
-  hydrateFromCache();
-  initFilter();
-  initStatusChips();
-  pollGuest();
-  setInterval(pollGuest, 15000);
-} else {
-  hydrateFromCache();
-  initFilter();
-  initStatusChips();
+function startDashboardTimers() {
+  stopDashboardTimers();
+  if (document.hidden) return;
+  if (IS_GUEST) {
+    widgetTimer = window.setInterval(pollGuest, 30000);
+    return;
+  }
+  fastTimer = window.setInterval(pollFast, 15000);
+  slowTimer = window.setInterval(pollSlow, 45000);
+  widgetTimer = window.setInterval(pollWidgets, 30000);
+}
+
+function refreshDashboard() {
+  if (IS_GUEST) {
+    pollGuest();
+    return;
+  }
+  pollFast();
+  pollSlow();
+  pollWidgets();
+}
+
+hydrateFromCache();
+initFilter();
+initStatusChips();
+if (!IS_GUEST) {
   initCollapsiblePanels();
   initAckButton();
   updateGroupTitles();
-  poll();
-  pollWidgets();
-  setInterval(poll, 10000);
-  setInterval(pollWidgets, 12000);
 }
+refreshDashboard();
+startDashboardTimers();
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    stopDashboardTimers();
+    return;
+  }
+  refreshDashboard();
+  startDashboardTimers();
+});

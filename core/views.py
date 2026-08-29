@@ -177,7 +177,7 @@ def settings_view(request):
 def api_update_status(request):
     if not request.user.is_superuser:
         return JsonResponse({"error": "Forbidden"}, status=403)
-    status = updates.maybe_check_for_update()
+    status = UpdateStatus.load()
     return JsonResponse(updates.status_payload(status))
 
 

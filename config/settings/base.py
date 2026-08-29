@@ -118,8 +118,8 @@ STORAGES = {
 
 CACHES = {
     "default": {
-        "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
-        "LOCATION": BASE_DIR / "data" / "django_cache",
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "control-center",
         "OPTIONS": {"MAX_ENTRIES": 2000},
     }
 }
@@ -133,7 +133,7 @@ LOGOUT_REDIRECT_URL = "login"
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_AGE = 60 * 60 * 24 * 14
-SESSION_SAVE_EVERY_REQUEST = True
+SESSION_SAVE_EVERY_REQUEST = False
 _session_domain = os.environ.get("SESSION_COOKIE_DOMAIN", "")
 if _session_domain:
     SESSION_COOKIE_DOMAIN = _session_domain

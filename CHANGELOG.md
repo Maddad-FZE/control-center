@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-30
+
+### Changed
+
+- Background `tick` owns health pings and GitHub checks so the dashboard only reads cache
+- Dashboard polling pauses when the tab is hidden and matches cache intervals
+
+### Fixed
+
+- Library install maps Nextcloud (and other 80/9000 listeners) to the port the image actually serves
+
 ## [0.2.0] - 2026-08-29
 
 ### Added

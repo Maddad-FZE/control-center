@@ -1,7 +1,10 @@
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.shortcuts import redirect
 from django.urls import reverse
+
+SETUP_DONE_CACHE_KEY = "setup:has_users"
 
 
 class HostAppMiddleware:
@@ -45,13 +48,17 @@ class SetupRequiredMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        if not User.objects.exists():
-            path = request.path
-            allowed_prefixes = (
-                "/setup/",
-                "/static/",
-                settings.MEDIA_URL,
-            )
-            if not any(path.startswith(p) for p in allowed_prefixes):
-                return redirect(reverse("setup"))
+        if cache.get(SETUP_DONE_CACHE_KEY):
+            return self.get_response(request)
+        if User.objects.exists():
+            cache.set(SETUP_DONE_CACHE_KEY, True, None)
+            return self.get_response(request)
+        path = request.path
+        allowed_prefixes = (
+            "/setup/",
+            "/static/",
+            settings.MEDIA_URL,
+        )
+        if not any(path.startswith(p) for p in allowed_prefixes):
+            return redirect(reverse("setup"))
         return self.get_response(request)

@@ -13,11 +13,9 @@ from dashboard.models import Service
 
 from .addons import addon_states_for_catalog, get_addon_by_slug, is_addon_enabled, set_addon_enabled
 from .catalog import build_catalog_items, all_categories
-from .detect import maybe_sync_detected
 from .icons import default_icon_url
 from .installer import detect_services_host, start_install, status_payload, uninstall
 from .models import CatalogRelease, InstalledService, LibraryNote
-from .versions import maybe_check_daily
 
 _ALLOWED_TAGS = {
     "b",
@@ -72,8 +70,6 @@ def library_view(request):
     if not request.user.is_superuser:
         return redirect("dashboard")
 
-    maybe_check_daily()
-    maybe_sync_detected()
     detect_services_host(request)
 
     addon_states = addon_states_for_catalog()

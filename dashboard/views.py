@@ -16,7 +16,7 @@ from library.catalog import LIBRARY_DESCRIPTIONS, get_service_by_slug
 from library.icons import icon_url_for_entry
 from library.installer import services_host
 from library.models import InstalledService
-from library.versions import maybe_check_daily, update_map_for_services
+from library.versions import update_map_for_services
 
 from .forms import ServiceForm, ServiceMetricFormSet
 from .models import Alert, Service, ServiceCategory
@@ -51,18 +51,8 @@ def _filter_categories_for_request(request):
     return result
 
 
-def _status_for_services(service_ids):
-    all_status = services.service_status_map()
-    if not service_ids:
-        return {}
-    return {sid: all_status.get(sid) for sid in service_ids}
-
-
 @login_not_required
 def dashboard_view(request):
-    if request.user.is_authenticated and request.user.is_superuser:
-        maybe_check_daily()
-
     categories = _filter_categories_for_request(request)
     is_guest = _is_guest(request)
     is_admin = request.user.is_authenticated and request.user.is_superuser
@@ -72,7 +62,8 @@ def dashboard_view(request):
         for svc in cat.filtered_services:
             service_ids.append(svc.id)
 
-    status = _status_for_services(service_ids)
+    all_status = services.service_status_map()
+    status = {sid: all_status.get(sid) for sid in service_ids} if service_ids else {}
     service_updates = {}
     if is_admin:
         all_services = []
@@ -118,10 +109,9 @@ def dashboard_view(request):
     if not is_guest:
         alerts = Alert.objects.all()[:20]
         recent_logins = AuditEvent.objects.filter(event_type="login")[:8]
-        full_status = services.service_status_map()
-        services_up = sum(1 for s in full_status.values() if s.get("is_up") is True)
-        services_down = sum(1 for s in full_status.values() if s.get("is_up") is False)
-        services_unknown = sum(1 for s in full_status.values() if s.get("is_up") is None)
+        services_up = sum(1 for s in all_status.values() if s.get("is_up") is True)
+        services_down = sum(1 for s in all_status.values() if s.get("is_up") is False)
+        services_unknown = sum(1 for s in all_status.values() if s.get("is_up") is None)
         unack_alerts = Alert.objects.filter(acknowledged=False).count()
         context.update(
             {
@@ -315,7 +305,7 @@ def api_docker(request):
 @login_required
 @require_GET
 def api_health(request):
-    return JsonResponse({"services": services.run_health_checks()})
+    return JsonResponse({"services": services.get_cached_health()})
 
 
 @login_required

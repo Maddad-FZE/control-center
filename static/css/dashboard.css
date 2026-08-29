@@ -599,26 +599,6 @@
   white-space: nowrap;
 }
 
-.service-update-icon {
-  position: absolute;
-  top: 0.45rem;
-  right: 0.4rem;
-  z-index: 6;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.15rem;
-  height: 1.15rem;
-  color: var(--tva-orange);
-  pointer-events: none;
-}
-
-.service-update-icon svg {
-  width: 0.85rem;
-  height: 0.85rem;
-  filter: drop-shadow(0 0 6px var(--phosphor-soft));
-}
-
 .service-update-banner {
   position: absolute;
   bottom: 0;
@@ -642,10 +622,6 @@
 
 .service-card--has-update {
   padding-bottom: 1.55rem;
-}
-
-.service-card--has-update .status-dot {
-  right: 1.35rem;
 }
 
 .service-desc {

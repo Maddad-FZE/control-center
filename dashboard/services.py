@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import time
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urljoin
 
@@ -9,6 +10,7 @@ import psutil
 import requests
 from django.conf import settings
 from django.core.cache import cache
+from django.db.models import Max
 from django.utils import timezone
 
 from core.models import log_audit
@@ -17,12 +19,17 @@ from .models import Alert, Service, ServiceCheck
 
 logger = logging.getLogger(__name__)
 
-CHECK_THROTTLE_SECONDS = 25
-SYSTEM_CACHE_TTL = 8
+CHECK_THROTTLE_SECONDS = 50
+HEALTH_TIMEOUT = 3
+HEALTH_WORKERS = 6
+CHECK_RETENTION_HOURS = 48
+SYSTEM_CACHE_TTL = 15
 DOCKER_CACHE_TTL = 15
-HEALTH_CACHE_TTL = CHECK_THROTTLE_SECONDS
-UPTIME_CACHE_TTL = 25
-ALERTS_CACHE_TTL = 5
+HEALTH_CACHE_TTL = 15
+UPTIME_CACHE_TTL = 60
+ALERTS_CACHE_TTL = 15
+HEALTH_TICK_LOCK = "health:tick_lock"
+HEALTH_TICK_SECONDS = 55
 PSEUDO_FSTYPES = {
     "squashfs",
     "overlay",
@@ -45,12 +52,14 @@ PSEUDO_FSTYPES = {
     "binfmt_misc",
 }
 
+psutil.cpu_percent(interval=None)
+
 
 def get_system_stats():
     cached = cache.get("system:stats")
     if cached is not None:
         return cached
-    cpu = psutil.cpu_percent(interval=0.1)
+    cpu = psutil.cpu_percent(interval=None)
     mem = psutil.virtual_memory()
     disks_by_device = {}
     for part in psutil.disk_partitions(all=False):
@@ -113,7 +122,7 @@ def get_docker_containers():
                     "name": c.name,
                     "image": (c.image.tags[0] if c.image.tags else c.image.short_id),
                     "status": c.status,
-                    "state": c.attrs.get("State", {}).get("Status", c.status),
+                    "state": c.status,
                 }
             )
         result = {"available": True, "containers": out}
@@ -126,7 +135,7 @@ def get_docker_containers():
         return result
 
 
-def _check_url_once(url, timeout=5):
+def _check_url_once(url, timeout=HEALTH_TIMEOUT):
     start = time.perf_counter()
     try:
         resp = requests.head(url, timeout=timeout, allow_redirects=True)
@@ -139,14 +148,11 @@ def _check_url_once(url, timeout=5):
         return False, ms, str(exc)[:200]
 
 
-def _check_url(url, timeout=5):
+def _check_url(url, timeout=HEALTH_TIMEOUT):
     is_up, ms, err = _check_url_once(url, timeout)
     if is_up:
         return is_up, ms, err
-    is_up2, ms2, err2 = _check_url_once(url, timeout)
-    if is_up2:
-        return True, ms + ms2, ""
-    return False, ms2, err2 or err
+    return _check_url_once(url, timeout)
 
 
 def _has_open_down_alert(service):
@@ -177,76 +183,136 @@ def _should_send_recovery(service):
     ).exists()
 
 
-def run_health_checks():
-    if not settings.HEALTH_CHECK_ENABLED:
-        return []
+def _latest_check_map():
+    latest_ids = (
+        ServiceCheck.objects.values("service_id")
+        .annotate(latest_id=Max("id"))
+        .values_list("latest_id", flat=True)
+    )
+    return {row.service_id: row for row in ServiceCheck.objects.filter(id__in=latest_ids)}
+
+
+def _health_row(service, check):
+    checked_at = getattr(check, "checked_at", None)
+    return {
+        "id": service.id,
+        "name": service.name,
+        "is_up": check.is_up,
+        "response_ms": check.response_ms,
+        "error": getattr(check, "error", "") or "",
+        "checked_at": checked_at.isoformat() if checked_at else "",
+    }
+
+
+def _apply_health_side_effects(service, prev, is_up, err):
+    if prev and not prev.is_up and not is_up:
+        if not _has_open_down_alert(service):
+            Alert.objects.create(
+                service=service,
+                level="error",
+                title=f"{service.name} is down",
+                message=err or "Health check failed",
+            )
+            log_audit(
+                "service_down",
+                message=f"{service.name} down",
+                service=service.name,
+            )
+            send_ntfy(f"DOWN: {service.name}", err or service.href)
+    elif prev and not prev.is_up and is_up:
+        if _should_send_recovery(service):
+            Alert.objects.create(
+                service=service,
+                level="success",
+                title=f"{service.name} recovered",
+                message="Service is responding again",
+            )
+            log_audit(
+                "service_up", message=f"{service.name} up", service=service.name
+            )
+
+
+def health_from_latest_checks():
+    latest = _latest_check_map()
+    results = []
+    for service in Service.objects.filter(enabled=True).only("id", "name"):
+        last = latest.get(service.id)
+        if last is None:
+            continue
+        results.append(_health_row(service, last))
+    return results
+
+
+def get_cached_health():
     cached = cache.get("health:results")
     if cached is not None:
         return cached
-    results = []
-    for service in Service.objects.filter(enabled=True):
+    results = health_from_latest_checks()
+    cache.set("health:results", results, HEALTH_CACHE_TTL)
+    return results
+
+
+def run_health_checks():
+    """Ping enabled services. Intended for manage.py tick, not request handlers."""
+    if not settings.HEALTH_CHECK_ENABLED:
+        return []
+    services = list(Service.objects.filter(enabled=True))
+    latest = _latest_check_map()
+    now = timezone.now()
+    results_by_id = {}
+    to_ping = []
+    for service in services:
         url = service.health_check_url or service.href
         if not url:
             continue
-        prev = (
-            ServiceCheck.objects.filter(service=service).order_by("-checked_at").first()
-        )
-        if prev and (timezone.now() - prev.checked_at).total_seconds() < CHECK_THROTTLE_SECONDS:
-            results.append(
-                {
-                    "id": service.id,
-                    "name": service.name,
-                    "is_up": prev.is_up,
-                    "response_ms": prev.response_ms,
-                    "error": prev.error,
-                }
-            )
+        prev = latest.get(service.id)
+        if prev and (now - prev.checked_at).total_seconds() < CHECK_THROTTLE_SECONDS:
+            results_by_id[service.id] = _health_row(service, prev)
             continue
+        to_ping.append((service, prev, url))
 
-        is_up, ms, err = _check_url(url)
-        ServiceCheck.objects.create(
+    pinged = {}
+    if to_ping:
+        workers = min(HEALTH_WORKERS, len(to_ping))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {
+                pool.submit(_check_url, url): (service, prev)
+                for service, prev, url in to_ping
+            }
+            for future in as_completed(futures):
+                service, prev = futures[future]
+                try:
+                    pinged[service.id] = (service, prev, future.result())
+                except Exception as exc:  # noqa: BLE001 - keep other pings going
+                    pinged[service.id] = (service, prev, (False, 0, str(exc)[:200]))
+
+    for service, prev, (is_up, ms, err) in pinged.values():
+        row = ServiceCheck.objects.create(
             service=service, is_up=is_up, response_ms=ms, error=err
         )
+        _apply_health_side_effects(service, prev, is_up, err)
+        results_by_id[service.id] = _health_row(service, row)
 
-        if prev and prev.is_up and not is_up:
-            pass
-        elif prev and not prev.is_up and not is_up:
-            if not _has_open_down_alert(service):
-                Alert.objects.create(
-                    service=service,
-                    level="error",
-                    title=f"{service.name} is down",
-                    message=err or "Health check failed",
-                )
-                log_audit(
-                    "service_down",
-                    message=f"{service.name} down",
-                    service=service.name,
-                )
-                send_ntfy(f"DOWN: {service.name}", err or service.href)
-        elif prev and not prev.is_up and is_up:
-            if _should_send_recovery(service):
-                Alert.objects.create(
-                    service=service,
-                    level="success",
-                    title=f"{service.name} recovered",
-                    message="Service is responding again",
-                )
-                log_audit(
-                    "service_up", message=f"{service.name} up", service=service.name
-                )
-
-        results.append(
-            {
-                "id": service.id,
-                "name": service.name,
-                "is_up": is_up,
-                "response_ms": ms,
-                "error": err,
-            }
-        )
+    results = [results_by_id[svc.id] for svc in services if svc.id in results_by_id]
     cache.set("health:results", results, HEALTH_CACHE_TTL)
+    cache.delete("uptime:payload")
+    cache.delete("alerts:recent")
     return results
+
+
+def maybe_run_health_tick():
+    if not cache.add(HEALTH_TICK_LOCK, "1", HEALTH_TICK_SECONDS):
+        return get_cached_health()
+    return run_health_checks()
+
+
+def prune_old_checks():
+    cutoff = timezone.now() - timezone.timedelta(hours=CHECK_RETENTION_HOURS)
+    deleted, _ = ServiceCheck.objects.filter(checked_at__lt=cutoff).delete()
+    if deleted:
+        cache.delete("health:results")
+        cache.delete("uptime:payload")
+    return deleted
 
 
 def get_cached_alerts(limit=30):
@@ -266,18 +332,28 @@ def get_cached_uptime_payload():
     cached = cache.get("uptime:payload")
     if cached is not None:
         return cached
-    data = {}
-    for svc in Service.objects.filter(enabled=True):
-        bars = uptime_sparkline(svc)
-        since = timezone.now() - timezone.timedelta(hours=24)
-        checks = list(
-            svc.checks.filter(checked_at__gte=since).values_list("is_up", flat=True)
+    services = list(Service.objects.filter(enabled=True).only("id", "name"))
+    since = timezone.now() - timezone.timedelta(hours=24)
+    rows = list(
+        ServiceCheck.objects.filter(
+            service_id__in=[svc.id for svc in services],
+            checked_at__gte=since,
         )
-        percent = round(100 * sum(checks) / len(checks), 1) if checks else None
+        .order_by("checked_at")
+        .values("service_id", "is_up", "checked_at")
+    )
+    by_service = defaultdict(list)
+    for row in rows:
+        by_service[row["service_id"]].append(row)
+    data = {}
+    for svc in services:
+        checks = by_service.get(svc.id, [])
+        ups = [1 if row["is_up"] else 0 for row in checks]
+        percent = round(100 * sum(ups) / len(ups), 1) if ups else None
         data[str(svc.id)] = {
             "name": svc.name,
             "percent": percent,
-            "bars": bars,
+            "bars": _sparkline_from_rows(checks),
         }
     payload = {"uptime": data}
     cache.set("uptime:payload", payload, UPTIME_CACHE_TTL)
@@ -306,14 +382,31 @@ def send_ntfy(title, message=""):
 
 
 def service_status_map():
+    latest = _latest_check_map()
     data = {}
-    for service in Service.objects.filter(enabled=True):
-        last = service.checks.order_by("-checked_at").first()
+    for service in Service.objects.filter(enabled=True).only("id"):
+        last = latest.get(service.id)
         data[service.id] = {
             "is_up": last.is_up if last else None,
             "response_ms": last.response_ms if last else None,
         }
     return data
+
+
+def _sparkline_from_rows(checks):
+    if not checks:
+        return []
+    step = max(1, len(checks) // 24)
+    sampled = checks[::step][-24:]
+    return [
+        {
+            "up": row["is_up"],
+            "at": row["checked_at"].isoformat()
+            if hasattr(row["checked_at"], "isoformat")
+            else str(row["checked_at"]),
+        }
+        for row in sampled
+    ]
 
 
 def uptime_sparkline(service, hours=24):
@@ -323,13 +416,7 @@ def uptime_sparkline(service, hours=24):
         .order_by("checked_at")
         .values("is_up", "checked_at")
     )
-    if not checks:
-        return []
-    step = max(1, len(checks) // 24)
-    sampled = checks[::step][-24:]
-    return [
-        {"up": c["is_up"], "at": c["checked_at"].isoformat()} for c in sampled
-    ]
+    return _sparkline_from_rows(checks)
 
 
 WIDGET_CACHE_TTL = 45

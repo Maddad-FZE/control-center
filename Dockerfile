@@ -21,4 +21,4 @@ RUN python manage.py collectstatic --noinput 2>/dev/null || true
 
 EXPOSE 8099
 
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8099", "--workers", "1", "--timeout", "120"]
+CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8099", "--workers", "1", "--threads", "2", "--timeout", "120"]

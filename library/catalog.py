@@ -220,7 +220,7 @@ SERVICES = [
         "default_port": 13378,
         "path": "/",
         "widget_type": "none",
-        "compose": _compose("audiobookshelf", "ghcr.io/advplyr/audiobookshelf:latest", 13378, volumes=["./audiobooks:/audiobooks", "./podcasts:/podcasts", "./config:/config"]),
+        "compose": _compose("audiobookshelf", "ghcr.io/advplyr/audiobookshelf:latest", 13378, container_port=80, volumes=["./audiobooks:/audiobooks", "./podcasts:/podcasts", "./config:/config"]),
     },
     {
         "slug": "sonarr",
@@ -325,7 +325,7 @@ SERVICES = [
         "default_port": 8444,
         "path": "/",
         "widget_type": "speedtest",
-        "compose": _compose("speedtest-tracker", "lscr.io/linuxserver/speedtest-tracker:latest", 8444, volumes=["./config:/config"]),
+        "compose": _compose("speedtest-tracker", "lscr.io/linuxserver/speedtest-tracker:latest", 8444, container_port=80, volumes=["./config:/config"]),
     },
     {
         "slug": "beszel",
@@ -352,7 +352,7 @@ SERVICES = [
         "default_port": 8080,
         "path": "/",
         "widget_type": "none",
-        "compose": _compose("nextcloud", "nextcloud:latest", 8080, volumes=["./nextcloud:/var/www/html"]),
+        "compose": _compose("nextcloud", "nextcloud:latest", 8080, container_port=80, volumes=["./nextcloud:/var/www/html"]),
     },
     {
         "slug": "syncthing",
@@ -391,7 +391,7 @@ SERVICES = [
         "default_port": 8080,
         "path": "/",
         "widget_type": "none",
-        "compose": _compose("filebrowser", "filebrowser/filebrowser:latest", 8080, volumes=["./srv:/srv", "./config:/config"]),
+        "compose": _compose("filebrowser", "filebrowser/filebrowser:latest", 8080, container_port=80, volumes=["./srv:/srv", "./config:/config"]),
     },
     # Management and Hosting
     {
@@ -445,7 +445,7 @@ SERVICES = [
         "default_port": 8080,
         "path": "/",
         "widget_type": "none",
-        "compose": _compose("vaultwarden", "vaultwarden/server:latest", 8080, volumes=["./data:/data"]),
+        "compose": _compose("vaultwarden", "vaultwarden/server:latest", 8080, container_port=80, volumes=["./data:/data"]),
     },
     {
         "slug": "authentik",
@@ -524,7 +524,7 @@ SERVICES = [
         "default_port": 9925,
         "path": "/",
         "widget_type": "none",
-        "compose": _compose("mealie", "ghcr.io/mealie-recipes/mealie:latest", 9925, volumes=["./data:/app/data"]),
+        "compose": _compose("mealie", "ghcr.io/mealie-recipes/mealie:latest", 9925, container_port=9000, volumes=["./data:/app/data"]),
     },
 ]
 

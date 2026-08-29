@@ -50,15 +50,30 @@ latest GitHub release of `GITHUB_REPO`.
 
 Preview without writing files: `python manage.py bump_version patch --dry-run`.
 
-### Scheduled checks
+### Scheduled maintenance
 
-Settings > Updates checks at most once every `UPDATE_CHECK_INTERVAL_HOURS`
-(default 12) when an admin opens the pane. Add a cron entry so the check also
-runs unattended:
+`manage.py tick` runs health pings, prunes old check rows, and (when due)
+checks for app and catalog updates plus library Docker detect. The dashboard
+only reads those results. Down alerts keep working with the tab closed.
+
+Docker Compose already runs a `tick` sidecar every 60 seconds. On a venv
+host, use one cron line instead (do not also run the sidecar):
 
 ```cron
-0 */12 * * * cd /home/daher/control-center && .venv/bin/python manage.py check_updates >> data/update-check.log 2>&1
+* * * * * cd /home/daher/control-center && .venv/bin/python manage.py tick >> data/tick.log 2>&1
 ```
+
+Optional systemd timer at the same interval:
+
+```ini
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=60
+```
+
+`check_updates` and `check_service_updates` still work by hand. Settings >
+Updates “Check now” forces an app update check. `UPDATE_CHECK_INTERVAL_HOURS`
+(default 12) still throttles automatic checks.
 
 ### Installing from the UI
 
