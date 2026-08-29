@@ -7,12 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-29
+
 ### Added
 
 - One-click update popup with live progress bar, step checklist, and install log
 - `manage.py bump_version` to roll VERSION and CHANGELOG for a release
 - Library install popup with indeterminate progress while Docker pulls
 - Card URLs prefer the LAN host used to open the site (not Docker bridge IPs)
+- Full-page card editor with service search/dropdown, icon library, live-stats column, and footer save
+- Guest status bar, site title/tagline settings, toast notifications, and public branding files
+- Versioned CSS/JS so the UI stays fast without flashing stale designs
 
 ## [0.1.0] - 2026-08-28
 
