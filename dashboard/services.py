@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 CHECK_THROTTLE_SECONDS = 50
 HEALTH_TIMEOUT = 3
-HEALTH_WORKERS = 6
 CHECK_RETENTION_HOURS = 48
 SYSTEM_CACHE_TTL = 15
 DOCKER_CACHE_TTL = 15
@@ -253,45 +252,39 @@ def get_cached_health():
 
 
 def run_health_checks():
-    """Ping enabled services. Intended for manage.py tick, not request handlers."""
+    """Pull Uptime Kuma heartbeats. Intended for manage.py tick, not request handlers."""
     if not settings.HEALTH_CHECK_ENABLED:
         return []
-    services = list(Service.objects.filter(enabled=True))
+    from dashboard import kuma
+
+    pulled = kuma.pull_status()
+    if pulled is None:
+        results = health_from_latest_checks()
+        cache.set("health:results", results, HEALTH_CACHE_TTL)
+        cache.delete("uptime:payload")
+        return results
+
     latest = _latest_check_map()
     now = timezone.now()
     results_by_id = {}
-    to_ping = []
-    for service in services:
-        url = service.health_check_url or service.href
-        if not url:
-            continue
+    for service, is_up, ms, err in pulled:
         prev = latest.get(service.id)
         if prev and (now - prev.checked_at).total_seconds() < CHECK_THROTTLE_SECONDS:
             results_by_id[service.id] = _health_row(service, prev)
             continue
-        to_ping.append((service, prev, url))
-
-    pinged = {}
-    if to_ping:
-        workers = min(HEALTH_WORKERS, len(to_ping))
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = {
-                pool.submit(_check_url, url): (service, prev)
-                for service, prev, url in to_ping
-            }
-            for future in as_completed(futures):
-                service, prev = futures[future]
-                try:
-                    pinged[service.id] = (service, prev, future.result())
-                except Exception as exc:  # noqa: BLE001 - keep other pings going
-                    pinged[service.id] = (service, prev, (False, 0, str(exc)[:200]))
-
-    for service, prev, (is_up, ms, err) in pinged.values():
         row = ServiceCheck.objects.create(
             service=service, is_up=is_up, response_ms=ms, error=err
         )
         _apply_health_side_effects(service, prev, is_up, err)
         results_by_id[service.id] = _health_row(service, row)
+
+    services = list(Service.objects.filter(enabled=True))
+    for service in services:
+        if service.id in results_by_id:
+            continue
+        prev = latest.get(service.id)
+        if prev:
+            results_by_id[service.id] = _health_row(service, prev)
 
     results = [results_by_id[svc.id] for svc in services if svc.id in results_by_id]
     cache.set("health:results", results, HEALTH_CACHE_TTL)
@@ -330,9 +323,30 @@ def get_cached_alerts(limit=30):
 
 def get_cached_uptime_payload():
     cached = cache.get("uptime:payload")
-    if cached is not None:
+    if cached is not None and cached.get("kuma_available") and cached.get("kuma_synced"):
         return cached
-    services = list(Service.objects.filter(enabled=True).only("id", "name"))
+    from dashboard import kuma
+
+    if not kuma.kuma_is_present():
+        payload = {"uptime": {}, "kuma_available": False, "kuma_synced": False}
+        cache.set("uptime:payload", payload, HEALTH_CACHE_TTL)
+        return payload
+    def monitored_services():
+        return list(
+            Service.objects.filter(enabled=True, kuma_monitor_id__isnull=False).only(
+                "id", "name", "kuma_monitor_id"
+            )
+        )
+
+    services = monitored_services()
+    if not services:
+        if kuma.kuma_is_running():
+            maybe_run_health_tick()
+            services = monitored_services()
+    if not services:
+        payload = {"uptime": {}, "kuma_available": True, "kuma_synced": False}
+        cache.set("uptime:payload", payload, HEALTH_CACHE_TTL)
+        return payload
     since = timezone.now() - timezone.timedelta(hours=24)
     rows = list(
         ServiceCheck.objects.filter(
@@ -355,7 +369,7 @@ def get_cached_uptime_payload():
             "percent": percent,
             "bars": _sparkline_from_rows(checks),
         }
-    payload = {"uptime": data}
+    payload = {"uptime": data, "kuma_available": True, "kuma_synced": True}
     cache.set("uptime:payload", payload, UPTIME_CACHE_TTL)
     return payload
 

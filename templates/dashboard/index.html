@@ -65,13 +65,14 @@
         <div class="bookmarks">
           {% for service in misc_services %}
             {% with s=status|get_item:service.id %}
-            <div class="service-card-wrap service-card-wrap--misc{% if is_admin %} service-card-wrap--has-menu{% endif %}">
+            <div class="service-card-wrap service-card-wrap--misc service-card-wrap--has-menu">
               {% include "dashboard/_card_menu.html" %}
               <a
                 class="bookmark bookmark--service{% if s and not s.is_up %} bookmark--down{% endif %}"
-                href="{{ service.href }}"
-                target="_blank"
-                rel="noopener"
+                href="{% if service.id in open_in_new_tab_ids %}{{ service.href }}{% else %}{% url 'service_view' service.id %}{% endif %}"
+                {% if service.id in open_in_new_tab_ids %}target="_blank" rel="noopener"{% endif %}
+                data-external-href="{{ service.href }}"
+                data-view-href="{% url 'service_view' service.id %}"
                 data-service-id="{{ service.id }}"
                 data-service-name="{{ service.name|lower }}"
                 data-service-desc="{{ service.description|lower }}"
@@ -150,11 +151,11 @@
 
     <section class="panel" data-panel-id="uptime">
       <button type="button" class="panel-head panel-toggle" aria-expanded="true" aria-controls="panel-uptime">
-        <span class="panel-toggle__label">Uptime (24h)</span>
+        <span class="panel-toggle__label">Monitor</span>
         <span class="panel-chevron" aria-hidden="true">▾</span>
       </button>
       <div class="panel-body" id="panel-uptime">
-        <div id="uptime-panel">
+        <div id="uptime-panel"{% if is_admin %} data-can-install="1"{% endif %}>
           <div class="skeleton-row"></div>
           <div class="skeleton-row"></div>
         </div>
@@ -176,7 +177,6 @@
 {% block extra_js %}
 <script src="{% vstatic 'js/dashboard-cache.js' %}"></script>
 <script src="{% vstatic 'js/dashboard.js' %}"></script>
-{% if is_admin %}
+<script src="{% vstatic 'js/service-open.js' %}"></script>
 <script src="{% vstatic 'js/card-menu.js' %}"></script>
-{% endif %}
 {% endblock %}

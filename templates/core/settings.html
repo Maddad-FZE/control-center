@@ -79,6 +79,20 @@
             {{ site_form.services_host }}
             <p class="settings-hint">LAN IP or hostname for library-installed cards (for example 192.168.0.40). Docker bridge IPs like 172.18.0.x are ignored. Leave blank to auto-detect from the address you used to open this site.</p>
           </div>
+          <h3 class="settings-section-title">Monitor</h3>
+          <div class="form-group">
+            <label for="{{ site_form.kuma_username.id_for_label }}">Username</label>
+            {{ site_form.kuma_username }}
+          </div>
+          <div class="form-group">
+            <label for="{{ site_form.kuma_password.id_for_label }}">Password</label>
+            <div class="secret-field">
+              {{ site_form.kuma_password }}
+              <button type="button" class="btn secondary" id="kuma-password-show" data-secret-toggle="{{ site_form.kuma_password.id_for_label }}">Show</button>
+              <button type="button" class="btn secondary" id="kuma-password-copy" data-secret-copy="{{ site_form.kuma_password.id_for_label }}">Copy</button>
+            </div>
+            <p class="settings-hint">Generated for Uptime Kuma. Control Center uses this so you do not open Kuma.</p>
+          </div>
           <div class="form-group form-group--checkbox">
             <label class="checkbox-label">
               {{ site_form.crt_enabled }}

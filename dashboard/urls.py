@@ -4,6 +4,12 @@ from . import views
 
 urlpatterns = [
     path("", views.dashboard_view, name="dashboard"),
+    path("view/<int:service_id>/", views.service_view, name="service_view"),
+    path(
+        "api/services/<int:service_id>/open-pref/",
+        views.api_service_open_pref,
+        name="api_service_open_pref",
+    ),
     path("cards/new/", views.service_create_view, name="service_create"),
     path("cards/<int:service_id>/edit/", views.service_edit_view, name="service_edit"),
     path(

@@ -18,6 +18,9 @@ class SiteSettings(models.Model):
         blank=True,
         help_text="LAN IP or hostname for library-installed service cards",
     )
+    kuma_username = models.CharField(max_length=64, blank=True)
+    kuma_password = models.CharField(max_length=128, blank=True)
+    kuma_setup_done = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = "Site settings"
@@ -91,6 +94,11 @@ class UserProfile(models.Model):
     crt_enabled = models.BooleanField(default=True)
     theme = models.CharField(max_length=16, choices=Theme.choices, default=Theme.WOOD)
     logo_url = models.URLField(blank=True, default="/static/img/logo.png")
+    open_in_new_tab_ids = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Service ids that should skip the in-app overlay",
+    )
 
     def __str__(self):
         return f"Profile({self.user.username})"

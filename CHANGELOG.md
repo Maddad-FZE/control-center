@@ -7,16 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-30
+
+### Added
+
+- Open dashboard services in an overlay under the header, with Back, new tab, and Always open in a new tab
+- Card kebab **Open in overlay** for every viewer
+- Merlin hover bubbles for Tips, Alerts, and Update when those actions exist on the page
+- Search the library catalog by name, description, or slug
+- Open button on installed library services
+- Generated Uptime Kuma admin (`cc-monitor`) with Show and Copy in Settings
+- Monitor empty state with an Install Uptime Kuma button that opens Library filtered to Kuma
+- Library search reads `?q=` so Monitor can deep-link to Uptime Kuma
+
 ### Fixed
 
 - In-app update streams pip output so Dependencies does not look stuck
 - Docker installs reload gunicorn with SIGHUP instead of calling a missing `docker` CLI
 - A dead update worker is marked failed instead of leaving the UI on “running”
+- Merlin clips finish instead of being cut off by the next timer
+- Merlin no longer plays the idle lightbulb animation
+- Deleting a dashboard card also removes its Uptime Kuma monitor
+- Always open in a new tab also opens the service immediately
+- Monitor shows waiting, not the install CTA, while Kuma is installing or syncing
 
 ### Changed
 
 - Install runs as `manage.py install_update` outside the gunicorn request worker
 - Docker: in-app update is for bind-mounted or current-container overlays; image rebuild is the durable path
+- Health checks pull Uptime Kuma monitor status instead of pinging cards from Control Center
+- Monitor kicks the first Kuma sync from the dashboard if tick has not run yet
+- Uptime (24h) panel renamed to Monitor
+- Uptime Kuma is opt-in from Library; tick no longer installs it or adds a dashboard card
+- Library Add card is a compact + control; uninstall defaults to deleting data volumes
 
 ## [0.2.1] - 2026-08-30
 

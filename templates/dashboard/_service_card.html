@@ -5,9 +5,10 @@
   {% include "dashboard/_card_menu.html" %}
   <a
     class="service-card service-card--{{ variant }}{% if s and not s.is_up %} service-card--down{% endif %}{% if service.is_public %} service-card--public{% endif %}{% if update_info %} service-card--has-update{% endif %}"
-    href="{{ service.href }}"
-    target="_blank"
-    rel="noopener"
+    href="{% if service.id in open_in_new_tab_ids %}{{ service.href }}{% else %}{% url 'service_view' service.id %}{% endif %}"
+    {% if service.id in open_in_new_tab_ids %}target="_blank" rel="noopener"{% endif %}
+    data-external-href="{{ service.href }}"
+    data-view-href="{% url 'service_view' service.id %}"
     data-service-id="{{ service.id }}"
     data-service-name="{{ service.name|lower }}"
     data-service-desc="{{ service.display_description|lower }} {{ service.category.name|lower }}"

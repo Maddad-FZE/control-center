@@ -1,4 +1,4 @@
-"""Run background maintenance: health pings, prune, GitHub checks, library detect."""
+"""Run background maintenance: Kuma health pull, prune, GitHub checks, library detect."""
 
 from django.core.management.base import BaseCommand
 

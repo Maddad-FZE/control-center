@@ -27,35 +27,39 @@
   </div>
   <p class="library-card__tagline">{{ item.description }}</p>
   <div class="library-card__actions">
-    {% if item.installed %}
-      {% if item.type == "addon" %}
-      <button type="button" class="btn danger library-uninstall-btn" data-type="addon" data-slug="{{ item.slug }}">Uninstall</button>
-      {% elif item.status == "installing" %}
-      <button type="button" class="btn secondary" disabled>Installing…</button>
+    <div class="library-card__actions-main">
+      {% if item.installed %}
+        {% if item.type == "addon" %}
+        <button type="button" class="btn danger library-uninstall-btn" data-type="addon" data-slug="{{ item.slug }}">Uninstall</button>
+        {% elif item.status == "installing" %}
+        <button type="button" class="btn secondary" disabled>Installing…</button>
+        {% else %}
+        {% if item.open_href %}
+        <a href="{{ item.open_href }}" class="btn" target="_blank" rel="noopener">Open</a>
+        {% endif %}
+        <button type="button" class="btn danger library-uninstall-btn" data-type="service" data-slug="{{ item.slug }}">Uninstall</button>
+        {% endif %}
+        {% if item.type == "service" and not item.service_id %}
+        <a href="{% url 'service_create' %}?catalog={{ item.slug }}" class="btn secondary library-icon-btn library-add-card-btn" title="Add card" aria-label="Add card">+</a>
+        {% endif %}
       {% else %}
-      <button type="button" class="btn danger library-uninstall-btn" data-type="service" data-slug="{{ item.slug }}">Uninstall</button>
+        {% if item.type == "addon" %}
+        <button type="button" class="btn library-install-btn" data-type="addon" data-slug="{{ item.slug }}">Install</button>
+        {% elif item.status == "installing" %}
+        <button type="button" class="btn secondary" disabled>Installing…</button>
+        {% else %}
+        <button type="button" class="btn library-install-btn" data-type="service" data-slug="{{ item.slug }}">Install</button>
+        {% endif %}
       {% endif %}
-      {% if item.type == "service" and not item.service_id %}
-      <a href="{% url 'service_create' %}?catalog={{ item.slug }}" class="btn secondary">Add card</a>
-      {% endif %}
-    {% else %}
-      {% if item.type == "addon" %}
-      <button type="button" class="btn library-install-btn" data-type="addon" data-slug="{{ item.slug }}">Install</button>
-      {% elif item.status == "installing" %}
-      <button type="button" class="btn secondary" disabled>Installing…</button>
-      {% else %}
-      <button type="button" class="btn library-install-btn" data-type="service" data-slug="{{ item.slug }}">Install</button>
-      {% endif %}
-    {% endif %}
-
+    </div>
     {% if item.repo_url %}
-    <a href="{{ item.repo_url }}" class="btn secondary library-github-btn" target="_blank" rel="noopener" aria-label="GitHub repository">
+    <a href="{{ item.repo_url }}" class="btn secondary library-icon-btn library-github-btn" target="_blank" rel="noopener" aria-label="GitHub repository">
       <svg class="library-github-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
         <path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.09-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.8.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.01 2.2-.8 2.2-.8.44 1.1.16 1.92.08 2.12.51.5.82 1.1.82 2.09 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
       </svg>
     </a>
     {% else %}
-    <span class="library-github-btn library-github-btn--spacer" aria-hidden="true"></span>
+    <span class="library-icon-btn library-github-btn library-github-btn--spacer" aria-hidden="true"></span>
     {% endif %}
   </div>
 </article>

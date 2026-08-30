@@ -20,6 +20,14 @@ from .models import InstalledService
 logger = logging.getLogger(__name__)
 
 DOCKER_LABEL_SLUG = "control-center.slug"
+
+
+def _clear_uptime_cache_if_kuma(slug):
+    if slug != "uptime-kuma":
+        return
+    from django.core.cache import cache
+
+    cache.delete("uptime:payload")
 PRIVATE_NETS = (
     ipaddress.ip_network("10.0.0.0/8"),
     ipaddress.ip_network("172.16.0.0/12"),
@@ -209,6 +217,8 @@ def create_dashboard_card(slug, entry, host_port):
         defaults={"sort_order": 99},
     )
     Service.objects.filter(catalog_slug=slug).delete()
+    if slug == "uptime-kuma":
+        Service.objects.filter(name__iexact=entry["name"]).delete()
     widget_type = entry.get("widget_type", "none")
     service = Service(
         category=category,
@@ -221,6 +231,7 @@ def create_dashboard_card(slug, entry, host_port):
         catalog_slug=slug,
         widget_type=widget_type,
         is_public=False,
+        is_misc=False,
         enabled=True,
     )
     if widget_type != "none":
@@ -234,6 +245,14 @@ def create_dashboard_card(slug, entry, host_port):
 
 
 def delete_dashboard_card(slug):
+    rows = list(Service.objects.filter(catalog_slug=slug))
+    if slug != "uptime-kuma":
+        try:
+            from dashboard.kuma import delete_monitors_for_services
+
+            delete_monitors_for_services(rows)
+        except Exception:
+            logger.debug("Could not remove Kuma monitors for %s", slug)
     Service.objects.filter(catalog_slug=slug).delete()
 
 
@@ -300,7 +319,9 @@ def _install_worker(slug):
             status=InstalledService.Status.RUNNING,
             error="",
         )
-        create_dashboard_card(slug, entry, host_port)
+        if slug != "uptime-kuma":
+            create_dashboard_card(slug, entry, host_port)
+        _clear_uptime_cache_if_kuma(slug)
     except Exception as exc:  # noqa: BLE001 - background worker must record failure
         logger.exception("Install failed for %s", slug)
         InstalledService.objects.filter(slug=slug).update(
@@ -335,6 +356,7 @@ def start_install(slug, request=None):
             "error": "",
         },
     )
+    _clear_uptime_cache_if_kuma(slug)
     thread = threading.Thread(
         target=_install_worker,
         args=(slug,),
@@ -370,6 +392,7 @@ def uninstall(slug, remove_data=False):
 
     delete_dashboard_card(slug)
     InstalledService.objects.filter(slug=slug).delete()
+    _clear_uptime_cache_if_kuma(slug)
     return True, "Uninstalled"
 
 

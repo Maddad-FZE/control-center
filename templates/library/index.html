@@ -21,6 +21,10 @@
       <span>Apps</span>
       <div class="library-filters">
         <div class="library-filters__field">
+          <label class="filter-label" for="library-search">Search</label>
+          <input type="search" id="library-search" class="library-search" placeholder="Search" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="library-filters__field">
           <label class="filter-label" for="library-type-filter">Type</label>
           <select id="library-type-filter" class="library-filter-select">
             <option value="">All</option>
@@ -53,6 +57,7 @@
         {% include "library/_card.html" with item=item %}
         {% endfor %}
       </div>
+      <p class="stat-label" id="library-empty" hidden>No matching apps.</p>
     </div>
   </article>
 
@@ -103,7 +108,7 @@
     <h2 class="library-modal__title" id="uninstall-modal-title">Uninstall</h2>
     <p class="settings-hint" id="uninstall-modal-desc"></p>
     <label class="checkbox-label library-modal__checkbox" id="uninstall-data-wrap">
-      <input type="checkbox" id="uninstall-remove-data">
+      <input type="checkbox" id="uninstall-remove-data" checked>
       <span>Also delete data volumes</span>
     </label>
     <div class="library-modal__actions">

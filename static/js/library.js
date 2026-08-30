@@ -2,24 +2,52 @@
   const typeFilter = document.getElementById("library-type-filter");
   const categoryFilter = document.getElementById("library-category-filter");
   const installedFilter = document.getElementById("library-installed-filter");
+  const searchInput = document.getElementById("library-search");
+  const emptyEl = document.getElementById("library-empty");
   const cards = document.querySelectorAll(".library-card");
+
+  function cardSearchText(card) {
+    return [
+      card.dataset.slug,
+      card.dataset.category,
+      card.dataset.type,
+      card.querySelector(".library-card__name")?.textContent,
+      card.querySelector(".library-card__tagline")?.textContent,
+    ]
+      .join(" ")
+      .toLowerCase();
+  }
 
   function applyFilters() {
     const typeVal = typeFilter ? typeFilter.value : "";
     const catVal = categoryFilter ? categoryFilter.value : "";
     const instVal = installedFilter ? installedFilter.value : "";
+    const query = (searchInput?.value || "").trim().toLowerCase();
+    let visible = 0;
     cards.forEach((card) => {
       const typeMatch = !typeVal || card.dataset.type === typeVal;
       const catMatch = !catVal || card.dataset.category === catVal;
       const isInstalled = card.dataset.installed === "1" || card.dataset.status === "installing";
       const instMatch = !instVal || (instVal === "1" ? isInstalled : !isInstalled);
-      card.classList.toggle("hidden-by-filter", !typeMatch || !catMatch || !instMatch);
+      const searchMatch = !query || cardSearchText(card).includes(query);
+      const show = typeMatch && catMatch && instMatch && searchMatch;
+      card.classList.toggle("hidden-by-filter", !show);
+      if (show) visible += 1;
     });
+    if (emptyEl) emptyEl.hidden = visible > 0;
   }
 
   if (typeFilter) typeFilter.addEventListener("change", applyFilters);
   if (categoryFilter) categoryFilter.addEventListener("change", applyFilters);
   if (installedFilter) installedFilter.addEventListener("change", applyFilters);
+  if (searchInput) searchInput.addEventListener("input", applyFilters);
+
+  const params = new URLSearchParams(window.location.search);
+  const q = params.get("q") || params.get("search") || "";
+  if (searchInput && q) {
+    searchInput.value = q;
+  }
+  applyFilters();
 
   function getCsrfToken() {
     const meta = document.querySelector('meta[name="csrf-token"]');
@@ -59,7 +87,7 @@
     if (removeDataWrap) {
       removeDataWrap.hidden = type !== "service";
     }
-    if (removeDataInput) removeDataInput.checked = false;
+    if (removeDataInput) removeDataInput.checked = true;
     modal.hidden = false;
   }
 

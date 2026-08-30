@@ -65,6 +65,7 @@ class Service(models.Model):
         default=True,
         help_text="Show update badge when a newer catalog release is available",
     )
+    kuma_monitor_id = models.PositiveIntegerField(null=True, blank=True)
 
     class Meta:
         ordering = ["category__sort_order", "sort_order", "name"]

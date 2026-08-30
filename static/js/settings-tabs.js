@@ -39,4 +39,34 @@
 
   master?.addEventListener("change", syncWizardNotify);
   syncWizardNotify();
+
+  document.querySelectorAll("[data-secret-toggle]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const field = document.getElementById(btn.dataset.secretToggle);
+      if (!field) return;
+      const hidden = field.type === "password";
+      field.type = hidden ? "text" : "password";
+      btn.textContent = hidden ? "Hide" : "Show";
+    });
+  });
+
+  document.querySelectorAll("[data-secret-copy]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const field = document.getElementById(btn.dataset.secretCopy);
+      const value = field ? field.value : "";
+      try {
+        await navigator.clipboard.writeText(value);
+        const prev = btn.textContent;
+        btn.textContent = "Copied";
+        window.setTimeout(() => {
+          btn.textContent = prev;
+        }, 1200);
+      } catch {
+        if (field) {
+          field.focus();
+          field.select();
+        }
+      }
+    });
+  });
 })();

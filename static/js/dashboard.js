@@ -290,8 +290,17 @@ function renderUptime(data) {
   if (!box) return;
   const uptime = data.uptime || {};
   const ids = Object.keys(uptime);
-  if (!ids.length) {
-    box.innerHTML = `<div class="stat-label">No uptime data yet. Health checks populate history.</div>`;
+  if (data.kuma_available === false) {
+    const canInstall = data.kuma_can_install || box.dataset.canInstall === "1";
+    const cta = canInstall
+      ? `<a class="btn" href="/library/?q=uptime-kuma">Install Uptime Kuma</a>`
+      : "";
+    box.innerHTML = `<div class="uptime-empty"><div class="stat-label">Install Uptime Kuma to see the monitor.</div>${cta}</div>`;
+    updateUptimeChip(null);
+    return;
+  }
+  if (data.kuma_synced === false || !ids.length) {
+    box.innerHTML = `<div class="uptime-empty"><div class="stat-label">Waiting for the first monitor check.</div></div>`;
     updateUptimeChip(null);
     return;
   }

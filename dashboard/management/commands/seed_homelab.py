@@ -36,6 +36,8 @@ DEFAULT_DATA = {
             "href": "http://192.168.0.40:3001/",
             "icon": "https://api.iconify.design/mdi/heart-pulse.svg?color=%23e87722",
             "health_check_url": "http://192.168.0.40:3001/",
+            "catalog_slug": "uptime-kuma",
+            "is_misc": False,
         },
     ],
     "Media": [
@@ -152,6 +154,8 @@ class Command(BaseCommand):
                         "widget_type": svc.get("widget_type", "none"),
                         "widget_url": svc.get("widget_url", ""),
                         "widget_api_key": svc.get("widget_api_key", ""),
+                        "catalog_slug": svc.get("catalog_slug", ""),
+                        "is_misc": svc.get("is_misc", False),
                     },
                 )
         tools, _ = ServiceCategory.objects.get_or_create(

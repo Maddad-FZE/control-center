@@ -20,12 +20,21 @@ from library.versions import update_map_for_services
 
 from .forms import ServiceForm, ServiceMetricFormSet
 from .models import Alert, Service, ServiceCategory
+from .prefs import open_in_new_tab_ids, prefers_new_tab, set_open_in_new_tab
 from .presets import apply_preset_metrics
 from . import services
 
 
 def _is_guest(request):
     return not request.user.is_authenticated
+
+
+def _open_tab_ids(user):
+    ids = set(open_in_new_tab_ids(user))
+    ids.update(
+        Service.objects.filter(catalog_slug="uptime-kuma").values_list("id", flat=True)
+    )
+    return ids
 
 
 def _filter_categories_for_request(request):
@@ -104,6 +113,7 @@ def dashboard_view(request):
         "services_down": sum(1 for row in visible_status if row.get("is_up") is False),
         "services_unknown": sum(1 for row in visible_status if row.get("is_up") is None),
         "unack_alerts": 0,
+        "open_in_new_tab_ids": _open_tab_ids(request.user),
     }
 
     if not is_guest:
@@ -125,6 +135,48 @@ def dashboard_view(request):
         )
 
     return render(request, "dashboard/index.html", context)
+
+
+def _visible_service(request, service_id):
+    service = get_object_or_404(Service, pk=service_id, enabled=True)
+    if _is_guest(request) and not service.is_public:
+        return None
+    return service
+
+
+@login_not_required
+def service_view(request, service_id):
+    service = _visible_service(request, service_id)
+    if service is None:
+        return redirect("dashboard")
+    href = service.href or service.build_href()
+    if not href:
+        return redirect("dashboard")
+    return render(
+        request,
+        "dashboard/service_view.html",
+        {
+            "service": service,
+            "service_href": href,
+            "open_in_new_tab": prefers_new_tab(request.user, service.id),
+            "is_guest": _is_guest(request),
+        },
+    )
+
+
+@login_required
+@require_POST
+def api_service_open_pref(request, service_id):
+    service = _visible_service(request, service_id)
+    if service is None:
+        return JsonResponse({"error": "Not found"}, status=404)
+    try:
+        payload = json.loads(request.body.decode() or "{}")
+    except (TypeError, ValueError, UnicodeDecodeError):
+        payload = {}
+    enabled = bool(payload.get("open_in_new_tab"))
+    set_open_in_new_tab(request.user, service.id, enabled)
+    return JsonResponse({"ok": True, "open_in_new_tab": enabled})
 
 
 @login_required
@@ -285,6 +337,12 @@ def api_service_delete(request, service_id):
         return JsonResponse({"error": "Forbidden"}, status=403)
     service = get_object_or_404(Service, pk=service_id)
     name = service.name
+    try:
+        from dashboard.kuma import delete_monitor_for_service
+
+        delete_monitor_for_service(service)
+    except Exception:
+        pass
     service.delete()
     log_audit("admin", request=request, user=request.user, message=f"Deleted card {name}")
     return JsonResponse({"ok": True})
@@ -336,7 +394,9 @@ def api_alerts_ack(request):
 @login_required
 @require_GET
 def api_uptime(request):
-    return JsonResponse(services.get_cached_uptime_payload())
+    payload = dict(services.get_cached_uptime_payload())
+    payload["kuma_can_install"] = request.user.is_superuser
+    return JsonResponse(payload)
 
 
 @login_not_required

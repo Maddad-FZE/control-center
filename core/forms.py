@@ -25,6 +25,14 @@ class AppearanceForm(forms.ModelForm):
 
 
 class SiteSettingsForm(forms.ModelForm):
+    kuma_password = forms.CharField(
+        required=False,
+        widget=forms.PasswordInput(
+            render_value=True,
+            attrs={"autocomplete": "new-password"},
+        ),
+    )
+
     class Meta:
         model = SiteSettings
         fields = (
@@ -37,6 +45,8 @@ class SiteSettingsForm(forms.ModelForm):
             "wizard_enabled",
             "wizard_notify",
             "services_host",
+            "kuma_username",
+            "kuma_password",
         )
         widgets = {
             "title": forms.TextInput(attrs={"placeholder": "Home Server Command Center"}),
@@ -47,6 +57,7 @@ class SiteSettingsForm(forms.ModelForm):
             "services_host": forms.TextInput(
                 attrs={"placeholder": "e.g. 192.168.0.40"}
             ),
+            "kuma_username": forms.TextInput(attrs={"placeholder": "cc-monitor"}),
             "crt_enabled": forms.CheckboxInput(),
             "wizard_enabled": forms.CheckboxInput(attrs={"data-wizard-master": "1"}),
             "wizard_notify": forms.CheckboxInput(attrs={"data-wizard-notify": "1"}),
@@ -56,6 +67,8 @@ class SiteSettingsForm(forms.ModelForm):
         cleaned = super().clean()
         if not cleaned.get("wizard_enabled") and self.instance.pk:
             cleaned["wizard_notify"] = self.instance.wizard_notify
+        if not cleaned.get("kuma_password") and self.instance.pk:
+            cleaned["kuma_password"] = self.instance.kuma_password
         return cleaned
 
 

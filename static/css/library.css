@@ -207,6 +207,22 @@
   max-width: 12rem;
 }
 
+.library-search {
+  width: 12rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--tva-border);
+  border-radius: 2px;
+  background: rgba(20, 12, 8, 0.65);
+  color: var(--tva-amber);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.library-search:focus-visible {
+  outline: 2px solid var(--tva-orange);
+  outline-offset: 2px;
+}
+
 .library-grid {
   display: grid;
   gap: 0.85rem;
@@ -219,10 +235,14 @@
   display: none;
 }
 
+#library-empty {
+  margin: 0.75rem 0 0;
+}
+
 .library-card {
   display: grid;
   grid-template-columns: 2.5rem minmax(0, 1fr) auto;
-  grid-template-rows: 2.5rem auto minmax(4.6rem, 1fr) 2.6rem;
+  grid-template-rows: 2.5rem auto minmax(4.6rem, 1fr) auto;
   grid-template-areas:
     "icon name version"
     "badges badges badges"
@@ -313,14 +333,22 @@
 
 .library-card__actions {
   grid-area: actions;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.45rem;
+  align-items: start;
+  min-height: 2.35rem;
+}
+
+.library-card__actions-main {
   display: flex;
   flex-wrap: wrap;
   gap: 0.45rem;
   align-items: center;
-  min-height: 2.35rem;
+  min-width: 0;
 }
 
-.library-github-btn {
+.library-icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -328,7 +356,14 @@
   min-width: 2.35rem;
   height: 2.15rem;
   padding: 0;
-  margin-left: auto;
+  align-self: start;
+}
+
+.library-add-card-btn {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  line-height: 1;
+  letter-spacing: 0;
 }
 
 .library-github-btn--spacer {
@@ -342,12 +377,15 @@
 }
 
 .btn.danger {
-  border-color: rgba(248, 113, 113, 0.45);
-  color: #fca5a5;
+  background: rgba(92, 36, 32, 0.55);
+  border-color: rgba(168, 78, 70, 0.65);
+  color: #c98880;
 }
 
 .btn.danger:hover {
-  background: rgba(248, 113, 113, 0.12);
+  background: rgba(110, 44, 40, 0.7);
+  border-color: rgba(184, 92, 84, 0.8);
+  color: #d4a39c;
 }
 
 .library-badge {

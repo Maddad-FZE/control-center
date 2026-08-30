@@ -766,6 +766,22 @@ a:hover {
   line-height: 1.45;
 }
 
+.secret-field {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.secret-field input {
+  flex: 1;
+  min-width: 0;
+}
+
+.secret-field .btn {
+  flex: 0 0 auto;
+  border-radius: 2px;
+}
+
 .form-group--checkbox {
   margin-bottom: 0.85rem;
 }
@@ -839,12 +855,70 @@ body.wizard-notify .toast-stack {
   border-radius: 50%;
 }
 
+.cc-wizard-orbs {
+  position: fixed;
+  inset: 0;
+  z-index: 10003;
+  pointer-events: none;
+}
+
+.cc-wizard-orb {
+  pointer-events: auto;
+  position: fixed;
+  min-width: 3.6rem;
+  padding: 0.42rem 0.7rem 0.38rem;
+  border: 2px solid #1a120c;
+  border-radius: 1.5rem 1.85rem 1.35rem 1.7rem;
+  background: #fffef6;
+  color: #1a120c;
+  font-family: var(--font-accent);
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  cursor: pointer;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.38);
+}
+
+.cc-wizard-orb::after {
+  content: "";
+  position: absolute;
+  left: 42%;
+  bottom: -7px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid #1a120c;
+  border-radius: 50%;
+  background: inherit;
+}
+
+.cc-wizard-orb--tips {
+  background: #ffe27a;
+  border-radius: 1.7rem 1.35rem 1.9rem 1.45rem;
+}
+
+.cc-wizard-orb--alerts {
+  background: #f4a39a;
+  border-radius: 1.25rem 1.9rem 1.5rem 1.8rem;
+}
+
+.cc-wizard-orb--update {
+  background: #9fd4c2;
+  border-radius: 1.85rem 1.4rem 1.65rem 1.95rem;
+}
+
+.cc-wizard-orb:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
 .cc-wizard-balloon__text {
   max-width: 16.5rem !important;
   min-width: 10rem !important;
-  font-family: var(--font-mono) !important;
-  font-size: 0.8rem !important;
-  line-height: 1.4 !important;
+  font-family: var(--font-accent) !important;
+  font-size: 0.92rem !important;
+  line-height: 1.35 !important;
+  letter-spacing: 0.01em !important;
+  text-transform: none !important;
   color: #1a120c !important;
 }
 
@@ -948,10 +1022,32 @@ body.theme-slate .user-chip-avatar {
 
 .wrap.wrap--dashboard,
 .wrap.wrap--library,
-.wrap.wrap--card-form {
+.wrap.wrap--card-form,
+.wrap.wrap--service-view {
   max-width: none;
   width: 100%;
   padding: 1rem 1.25rem 1.5rem;
+}
+
+body:has(.wrap--service-view) {
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.wrap.wrap--service-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+body:has(.wrap--service-view) .topbar,
+body:has(.wrap--service-view) .footer {
+  flex-shrink: 0;
 }
 
 body:has(.wrap--card-form) {

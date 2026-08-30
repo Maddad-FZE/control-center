@@ -70,7 +70,7 @@ def library_view(request):
     if not request.user.is_superuser:
         return redirect("dashboard")
 
-    detect_services_host(request)
+    host = detect_services_host(request)
 
     addon_states = addon_states_for_catalog()
     installed_map = {row.slug: row for row in InstalledService.objects.all()}
@@ -89,6 +89,10 @@ def library_view(request):
         app_version=get_current_version(),
         service_cards=service_cards,
     )
+    for item in catalog_items:
+        port = item.get("host_port") or 0
+        if item.get("type") == "service" and port:
+            item["open_href"] = f"http://{host}:{port}/"
 
     return render(
         request,

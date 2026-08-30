@@ -1,0 +1,42 @@
+{% extends "core/base.html" %}
+{% load static assets %}
+{% block title %}{{ service.name }} · {{ site_title }}{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{% vstatic 'css/dashboard.css' %}">
+{% endblock %}
+{% block content %}
+{% if user.is_authenticated %}<meta name="csrf-token" content="{{ csrf_token }}">{% endif %}
+<div
+  class="service-overlay"
+  data-service-id="{{ service.id }}"
+  data-external-href="{{ service_href }}"
+  data-open-new-tab="{% if open_in_new_tab %}1{% else %}0{% endif %}"
+>
+  <div class="service-overlay__bar">
+    <a href="{% url 'dashboard' %}" class="btn secondary service-overlay__back">Back</a>
+    <h2 class="service-overlay__title">{{ service.name }}</h2>
+    <a
+      href="{{ service_href }}"
+      class="btn secondary"
+      target="_blank"
+      rel="noopener"
+    >Open in a new tab</a>
+    <button
+      type="button"
+      class="btn secondary service-overlay__always"
+      id="overlay-always-btn"
+      aria-pressed="{% if open_in_new_tab %}true{% else %}false{% endif %}"
+    >Always open in a new tab</button>
+  </div>
+  <p class="service-overlay__hint">If this pane is blank, the service blocks embedding. Use Open in a new tab.</p>
+  <iframe
+    class="service-overlay__frame"
+    src="{{ service_href }}"
+    title="{{ service.name }}"
+    referrerpolicy="no-referrer-when-downgrade"
+  ></iframe>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script src="{% vstatic 'js/service-open.js' %}"></script>
+{% endblock %}
