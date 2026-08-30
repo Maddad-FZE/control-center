@@ -59,6 +59,21 @@ class CatalogRelease(models.Model):
         return f"{self.repo} ({self.latest_version or 'unknown'})"
 
 
+class TunnelRoute(models.Model):
+    hostname = models.CharField(max_length=255, unique=True)
+    catalog_slug = models.CharField(max_length=64, blank=True)
+    service_id = models.PositiveIntegerField(null=True, blank=True)
+    origin_url = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Tunnel route"
+        verbose_name_plural = "Tunnel routes"
+
+    def __str__(self):
+        return self.hostname
+
+
 class LibraryNote(models.Model):
     body = models.TextField(blank=True)
     updated_at = models.DateTimeField(auto_now=True)

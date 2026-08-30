@@ -34,12 +34,21 @@
         {% elif item.status == "installing" %}
         <button type="button" class="btn secondary" disabled>Installing…</button>
         {% else %}
-        {% if item.open_href %}
+        {% if item.is_tunnel %}
+        <a href="{% url 'settings' %}?section=tunnel" class="btn">{% if tunnel_status.linked %}Tunnel{% else %}Link account{% endif %}</a>
+        {% elif item.open_href %}
         <a href="{{ item.open_href }}" class="btn" target="_blank" rel="noopener">Open</a>
+        {% endif %}
+        {% if item.can_publish %}
+        {% if item.published_hostname %}
+        <button type="button" class="btn secondary library-unpublish-btn" data-hostname="{{ item.published_hostname }}">Unpublish</button>
+        {% else %}
+        <button type="button" class="btn secondary library-publish-btn" data-slug="{{ item.slug }}" data-name="{{ item.name }}" data-host-port="{{ item.host_port }}">Publish</button>
+        {% endif %}
         {% endif %}
         <button type="button" class="btn danger library-uninstall-btn" data-type="service" data-slug="{{ item.slug }}">Uninstall</button>
         {% endif %}
-        {% if item.type == "service" and not item.service_id %}
+        {% if item.type == "service" and not item.service_id and not item.is_tunnel %}
         <a href="{% url 'service_create' %}?catalog={{ item.slug }}" class="btn secondary library-icon-btn library-add-card-btn" title="Add card" aria-label="Add card">+</a>
         {% endif %}
       {% else %}

@@ -28,6 +28,11 @@ def _clear_uptime_cache_if_kuma(slug):
     from django.core.cache import cache
 
     cache.delete("uptime:payload")
+
+
+TUNNEL_SLUG = "cloudflare-tunnel"
+NO_CARD_ON_INSTALL = frozenset({"uptime-kuma", TUNNEL_SLUG})
+
 PRIVATE_NETS = (
     ipaddress.ip_network("10.0.0.0/8"),
     ipaddress.ip_network("172.16.0.0/12"),
@@ -280,8 +285,19 @@ def _install_worker(slug):
     try:
         client = get_docker_client()
         client.images.pull(image)
-        host_port = pick_host_port(client, start_port)
         _remove_container(client, container_name)
+
+        if slug == TUNNEL_SLUG:
+            installed_version = _image_version(client, image)
+            InstalledService.objects.filter(slug=slug).update(
+                host_port=0,
+                installed_version=installed_version,
+                status=InstalledService.Status.STOPPED,
+                error="",
+            )
+            return
+
+        host_port = pick_host_port(client, start_port)
 
         volume_map = {}
         for idx, container_path in enumerate(spec.get("volumes") or []):
@@ -319,7 +335,7 @@ def _install_worker(slug):
             status=InstalledService.Status.RUNNING,
             error="",
         )
-        if slug != "uptime-kuma":
+        if slug not in NO_CARD_ON_INSTALL:
             create_dashboard_card(slug, entry, host_port)
         _clear_uptime_cache_if_kuma(slug)
     except Exception as exc:  # noqa: BLE001 - background worker must record failure
@@ -390,6 +406,13 @@ def uninstall(slug, remove_data=False):
         )
         return False, str(exc)
 
+    if slug == TUNNEL_SLUG:
+        try:
+            from library.cloudflare import unlink_account
+
+            unlink_account(delete_remote=False)
+        except Exception:
+            logger.debug("Could not unlink Cloudflare on uninstall")
     delete_dashboard_card(slug)
     InstalledService.objects.filter(slug=slug).delete()
     _clear_uptime_cache_if_kuma(slug)

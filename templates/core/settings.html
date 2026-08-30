@@ -9,6 +9,7 @@
     <nav class="settings-nav" aria-label="Settings sections">
       <a href="?section=appearance" class="settings-nav__item{% if active_section == 'appearance' %} is-active{% endif %}" data-section="appearance">Appearance</a>
       <a href="?section=site" class="settings-nav__item{% if active_section == 'site' %} is-active{% endif %}" data-section="site">Site</a>
+      <a href="?section=tunnel" class="settings-nav__item{% if active_section == 'tunnel' %} is-active{% endif %}" data-section="tunnel">Tunnel</a>
       <a href="?section=users" class="settings-nav__item{% if active_section == 'users' %} is-active{% endif %}" data-section="users">Users</a>
       <a href="?section=updates" class="settings-nav__item{% if active_section == 'updates' %} is-active{% endif %}" data-section="updates">
         Updates
@@ -115,6 +116,50 @@
           </div>
           <button type="submit" class="btn">Save site settings</button>
         </form>
+      </section>
+
+      <section class="settings-pane{% if active_section == 'tunnel' %} is-active{% endif %}" id="settings-tunnel" data-section="tunnel">
+        <h2 class="settings-section-title">Tunnel</h2>
+        <div id="tunnel-not-installed"{% if tunnel_status.installed %} hidden{% endif %}>
+          <p class="settings-hint" id="tunnel-status-line">Cloudflare Tunnel is not installed.</p>
+          <div id="tunnel-install-cta">
+            <a class="btn" href="{% url 'library' %}?q=cloudflare-tunnel">Install Cloudflare Tunnel</a>
+          </div>
+        </div>
+        <div id="tunnel-installed-settings"{% if not tunnel_status.installed %} hidden{% endif %}>
+          <p class="settings-hint">Paste an API token and click Connect. On Cloudflare’s token page, leave Account and Zone on All and confirm Account includes Cloudflare Tunnel Edit. Link account is the last step. Nothing is published until you choose a service. Control Center stays on the LAN.</p>
+          <p class="settings-hint" id="tunnel-installed-status">Checking tunnel…</p>
+          <div id="tunnel-link-form"{% if tunnel_status.linked %} hidden{% endif %}>
+            <div class="form-group">
+              <label for="tunnel-api-token">API token</label>
+              <div class="secret-field">
+                <input type="password" id="tunnel-api-token" autocomplete="off">
+                <button type="button" class="btn secondary" data-secret-toggle="tunnel-api-token">Show</button>
+                <button type="button" class="btn secondary" data-secret-copy="tunnel-api-token">Copy</button>
+              </div>
+            </div>
+            <div class="form-group" id="tunnel-account-group" hidden>
+              <label for="tunnel-account">Account</label>
+              <select id="tunnel-account"></select>
+            </div>
+            <div class="form-group" id="tunnel-zone-group" hidden>
+              <label for="tunnel-zone">Zone</label>
+              <select id="tunnel-zone"></select>
+            </div>
+            <div class="form-group">
+              <a class="btn secondary" id="tunnel-token-link" href="{{ tunnel_status.token_url|default:'#' }}" target="_blank" rel="noopener">Create Cloudflare token</a>
+              <button type="button" class="btn" id="tunnel-link-btn" data-step="connect">Connect</button>
+            </div>
+            <p class="settings-hint" id="tunnel-link-error" hidden></p>
+          </div>
+          <div id="tunnel-linked-panel"{% if not tunnel_status.linked %} hidden{% endif %}>
+            <p class="settings-hint" id="tunnel-linked-meta">{% if tunnel_status.zone_name %}Zone {{ tunnel_status.zone_name }}{% endif %}</p>
+            <h3 class="settings-section-title">Published hostnames</h3>
+            <ul class="tunnel-route-list" id="tunnel-route-list"></ul>
+            <p class="settings-hint" id="tunnel-route-empty"{% if tunnel_status.routes %} hidden{% endif %}>Nothing is published. Use Publish on a Library service or a dashboard card.</p>
+            <button type="button" class="btn danger" id="tunnel-unlink-btn">Unlink account</button>
+          </div>
+        </div>
       </section>
 
       <section class="settings-pane{% if active_section == 'users' %} is-active{% endif %}" id="settings-users" data-section="users">
@@ -304,4 +349,5 @@
 {% endblock %}
 {% block extra_js %}
 <script src="{% vstatic 'js/settings-tabs.js' %}" defer></script>
+<script src="{% vstatic 'js/tunnel.js' %}" defer></script>
 {% endblock %}

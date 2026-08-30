@@ -21,7 +21,7 @@ admin.site.register(User, UserAdmin)
 @admin.register(SiteSettings)
 class SiteSettingsAdmin(admin.ModelAdmin):
     list_display = ("title", "tagline", "weather_location", "wizard_enabled")
-    exclude = ("kuma_password",)
+    exclude = ("kuma_password", "cf_api_token", "cf_tunnel_token")
 
 
 @admin.register(UpdateStatus)

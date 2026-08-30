@@ -117,7 +117,9 @@
     </div>
   </div>
 </div>
+{% include "library/_publish_modal.html" %}
 {% endblock %}
 {% block extra_js %}
 <script src="{% vstatic 'js/library.js' %}" defer></script>
+<script src="{% vstatic 'js/tunnel.js' %}" defer></script>
 {% endblock %}

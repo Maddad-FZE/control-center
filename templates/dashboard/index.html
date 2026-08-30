@@ -172,6 +172,7 @@
   </aside>
   {% endif %}
 </div>
+{% include "library/_publish_modal.html" %}
 {% endblock %}
 
 {% block extra_js %}
@@ -179,4 +180,5 @@
 <script src="{% vstatic 'js/dashboard.js' %}"></script>
 <script src="{% vstatic 'js/service-open.js' %}"></script>
 <script src="{% vstatic 'js/card-menu.js' %}"></script>
+<script src="{% vstatic 'js/tunnel.js' %}"></script>
 {% endblock %}

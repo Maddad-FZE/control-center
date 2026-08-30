@@ -121,6 +121,27 @@ class OverlayViewTests(TestCase):
         self.assertIn('window.open(href, "_blank", "noopener")', text)
         self.assertIn("setPrefRemote", text)
 
+    def test_publish_online_uses_popup_modal(self):
+        from core.models import SiteSettings
+
+        site = SiteSettings.load()
+        site.cf_api_token = "token"
+        site.cf_tunnel_id = "tun"
+        site.cf_tunnel_token = "tt"
+        site.save()
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse("dashboard"))
+        self.assertContains(resp, 'id="tunnel-publish-modal"')
+        self.assertContains(resp, 'class="library-modal"')
+        self.assertContains(resp, "Publish online")
+        self.assertContains(resp, 'id="tunnel-publish-subdomain"')
+        self.assertContains(resp, 'id="tunnel-publish-zone"')
+        css = (Path(__file__).resolve().parents[1] / "static" / "css" / "theme.css").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(".library-modal {", css)
+        self.assertIn("position: fixed", css)
+
     def test_guest_pref_api_is_rejected(self):
         resp = self.client.post(
             reverse("api_service_open_pref", args=[self.public.id]),

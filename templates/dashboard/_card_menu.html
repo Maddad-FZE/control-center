@@ -12,6 +12,13 @@
       {% if service.is_public %}Make private{% else %}Make public{% endif %}
     </button>
     <a href="{% url 'service_edit' service.id %}" class="service-card-dropdown__item" role="menuitem">Edit card</a>
+    {% if tunnel_linked %}
+    {% if service.published_hostname %}
+    <button type="button" class="service-card-dropdown__item" data-action="unpublish" data-hostname="{{ service.published_hostname }}" role="menuitem">Unpublish {{ service.published_hostname }}</button>
+    {% else %}
+    <button type="button" class="service-card-dropdown__item" data-action="publish" data-service-id="{{ service.id }}" data-name="{{ service.name }}" data-origin="{{ service.href }}" role="menuitem">Publish online</button>
+    {% endif %}
+    {% endif %}
     <button type="button" class="service-card-dropdown__item service-card-dropdown__item--danger" data-action="delete" role="menuitem">Delete card</button>
     {% endif %}
   </div>

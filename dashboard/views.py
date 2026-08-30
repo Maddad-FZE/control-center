@@ -80,12 +80,31 @@ def dashboard_view(request):
             all_services.extend(cat.filtered_services)
         service_updates = update_map_for_services(all_services)
 
+    published = {}
+    tunnel_linked = False
+    tunnel_zone = ""
+    if is_admin:
+        try:
+            from core.models import SiteSettings
+            from library.cloudflare import tunnel_is_linked
+            from library.models import TunnelRoute
+
+            tunnel_linked = tunnel_is_linked()
+            tunnel_zone = SiteSettings.load().cf_zone_name
+            published = {
+                row.service_id: row.hostname
+                for row in TunnelRoute.objects.exclude(service_id=None)
+            }
+        except Exception:
+            tunnel_linked = False
+
     tracked_services = []
     app_services = []
     misc_services = []
     down_section_ids = set()
     for cat in categories:
         for svc in cat.filtered_services:
+            svc.published_hostname = published.get(svc.id, "")
             if svc.is_misc:
                 misc_services.append(svc)
                 bucket = "misc"
@@ -114,6 +133,8 @@ def dashboard_view(request):
         "services_unknown": sum(1 for row in visible_status if row.get("is_up") is None),
         "unack_alerts": 0,
         "open_in_new_tab_ids": _open_tab_ids(request.user),
+        "tunnel_linked": tunnel_linked,
+        "tunnel_zone": tunnel_zone,
     }
 
     if not is_guest:

@@ -53,6 +53,11 @@ const TIPS = {
     { text: "Monitor login is generated for Uptime Kuma. Show or copy it here if you already created your own admin.", target: "#id_kuma_username" },
     { text: "Call in the Wizard is this checkbox. The one under it controls notifications.", target: "#id_wizard_enabled" },
   ],
+  settings_tunnel: [
+    { text: "Cloudflare Tunnel is a Library install. If it is missing, use the button to go install it.", target: "#tunnel-install-cta" },
+    { text: "Tunnel links Cloudflare with an API token. Create one from the button, paste it, click Connect, then Link account. Nothing goes online until you publish a service.", target: "#tunnel-installed-settings" },
+    { text: "Control Center cannot be published. It stays on the LAN.", target: "#settings-tunnel" },
+  ],
   service_create: [
     { text: "Fill in the details on the left, pick icons in the middle, and check the preview on the right.", target: ".card-form-opens" },
     { text: "The right pane shows how the card will look on the dashboard.", target: ".card-form-stats" },

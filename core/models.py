@@ -21,6 +21,13 @@ class SiteSettings(models.Model):
     kuma_username = models.CharField(max_length=64, blank=True)
     kuma_password = models.CharField(max_length=128, blank=True)
     kuma_setup_done = models.BooleanField(default=False)
+    cf_api_token = models.CharField(max_length=255, blank=True)
+    cf_account_id = models.CharField(max_length=64, blank=True)
+    cf_zone_id = models.CharField(max_length=64, blank=True)
+    cf_zone_name = models.CharField(max_length=255, blank=True)
+    cf_tunnel_id = models.CharField(max_length=64, blank=True)
+    cf_tunnel_token = models.TextField(blank=True)
+    cf_tunnel_name = models.CharField(max_length=64, blank=True)
 
     class Meta:
         verbose_name = "Site settings"

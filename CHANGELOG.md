@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-30
+
+### Added
+
+- Library Cloudflare Tunnel install, token link in Settings, and explicit publish/unpublish
+- Publishing Control Center or port 8099 is blocked so the dashboard stays on the LAN
+
+### Fixed
+
+- Cloudflare token link uses Tunnel (`argotunnel`) + All accounts/zones, and finds the account from DNS when `/accounts` is empty
+- Tunnel Settings starts with Connect, then Link account, and maps Cloudflare auth failures to a tunnel-permission hint
+- Publish online opens as a centered popup on the dashboard as well as Library
+- Publish hostname field is subdomain-only; the Cloudflare zone is shown and not editable
+- Tunnel origins are host:port only (no path), so Pi-hole `/admin/` and similar cards can be published
+- Settings → Tunnel shows an install prompt until Cloudflare Tunnel is installed
+
 ## [0.3.0] - 2026-08-30
 
 ### Added

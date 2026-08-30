@@ -1,0 +1,19 @@
+<div class="library-modal" id="tunnel-publish-modal" hidden>
+  <div class="library-modal__backdrop" data-publish-close></div>
+  <div class="library-modal__panel" role="dialog" aria-modal="true" aria-labelledby="tunnel-publish-title">
+    <h2 class="library-modal__title" id="tunnel-publish-title">Publish online</h2>
+    <p class="settings-hint" id="tunnel-publish-desc">You are about to put this service on the public internet. Anyone who can guess or find the hostname may reach it.</p>
+    <div class="form-group">
+      <label for="tunnel-publish-subdomain">Subdomain</label>
+      <div class="tunnel-host-field">
+        <input type="text" id="tunnel-publish-subdomain" placeholder="photos" autocomplete="off" spellcheck="false">
+        <span class="tunnel-host-zone" id="tunnel-publish-zone" data-zone="{% firstof tunnel_status.zone_name tunnel_zone %}">.{% firstof tunnel_status.zone_name tunnel_zone "example.com" %}</span>
+      </div>
+    </div>
+    <p class="settings-hint" id="tunnel-publish-error" hidden></p>
+    <div class="library-modal__actions">
+      <button type="button" class="btn secondary" data-publish-close>Cancel</button>
+      <button type="button" class="btn danger" id="tunnel-publish-confirm">Publish to the internet</button>
+    </div>
+  </div>
+</div>

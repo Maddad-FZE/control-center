@@ -169,6 +169,25 @@ SERVICES = [
         "widget_type": "none",
         "compose": _compose("wg-easy", "ghcr.io/wg-easy/wg-easy", 51821, env={"WG_HOST": "192.168.0.40", "PASSWORD": "changeme"}, volumes=["./data:/etc/wireguard"]),
     },
+    {
+        "slug": "cloudflare-tunnel",
+        "name": "Cloudflare Tunnel",
+        "tagline": "Publish services online without opening ports",
+        "category": "Networking",
+        "repo": "cloudflare/cloudflared",
+        "website": "https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/",
+        "icon": "https://cdn.simpleicons.org/cloudflare",
+        "default_port": 0,
+        "path": "/",
+        "widget_type": "none",
+        "compose": (
+            "services:\n"
+            "  cloudflared:\n"
+            "    image: cloudflare/cloudflared:latest\n"
+            "    restart: unless-stopped\n"
+            "    command: tunnel --no-autoupdate run\n"
+        ),
+    },
     # Media
     {
         "slug": "jellyfin",
@@ -696,6 +715,7 @@ LIBRARY_DESCRIPTIONS = {
     "nginx-proxy-manager": "Point hostnames at containers and issue Let’s Encrypt certificates from a form. Reverse proxy without hand-editing nginx configs.",
     "traefik": "Cloud-native edge router that discovers Docker services and routes HTTPS to them. Labels on a container become live routes.",
     "wireguard-easy": "WireGuard VPN with a simple web UI for peers and configs. Reach the homelab from phones and laptops without exposing every port.",
+    "cloudflare-tunnel": "Cloudflare connector for this host. Link your account in Settings, then publish a service only when you choose to put it on the public internet. Control Center stays on the LAN.",
     "jellyfin": "Free software media server for movies, TV, and music. Streams to browsers, apps, and TVs with no license fee or tracking.",
     "immich": "Self-hosted photo and video backup with mobile upload and a timeline. A private stand-in for Google Photos on your own disk.",
     "navidrome": "Lightweight Subsonic-compatible music server for a local library. Streams to web and mobile clients with a small memory footprint.",

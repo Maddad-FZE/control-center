@@ -168,6 +168,12 @@ def settings_view(request):
         "check_interval_hours": django_settings.UPDATE_CHECK_INTERVAL_HOURS,
     }
     context.update(_audit_settings_context(request))
+    try:
+        from library.cloudflare import status_payload as tunnel_status
+
+        context["tunnel_status"] = tunnel_status()
+    except Exception:
+        context["tunnel_status"] = {"installed": False, "linked": False, "routes": [], "token_url": ""}
 
     return render(request, "core/settings.html", context)
 

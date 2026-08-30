@@ -53,6 +53,34 @@
           }
         }
 
+        if (action === "publish") {
+          if (typeof window.ccOpenTunnelPublish === "function") {
+            window.ccOpenTunnelPublish({
+              name: actionBtn.dataset.name,
+              serviceId: actionBtn.dataset.serviceId,
+            });
+          }
+        }
+
+        if (action === "unpublish") {
+          try {
+            const resp = await fetch("/library/api/tunnel/unpublish/", {
+              method: "POST",
+              headers: {
+                "X-CSRFToken": getCsrfToken(),
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ hostname: actionBtn.dataset.hostname }),
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) throw new Error(data.error || "unpublish failed");
+            window.location.reload();
+          } catch (err) {
+            console.warn("unpublish failed", err);
+            window.alert(err.message);
+          }
+        }
+
         if (action === "delete") {
           if (!confirm("Delete this card? This cannot be undone.")) return;
           try {
