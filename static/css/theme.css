@@ -840,6 +840,19 @@ body.wizard-notify .toast-stack {
   z-index: 10001 !important;
 }
 
+.cc-wizard--teleport {
+  animation: cc-wizard-teleport 0.42s ease-out;
+}
+
+@keyframes cc-wizard-teleport {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .cc-wizard-balloon {
   z-index: 10002 !important;
   overflow: visible !important;
@@ -1276,6 +1289,18 @@ body:has(.wrap--card-form) .footer {
   letter-spacing: 0.1em;
   text-transform: uppercase;
   cursor: pointer;
+}
+
+.btn.danger {
+  background: rgba(92, 36, 32, 0.55);
+  border-color: rgba(168, 78, 70, 0.65);
+  color: #c98880;
+}
+
+.btn.danger:hover {
+  background: rgba(110, 44, 40, 0.7);
+  border-color: rgba(184, 92, 84, 0.8);
+  color: #d4a39c;
 }
 
 .btn.secondary {

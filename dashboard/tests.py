@@ -1,5 +1,5 @@
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
 from django.core.cache import cache
@@ -141,6 +141,37 @@ class OverlayViewTests(TestCase):
         )
         self.assertIn(".library-modal {", css)
         self.assertIn("position: fixed", css)
+
+    def test_published_card_opens_public_url_and_keeps_lan_menu(self):
+        from library.models import TunnelRoute
+
+        TunnelRoute.objects.create(
+            hostname="photos.example.com",
+            catalog_slug="immich",
+            service_id=self.public.id,
+            origin_url="http://192.168.0.40:8082",
+        )
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse("dashboard"))
+        self.assertContains(resp, "https://photos.example.com/")
+        self.assertContains(resp, "Open using IP")
+        self.assertContains(resp, f'href="{self.public.href}"')
+        overlay = self.client.get(reverse("service_view", args=[self.public.id]))
+        self.assertContains(overlay, 'src="https://photos.example.com/"')
+        self.assertContains(overlay, "Open using IP")
+        self.assertContains(overlay, self.public.href)
+
+    def test_guest_published_card_uses_public_url(self):
+        from library.models import TunnelRoute
+
+        TunnelRoute.objects.create(
+            hostname="photos.example.com",
+            service_id=self.public.id,
+            origin_url="http://192.168.0.40:8082",
+        )
+        resp = self.client.get(reverse("dashboard"))
+        self.assertContains(resp, "https://photos.example.com/")
+        self.assertContains(resp, "Open using IP")
 
     def test_guest_pref_api_is_rejected(self):
         resp = self.client.post(
@@ -443,3 +474,101 @@ class WizardBubbleAvailabilityTests(TestCase):
         self.assertIn('const common = ["Blink", "Blink", "Pleased", "Wave"];', text)
         self.assertNotIn("setTimeout(done, 2400)", text)
         self.assertIn("function bumpAnim()", text)
+        self.assertIn("innerWidth + 24", text)
+        self.assertIn('pick(["Show", "GetAttention", "Surprised", "Congratulate"])', text)
+        self.assertIn("if (!greeted)", text)
+        self.assertIn("cc-wizard--teleport", text)
+        self.assertIn('agent._el.style.visibility = "hidden"', text)
+
+
+class HostOpsTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user("admin", password="x", is_superuser=True)
+        self.member = User.objects.create_user("member", password="x")
+
+    def test_admin_dashboard_has_reboot_and_usb(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse("dashboard"))
+        self.assertContains(resp, "Restart Pi")
+        self.assertContains(resp, 'data-panel-id="usb"')
+        self.assertContains(resp, 'data-admin="1"')
+
+    def test_member_dashboard_hides_reboot(self):
+        self.client.force_login(self.member)
+        resp = self.client.get(reverse("dashboard"))
+        self.assertNotContains(resp, "Restart Pi")
+        self.assertContains(resp, 'data-panel-id="usb"')
+        self.assertNotContains(resp, 'data-admin="1"')
+
+    def test_reboot_forbidden_for_member(self):
+        self.client.force_login(self.member)
+        resp = self.client.post(reverse("api_system_reboot"))
+        self.assertEqual(resp.status_code, 403)
+
+    def test_reboot_schedules_for_admin(self):
+        self.client.force_login(self.admin)
+        with patch("dashboard.hostops.threading.Timer") as timer:
+            timer.return_value.start = MagicMock()
+            resp = self.client.post(reverse("api_system_reboot"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["ok"])
+        timer.assert_called()
+
+    def test_docker_restart_rejects_bad_name(self):
+        self.client.force_login(self.admin)
+        resp = self.client.post(
+            reverse("api_docker_restart"),
+            data='{"name":"../evil"}',
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_docker_restart_calls_container(self):
+        self.client.force_login(self.admin)
+        fake_container = MagicMock()
+        fake_client = MagicMock()
+        fake_client.containers.get.return_value = fake_container
+        with patch("dashboard.hostops._docker_client", return_value=fake_client):
+            resp = self.client.post(
+                reverse("api_docker_restart"),
+                data='{"name":"cc-pihole"}',
+                content_type="application/json",
+            )
+        self.assertEqual(resp.status_code, 200)
+        fake_container.restart.assert_called_once()
+
+    def test_usb_list_reads_sysfs(self):
+        import tempfile
+        from pathlib import Path
+
+        from dashboard import hostops
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "devices"
+            dev = root / "1-1"
+            iface = dev / "1-1:1.0"
+            iface.mkdir(parents=True)
+            (dev / "idVendor").write_text("0781\n")
+            (dev / "idProduct").write_text("5581\n")
+            (dev / "manufacturer").write_text("SanDisk\n")
+            (dev / "product").write_text("Ultra\n")
+            (dev / "speed").write_text("480\n")
+            (dev / "bDeviceClass").write_text("00\n")
+            (iface / "bInterfaceClass").write_text("08\n")
+            with self.settings(USB_SYSFS_ROOT=str(root)):
+                payload = hostops.list_usb_devices()
+        self.assertTrue(payload["available"])
+        self.assertEqual(payload["devices"][0]["kind"], "Storage")
+        self.assertEqual(payload["devices"][0]["name"], "SanDisk Ultra")
+
+    def test_unmount_rejects_system_path(self):
+        from dashboard import hostops
+
+        ok, message = hostops.unmount_path("/etc")
+        self.assertFalse(ok)
+        self.assertIn("not a removable", message)
+
+    def test_library_restart_requires_install(self):
+        self.client.force_login(self.admin)
+        resp = self.client.post(reverse("api_service_restart", args=["pihole"]))
+        self.assertEqual(resp.status_code, 404)

@@ -69,9 +69,9 @@
               {% include "dashboard/_card_menu.html" %}
               <a
                 class="bookmark bookmark--service{% if s and not s.is_up %} bookmark--down{% endif %}"
-                href="{% if service.id in open_in_new_tab_ids %}{{ service.href }}{% else %}{% url 'service_view' service.id %}{% endif %}"
+                href="{% if service.id in open_in_new_tab_ids %}{{ service.open_href }}{% else %}{% url 'service_view' service.id %}{% endif %}"
                 {% if service.id in open_in_new_tab_ids %}target="_blank" rel="noopener"{% endif %}
-                data-external-href="{{ service.href }}"
+                data-external-href="{{ service.open_href }}"
                 data-view-href="{% url 'service_view' service.id %}"
                 data-service-id="{{ service.id }}"
                 data-service-name="{{ service.name|lower }}"
@@ -96,7 +96,7 @@
   </div>
 
   {% if not is_guest %}
-  <aside class="ops-stack">
+  <aside class="ops-stack"{% if is_admin %} data-admin="1"{% endif %}>
     <section class="panel" data-panel-id="system">
       <button type="button" class="panel-head panel-toggle" aria-expanded="true" aria-controls="panel-system">
         <span class="panel-toggle__label">System</span>
@@ -106,6 +106,26 @@
         <div id="system-stats">
           <div class="skeleton-row"></div>
           <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+        </div>
+        {% if is_admin %}
+        <div class="ops-actions">
+          <button type="button" class="btn danger" id="host-reboot-btn">Restart Pi</button>
+        </div>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="panel" data-panel-id="usb">
+      <div class="panel-head panel-head--alerts">
+        <button type="button" class="panel-toggle panel-toggle--inline" aria-expanded="true" aria-controls="panel-usb">
+          <span class="panel-toggle__label">USB</span>
+          <span class="panel-chevron" aria-hidden="true">▾</span>
+        </button>
+        <button type="button" class="btn secondary btn-ack" id="usb-refresh-btn">Refresh</button>
+      </div>
+      <div class="panel-body" id="panel-usb">
+        <div id="usb-stats">
           <div class="skeleton-row"></div>
         </div>
       </div>
@@ -173,6 +193,19 @@
   {% endif %}
 </div>
 {% include "library/_publish_modal.html" %}
+{% if is_admin %}
+<div class="library-modal" id="host-reboot-modal" hidden>
+  <div class="library-modal__backdrop" data-reboot-close></div>
+  <div class="library-modal__panel" role="dialog" aria-modal="true" aria-labelledby="host-reboot-title">
+    <h2 class="library-modal__title" id="host-reboot-title">Restart Pi</h2>
+    <p class="settings-hint">This reboots the whole machine. Every service will go offline until it comes back.</p>
+    <div class="library-modal__actions">
+      <button type="button" class="btn secondary" data-reboot-close>Cancel</button>
+      <button type="button" class="btn danger" id="host-reboot-confirm">Restart Pi</button>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}

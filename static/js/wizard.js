@@ -17,10 +17,11 @@ const TIPS = {
     { text: "Misc is for leftovers and simple links that do not need a full card.", target: ".services-group--misc .group-title" },
     { text: "Open a card to go to that service.", target: ".service-card, .bookmark--service" },
     { text: "The menu on a card lets you edit it, change who can see it, or delete it.", target: ".service-card-menu" },
-    { text: "System shows CPU, memory, and disk for this host.", target: '[data-panel-id="system"]' },
+    { text: "System shows CPU, memory, and disk for this host. Restart Pi reboots the machine.", target: '[data-panel-id="system"]' },
+    { text: "USB lists devices plugged into this host. Storage sticks can be unmounted from here.", target: '[data-panel-id="usb"]' },
     { text: "Alerts lists recent problems. ACK ALL marks them as seen.", target: "#alerts-panel-section" },
     { text: "Use ACK ALL when you have read the current alerts.", target: "#ack-all-btn" },
-    { text: "Containers lists Docker services running on this host.", target: '[data-panel-id="containers"]' },
+    { text: "Containers lists Docker services. Restart a container from the row if you are an admin.", target: '[data-panel-id="containers"]' },
     { text: "Monitor is a short history of which cards stayed up.", target: '[data-panel-id="uptime"]' },
   ],
   library: [
@@ -32,6 +33,7 @@ const TIPS = {
     { text: "Status shows only installed apps, or only ones you have not installed yet.", target: "#library-installed-filter" },
     { text: "Install pulls the image, starts the container, and can add a dashboard card.", target: ".library-install-btn, #library-grid" },
     { text: "Uninstall stops the container. You can also delete its data volumes.", target: ".library-uninstall-btn, #library-grid" },
+    { text: "Restart reloads an installed container without uninstalling it.", target: ".library-restart-btn, #library-grid" },
     { text: "Detected means the app was already running on the host. It was not installed from here.", target: ".library-badge--detected, #library-grid" },
     { text: "Add card pins an installed service onto the dashboard.", target: ".library-add-card-btn, .library-apps-head" },
     { text: "The GitHub button opens the project page for that app.", target: ".library-github-btn" },
@@ -157,6 +159,7 @@ const SAFE_ANIMS = new Set([
   "Think",
   "Uncertain",
   "Wave",
+  "Show",
 ]);
 
 function restPose(agent) {
@@ -355,6 +358,7 @@ async function boot() {
   if (agent._dblClickHandle) {
     agent._el.removeEventListener("dblclick", agent._dblClickHandle);
   }
+  agent._el.style.visibility = "hidden";
   agent.show(true);
   stopIdle(agent);
 
@@ -557,9 +561,28 @@ async function boot() {
   };
 
   const dest = savedPos();
-  agent._el.style.left = `${window.innerWidth + 24}px`;
-  agent._el.style.top = `${dest.y}px`;
-  finishEntrance();
+  if (!greeted) {
+    agent._el.style.left = `${window.innerWidth + 24}px`;
+    agent._el.style.top = `${dest.y}px`;
+    agent._el.style.visibility = "visible";
+    finishEntrance();
+  } else {
+    agent._el.style.left = `${dest.x}px`;
+    agent._el.style.top = `${dest.y}px`;
+    const finishReturn = async () => {
+      const entrance = pick(["Show", "GetAttention", "Surprised", "Congratulate"]);
+      agent._el.classList.add("cc-wizard--teleport");
+      agent._el.style.visibility = "visible";
+      await playAnim(agent, entrance);
+      agent._el.classList.remove("cc-wizard--teleport");
+      if (notices.length) {
+        notices.forEach((text, index) => notify(text, noticeLevel(index)));
+      } else {
+        resumeIdle();
+      }
+    };
+    finishReturn();
+  }
 
   let press = null;
   let clickTimer = null;

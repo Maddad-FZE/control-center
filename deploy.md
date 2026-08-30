@@ -100,6 +100,12 @@ Docker so the updater sends `SIGHUP` to the gunicorn master. Do not set
 `UPDATE_RESTART_COMMAND=docker restart …` inside the container. To bounce
 the container from the Pi, run `docker restart control-center` on the host.
 
+Dashboard **Restart Pi** reboots the machine. On Docker it starts a short
+privileged helper via the mounted socket. On a venv host set
+`HOST_REBOOT_COMMAND=sudo reboot`. Compose bind-mounts `/sys/bus/usb` so the
+USB panel can see devices; unmount still needs the mount path to be visible
+inside the container.
+
 Requirements and caveats:
 
 - Publish a GitHub **release** for the tag (not only a tag). The installer

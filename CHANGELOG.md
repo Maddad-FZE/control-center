@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Published cards open the public hostname; Open using IP in the card menu still goes to the LAN address
+- Restart the Pi from the System panel (admin, confirmed)
+- Restart Docker services from Containers, Library, and the card menu
+- USB panel lists plugged-in devices; storage mounts can be unmounted
+- Matter in the Library Home Automation catalog
+- Library and catalog cards use the bundled icon list, then the original icon if there is no match
+- Merlin swoops in on the first visit, then teleports or uses another entrance when you change pages
+
 ### Fixed
 
 - A finished previous install no longer blocks the next update (old 100% bar, log, and Reload popup)

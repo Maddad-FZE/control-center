@@ -1,27 +1,11 @@
 """Search the bundled Simple Icons library used across Library and cards."""
 
-import json
-from functools import lru_cache
-from pathlib import Path
-
-from django.conf import settings
-
 from library.catalog import SERVICES
-from library.icons import simpleicons_slug
-
-ICON_CDN = "https://cdn.simpleicons.org/"
-
-
-@lru_cache(maxsize=1)
-def all_simpleicons():
-    path = Path(settings.BASE_DIR) / "static" / "data" / "simpleicons.json"
-    if not path.exists():
-        return []
-    return json.loads(path.read_text(encoding="utf-8"))
+from library.icons import all_simpleicons, library_icon_url, simpleicons_slug
 
 
 def icon_url(slug):
-    return f"{ICON_CDN}{slug}/E87722"
+    return library_icon_url(slug)
 
 
 def featured_slugs():

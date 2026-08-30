@@ -21,6 +21,14 @@
       target="_blank"
       rel="noopener"
     >Open in a new tab</a>
+    {% if lan_href and lan_href != service_href %}
+    <a
+      href="{{ lan_href }}"
+      class="btn secondary"
+      target="_blank"
+      rel="noopener"
+    >Open using IP</a>
+    {% endif %}
     <button
       type="button"
       class="btn secondary service-overlay__always"

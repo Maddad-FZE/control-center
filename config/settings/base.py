@@ -189,6 +189,8 @@ UPDATES_ALLOW_INSTALL = os.environ.get("UPDATES_ALLOW_INSTALL", "true").lower() 
     "yes",
 )
 UPDATE_RESTART_COMMAND = os.environ.get("UPDATE_RESTART_COMMAND", "")
+HOST_REBOOT_COMMAND = os.environ.get("HOST_REBOOT_COMMAND", "")
+USB_SYSFS_ROOT = os.environ.get("USB_SYSFS_ROOT", "")
 SERVICES_HOST = os.environ.get("SERVICES_HOST", "")
 
 # Public subdomain → Django app name (notes, etc.)

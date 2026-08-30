@@ -97,8 +97,7 @@ def library_view(request):
     }
     for item in catalog_items:
         port = item.get("host_port") or 0
-        if item.get("type") == "service" and port:
-            item["open_href"] = f"http://{host}:{port}/"
+        item["published_hostname"] = published_by_slug.get(item.get("slug"), "")
         item["can_publish"] = (
             item.get("type") == "service"
             and item.get("slug") != "cloudflare-tunnel"
@@ -106,7 +105,14 @@ def library_view(request):
             and bool(port)
             and tunnel.get("linked")
         )
-        item["published_hostname"] = published_by_slug.get(item.get("slug"), "")
+        if item.get("type") == "service" and port:
+            lan = f"http://{host}:{port}/"
+            item["lan_href"] = lan
+            item["open_href"] = (
+                cf.public_href(item["published_hostname"], lan)
+                if item["published_hostname"]
+                else lan
+            )
         item["is_tunnel"] = item.get("slug") == "cloudflare-tunnel"
 
     return render(
@@ -172,6 +178,28 @@ def api_service_uninstall(request, slug):
         request=request,
         user=request.user,
         message=f"Uninstalled {slug}" + (" with data" if remove_data else ""),
+    )
+    return JsonResponse({"ok": True, "message": message})
+
+
+@login_required
+@require_POST
+def api_service_restart(request, slug):
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Forbidden"}, status=403)
+    row = InstalledService.objects.filter(slug=slug).first()
+    if not row or not row.container_name:
+        return JsonResponse({"error": "That service is not installed."}, status=404)
+    from dashboard.hostops import restart_container
+
+    ok, message = restart_container(row.container_name)
+    if not ok:
+        return JsonResponse({"error": message}, status=502)
+    log_audit(
+        "admin",
+        request=request,
+        user=request.user,
+        message=f"Restarted {slug}",
     )
     return JsonResponse({"ok": True, "message": message})
 

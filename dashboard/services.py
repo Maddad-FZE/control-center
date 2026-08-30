@@ -116,12 +116,14 @@ def get_docker_containers():
         containers = client.containers.list(all=True)
         out = []
         for c in containers:
+            labels = c.labels or {}
             out.append(
                 {
                     "name": c.name,
                     "image": (c.image.tags[0] if c.image.tags else c.image.short_id),
                     "status": c.status,
                     "state": c.status,
+                    "slug": labels.get("control-center.slug", ""),
                 }
             )
         result = {"available": True, "containers": out}

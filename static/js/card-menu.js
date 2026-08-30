@@ -81,6 +81,27 @@
           }
         }
 
+        if (action === "restart") {
+          const name = actionBtn.dataset.container;
+          if (!name) return;
+          if (!confirm(`Restart ${name}? It will be briefly offline.`)) return;
+          try {
+            const resp = await fetch("/api/docker/restart/", {
+              method: "POST",
+              headers: {
+                "X-CSRFToken": getCsrfToken(),
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ name }),
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) throw new Error(data.error || "restart failed");
+          } catch (err) {
+            console.warn("restart failed", err);
+            window.alert(err.message);
+          }
+        }
+
         if (action === "delete") {
           if (!confirm("Delete this card? This cannot be undone.")) return;
           try {

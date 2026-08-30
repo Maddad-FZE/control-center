@@ -22,7 +22,7 @@ from .forms import ServiceForm, ServiceMetricFormSet
 from .models import Alert, Service, ServiceCategory
 from .prefs import open_in_new_tab_ids, prefers_new_tab, set_open_in_new_tab
 from .presets import apply_preset_metrics
-from . import services
+from . import hostops, services
 
 
 def _is_guest(request):
@@ -35,6 +35,19 @@ def _open_tab_ids(user):
         Service.objects.filter(catalog_slug="uptime-kuma").values_list("id", flat=True)
     )
     return ids
+
+
+def _apply_publish_urls(service, by_id=None, by_slug=None):
+    from library.cloudflare import hostname_for_service, public_href
+
+    hostname = hostname_for_service(service, by_id=by_id, by_slug=by_slug)
+    lan = service.href or service.build_href()
+    public = public_href(hostname, lan) if hostname else ""
+    service.published_hostname = hostname
+    service.lan_href = lan
+    service.public_href = public
+    service.open_href = public or lan
+    return service
 
 
 def _filter_categories_for_request(request):
@@ -80,23 +93,25 @@ def dashboard_view(request):
             all_services.extend(cat.filtered_services)
         service_updates = update_map_for_services(all_services)
 
-    published = {}
+    published_by_id = {}
+    published_by_slug = {}
+    containers_by_slug = {}
     tunnel_linked = False
     tunnel_zone = ""
-    if is_admin:
-        try:
-            from core.models import SiteSettings
-            from library.cloudflare import tunnel_is_linked
-            from library.models import TunnelRoute
+    try:
+        from core.models import SiteSettings
+        from library.cloudflare import published_hostname_maps, tunnel_is_linked
 
+        published_by_id, published_by_slug = published_hostname_maps()
+        if is_admin:
             tunnel_linked = tunnel_is_linked()
             tunnel_zone = SiteSettings.load().cf_zone_name
-            published = {
-                row.service_id: row.hostname
-                for row in TunnelRoute.objects.exclude(service_id=None)
+            containers_by_slug = {
+                row.slug: row.container_name
+                for row in InstalledService.objects.exclude(container_name="")
             }
-        except Exception:
-            tunnel_linked = False
+    except Exception:
+        tunnel_linked = False
 
     tracked_services = []
     app_services = []
@@ -104,7 +119,8 @@ def dashboard_view(request):
     down_section_ids = set()
     for cat in categories:
         for svc in cat.filtered_services:
-            svc.published_hostname = published.get(svc.id, "")
+            _apply_publish_urls(svc, published_by_id, published_by_slug)
+            svc.container_name = containers_by_slug.get(svc.catalog_slug, "")
             if svc.is_misc:
                 misc_services.append(svc)
                 bucket = "misc"
@@ -170,7 +186,8 @@ def service_view(request, service_id):
     service = _visible_service(request, service_id)
     if service is None:
         return redirect("dashboard")
-    href = service.href or service.build_href()
+    _apply_publish_urls(service)
+    href = service.open_href
     if not href:
         return redirect("dashboard")
     return render(
@@ -179,6 +196,7 @@ def service_view(request, service_id):
         {
             "service": service,
             "service_href": href,
+            "lan_href": service.lan_href,
             "open_in_new_tab": prefers_new_tab(request.user, service.id),
             "is_guest": _is_guest(request),
         },
@@ -376,9 +394,76 @@ def api_system(request):
 
 
 @login_required
+@require_POST
+def api_system_reboot(request):
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Forbidden"}, status=403)
+    ok, message = hostops.schedule_reboot()
+    if not ok:
+        return JsonResponse({"error": message}, status=409)
+    log_audit(
+        "admin",
+        request=request,
+        user=request.user,
+        message="Requested host reboot",
+    )
+    return JsonResponse({"ok": True, "message": message})
+
+
+@login_required
+@require_GET
+def api_system_usb(request):
+    return JsonResponse(hostops.list_usb_devices())
+
+
+@login_required
+@require_POST
+def api_system_usb_unmount(request):
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Forbidden"}, status=403)
+    try:
+        body = json.loads(request.body.decode() or "{}")
+    except json.JSONDecodeError:
+        body = {}
+    ok, message = hostops.unmount_path(body.get("path") or "")
+    if not ok:
+        return JsonResponse({"error": message}, status=400)
+    log_audit(
+        "admin",
+        request=request,
+        user=request.user,
+        message=f"Unmounted USB path {body.get('path')}",
+    )
+    return JsonResponse({"ok": True, "message": message})
+
+
+@login_required
 @require_GET
 def api_docker(request):
     return JsonResponse(services.get_docker_containers())
+
+
+@login_required
+@require_POST
+def api_docker_restart(request):
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Forbidden"}, status=403)
+    try:
+        body = json.loads(request.body.decode() or "{}")
+    except json.JSONDecodeError:
+        body = {}
+    name = (body.get("name") or "").strip()
+    ok, message = hostops.restart_container(name)
+    if not ok:
+        status = 400 if "Invalid" in message or "not found" in message.lower() else 502
+        return JsonResponse({"error": message}, status=status)
+    log_audit(
+        "admin",
+        request=request,
+        user=request.user,
+        message=f"Restarted container {name}",
+    )
+    return JsonResponse({"ok": True, "message": message})
 
 
 @login_required

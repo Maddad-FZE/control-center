@@ -1040,6 +1040,57 @@
   color: #fca5a5;
 }
 
+.container-row__actions {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.3rem;
+}
+
+.btn.btn-compact {
+  padding: 0.18rem 0.45rem;
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+}
+
+.ops-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+  padding-top: 0.55rem;
+  border-top: 1px dashed rgba(201, 166, 107, 0.25);
+}
+
+.usb-row {
+  padding: 0.4rem 0;
+  border-bottom: 1px dashed rgba(201, 166, 107, 0.2);
+}
+
+.usb-row:last-child {
+  border-bottom: none;
+}
+
+.usb-row__name {
+  display: block;
+  color: var(--tva-cream);
+  font-size: 0.78rem;
+}
+
+.usb-row__meta {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 0.62rem;
+  color: var(--tva-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.usb-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+}
+
 .uptime-empty {
   display: flex;
   flex-direction: column;

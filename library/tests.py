@@ -67,6 +67,27 @@ class DashboardCardTests(TestCase):
         self.assertFalse(service.is_misc)
 
 
+class IconResolveTests(SimpleTestCase):
+    def test_known_slug_uses_bundled_icon_list(self):
+        from library.icons import icon_url_for_entry
+
+        url = icon_url_for_entry("pihole", "https://cdn.simpleicons.org/pihole")
+        self.assertTrue(url.endswith("/E87722") or "/E87722" in url)
+        self.assertIn("pihole", url)
+
+    def test_unknown_slug_keeps_original_icon(self):
+        from library.icons import icon_url_for_entry
+
+        original = "https://api.iconify.design/mdi/access-point.svg?color=%23e87722"
+        self.assertEqual(icon_url_for_entry("matter", original, name="Matter"), original)
+
+    def test_matter_is_in_the_catalog(self):
+        entry = get_service_by_slug("matter")
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry["category"], "Home Automation")
+        self.assertEqual(entry["default_port"], 5580)
+
+
 class LibrarySearchTests(TestCase):
     def test_library_page_has_search(self):
         admin = User.objects.create_user("admin", password="x", is_superuser=True)
@@ -77,6 +98,9 @@ class LibrarySearchTests(TestCase):
         self.assertContains(resp, 'id="library-empty"')
         self.assertContains(resp, 'id="uninstall-remove-data"')
         self.assertContains(resp, 'id="uninstall-remove-data" checked')
+        self.assertContains(resp, 'data-slug="matter"')
+        self.assertContains(resp, "Matter")
+        self.assertContains(resp, "api.iconify.design/mdi/access-point")
 
     def test_installed_kuma_has_open_link(self):
         from library.models import InstalledService
@@ -411,6 +435,19 @@ class CloudflareTunnelTests(TestCase):
         )
         with self.assertRaises(RuntimeError):
             compose_hostname(subdomain="photos.other.com", zone_name="example.com")
+
+    def test_public_href_uses_https_and_keeps_path(self):
+        from library.cloudflare import public_href
+
+        self.assertEqual(public_href(""), "")
+        self.assertEqual(
+            public_href("photos.example.com", "http://192.168.0.40:2283/"),
+            "https://photos.example.com/",
+        )
+        self.assertEqual(
+            public_href("pihole.example.com", "http://192.168.0.40:80/admin/"),
+            "https://pihole.example.com/admin/",
+        )
 
     def test_publish_subdomain_appends_zone(self):
         from unittest.mock import patch

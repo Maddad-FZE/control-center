@@ -38,6 +38,12 @@
         <a href="{% url 'settings' %}?section=tunnel" class="btn">{% if tunnel_status.linked %}Tunnel{% else %}Link account{% endif %}</a>
         {% elif item.open_href %}
         <a href="{{ item.open_href }}" class="btn" target="_blank" rel="noopener">Open</a>
+        {% if item.published_hostname and item.lan_href %}
+        <a href="{{ item.lan_href }}" class="btn secondary" target="_blank" rel="noopener">Open using IP</a>
+        {% endif %}
+        {% endif %}
+        {% if item.container_name %}
+        <button type="button" class="btn secondary library-restart-btn" data-slug="{{ item.slug }}" data-name="{{ item.name }}">Restart</button>
         {% endif %}
         {% if item.can_publish %}
         {% if item.published_hostname %}

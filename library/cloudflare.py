@@ -525,6 +525,40 @@ def compose_hostname(subdomain="", hostname="", zone_name=""):
     return f"{label}.{zone}"
 
 
+def public_href(hostname, lan_href=""):
+    """HTTPS URL on the published hostname, keeping the LAN path and query."""
+    host = (hostname or "").strip().rstrip(".").lower()
+    if not host:
+        return ""
+    parsed = urlparse((lan_href or "").strip())
+    path = parsed.path or "/"
+    if not path.startswith("/"):
+        path = "/" + path
+    query = f"?{parsed.query}" if parsed.query else ""
+    return f"https://{host}{path}{query}"
+
+
+def published_hostname_maps():
+    by_id = {}
+    by_slug = {}
+    for row in TunnelRoute.objects.exclude(hostname=""):
+        if row.service_id:
+            by_id[row.service_id] = row.hostname
+        if row.catalog_slug:
+            by_slug[row.catalog_slug] = row.hostname
+    return by_id, by_slug
+
+
+def hostname_for_service(service, by_id=None, by_slug=None):
+    if by_id is None or by_slug is None:
+        by_id, by_slug = published_hostname_maps()
+    host = by_id.get(getattr(service, "id", None)) or ""
+    slug = (getattr(service, "catalog_slug", None) or "").strip()
+    if not host and slug:
+        host = by_slug.get(slug) or ""
+    return host
+
+
 def publish_route(hostname, origin_url, catalog_slug="", service_id=None, request=None, subdomain=""):
     if not tunnel_is_linked():
         raise RuntimeError("Link a Cloudflare account in Settings first.")

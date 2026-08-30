@@ -28,7 +28,7 @@
   window.dashboardCache = {
     save: saveDashboardCache,
     load: loadDashboardCache,
-    hydrateKeys: ["system", "docker", "alerts", "health", "uptime", "widgets"],
+    hydrateKeys: ["system", "docker", "alerts", "health", "uptime", "widgets", "usb"],
     loadAll() {
       const out = {};
       this.hydrateKeys.forEach((key) => {

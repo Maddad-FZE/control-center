@@ -162,6 +162,35 @@
     window.location.reload();
   }
 
+  document.querySelectorAll(".library-restart-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const slug = btn.dataset.slug;
+      const name = btn.dataset.name || slug;
+      if (!slug) return;
+      if (!window.confirm(`Restart ${name}? It will be briefly offline.`)) return;
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "Restarting…";
+      try {
+        const resp = await fetch(`/library/api/services/${slug}/restart/`, {
+          method: "POST",
+          headers: { "X-CSRFToken": getCsrfToken() },
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data.error || "Restart failed");
+        btn.textContent = "Restarted";
+        window.setTimeout(() => {
+          btn.disabled = false;
+          btn.textContent = original;
+        }, 1500);
+      } catch (e) {
+        window.alert(e.message || "Restart failed");
+        btn.disabled = false;
+        btn.textContent = original;
+      }
+    });
+  });
+
   document.querySelectorAll(".library-install-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const type = btn.dataset.type;

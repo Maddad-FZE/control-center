@@ -6,7 +6,13 @@
   </button>
   <div class="service-card-dropdown" hidden role="menu">
     <a href="{% url 'service_view' service.id %}" class="service-card-dropdown__item" role="menuitem">Open in overlay</a>
-    <a href="{{ service.href }}" class="service-card-dropdown__item" target="_blank" rel="noopener" role="menuitem">Open in a new tab</a>
+    <a href="{{ service.open_href }}" class="service-card-dropdown__item" target="_blank" rel="noopener" role="menuitem">Open in a new tab</a>
+    {% if service.published_hostname %}
+    <a href="{{ service.lan_href }}" class="service-card-dropdown__item" target="_blank" rel="noopener" role="menuitem">Open using IP</a>
+    {% endif %}
+    {% if is_admin and service.container_name %}
+    <button type="button" class="service-card-dropdown__item" data-action="restart" data-container="{{ service.container_name }}" role="menuitem">Restart service</button>
+    {% endif %}
     {% if is_admin %}
     <button type="button" class="service-card-dropdown__item" data-action="visibility" role="menuitem">
       {% if service.is_public %}Make private{% else %}Make public{% endif %}

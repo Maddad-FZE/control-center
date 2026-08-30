@@ -15,6 +15,7 @@ from dashboard.models import Service, ServiceCategory
 from dashboard.presets import apply_preset_metrics
 
 from .catalog import LIBRARY_DESCRIPTIONS, get_docker_spec, get_service_by_slug
+from .icons import icon_url_for_entry
 from .models import InstalledService
 
 logger = logging.getLogger(__name__)
@@ -232,7 +233,7 @@ def create_dashboard_card(slug, entry, host_port):
         host=host,
         port=host_port,
         path=entry.get("path", "/") or "/",
-        icon=entry.get("icon", ""),
+        icon=icon_url_for_entry(slug, entry.get("icon", ""), name=entry.get("name", "")),
         catalog_slug=slug,
         widget_type=widget_type,
         is_public=False,

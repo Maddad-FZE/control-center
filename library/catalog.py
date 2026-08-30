@@ -103,6 +103,24 @@ SERVICES = [
         "widget_type": "none",
         "compose": _compose("mosquitto", "eclipse-mosquitto:2", 1883, volumes=["./config:/mosquitto/config", "./data:/mosquitto/data", "./log:/mosquitto/log"]),
     },
+    {
+        "slug": "matter",
+        "name": "Matter",
+        "tagline": "Matter controller for Home Assistant",
+        "category": "Home Automation",
+        "repo": "home-assistant-libs/python-matter-server",
+        "website": "https://github.com/home-assistant-libs/python-matter-server",
+        "icon": "https://api.iconify.design/mdi/access-point.svg?color=%23e87722",
+        "default_port": 5580,
+        "path": "/",
+        "widget_type": "none",
+        "compose": _compose(
+            "matter-server",
+            "ghcr.io/home-assistant-libs/python-matter-server:stable",
+            5580,
+            volumes=["./data:/data"],
+        ),
+    },
     # Networking
     {
         "slug": "pihole",
@@ -661,7 +679,9 @@ def build_catalog_items(
                 "slug": addon["slug"],
                 "name": addon["name"],
                 "icon": addon.get("icon", ""),
-                "icon_url": icon_url_for_entry(addon["slug"], addon.get("icon", "")),
+                "icon_url": icon_url_for_entry(
+                    addon["slug"], addon.get("icon", ""), name=addon.get("name", "")
+                ),
                 "description": addon["description"],
                 "category": addon["category"],
                 "installed": enabled,
@@ -687,7 +707,9 @@ def build_catalog_items(
                 "slug": entry["slug"],
                 "name": entry["name"],
                 "icon": "",
-                "icon_url": icon_url_for_entry(entry["slug"], entry.get("icon", "")),
+                "icon_url": icon_url_for_entry(
+                    entry["slug"], entry.get("icon", ""), name=entry.get("name", "")
+                ),
                 "description": LIBRARY_DESCRIPTIONS.get(entry["slug"], entry.get("tagline", "")),
                 "category": entry["category"],
                 "installed": installed and inst.status != "installing",
@@ -710,6 +732,7 @@ LIBRARY_DESCRIPTIONS = {
     "zigbee2mqtt": "Bridge Zigbee bulbs, locks, and sensors to MQTT without a vendor hub. Exposes every device as a local topic your automations can subscribe to.",
     "nodered": "Drag-and-drop flows that wire IoT devices, APIs, and timers together. Useful for custom automations that sit beside Home Assistant or MQTT.",
     "mosquitto": "A small MQTT broker for device telemetry and command topics. The message bus most homelab automations share.",
+    "matter": "Official Matter controller used with Home Assistant. Commission Thread and Wi-Fi Matter devices on the LAN without a vendor hub.",
     "pihole": "Network-wide DNS ad and tracker blocking for every device on the LAN. Also gives you query logs and optional DHCP on the same box.",
     "adguard-home": "DNS-level ad blocking plus parental controls and per-client rules. A full-featured alternative to Pi-hole with a modern web UI.",
     "nginx-proxy-manager": "Point hostnames at containers and issue Let’s Encrypt certificates from a form. Reverse proxy without hand-editing nginx configs.",

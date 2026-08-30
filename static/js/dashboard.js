@@ -16,6 +16,14 @@ function getCsrfToken() {
   return meta ? meta.content : "";
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function formatUptime(seconds) {
   const d = Math.floor(seconds / 86400);
   const h = Math.floor((seconds % 86400) / 3600);
@@ -221,16 +229,61 @@ function renderDocker(data) {
     .slice(0, 12)
     .map((c) => {
       const stateClass = `state-${(c.state || c.status || "").toLowerCase().replace(/[^a-z]/g, "")}`;
+      const name = escapeHtml(c.name);
+      const image = escapeHtml(c.image);
+      const status = escapeHtml(c.status);
+      const actions = IS_ADMIN
+        ? `<div class="container-row__actions">
+            <button type="button" class="btn secondary btn-compact" data-docker-restart="${name}">Restart</button>
+          </div>`
+        : "";
       return `
         <div class="container-row ${stateClass}">
           <div class="stat-row">
-            <span class="stat-label">${c.name}</span>
-            <span class="stat-value">${c.status}</span>
+            <span class="stat-label">${name}</span>
+            <span class="stat-value">${status}</span>
           </div>
-          <span class="container-image" title="${c.image}">${c.image}</span>
+          <span class="container-image" title="${image}">${image}</span>
+          ${actions}
         </div>`;
     })
     .join("");
+  if (IS_ADMIN) bindDockerRestart(box);
+}
+
+function renderUsb(data) {
+  const box = el("usb-stats");
+  if (!box) return;
+  if (!data || !data.available) {
+    box.innerHTML = `<div class="stat-label">${escapeHtml(data?.message || "USB devices are not visible from this container.")}</div>`;
+    return;
+  }
+  if (!data.devices.length) {
+    box.innerHTML = `<div class="stat-label">No USB devices connected.</div>`;
+    return;
+  }
+  box.innerHTML = data.devices
+    .map((dev) => {
+      const bits = [dev.kind, `${dev.vendor_id}:${dev.product_id}`, dev.speed].filter(Boolean);
+      if (dev.blocks && dev.blocks.length) bits.push(dev.blocks.map((b) => `/dev/${b}`).join(" "));
+      const mounts = (dev.mounts || [])
+        .map((m) => {
+          const path = escapeHtml(m.path);
+          const unmount = IS_ADMIN
+            ? `<button type="button" class="btn secondary btn-compact" data-usb-unmount="${path}">Unmount</button>`
+            : "";
+          return `<div class="usb-row__actions"><span class="usb-row__meta">${path}</span>${unmount}</div>`;
+        })
+        .join("");
+      return `
+        <div class="usb-row">
+          <span class="usb-row__name">${escapeHtml(dev.name)}</span>
+          <span class="usb-row__meta">${escapeHtml(bits.join(" · "))}</span>
+          ${mounts}
+        </div>`;
+    })
+    .join("");
+  if (IS_ADMIN) bindUsbUnmount(box);
 }
 
 function renderHealth(data) {
@@ -463,6 +516,7 @@ function hydrateFromCache() {
     else if (key === "health") renderHealth(data);
     else if (key === "uptime") renderUptime(data);
     else if (key === "widgets") renderWidgets(data);
+    else if (key === "usb") renderUsb(data);
   });
   if (newestSavedAt) lastLiveAt = new Date(newestSavedAt);
 }
@@ -594,7 +648,102 @@ function initAckButton() {
   if (btn) btn.addEventListener("click", ackAllAlerts);
 }
 
+async function postJson(url, body) {
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRFToken": getCsrfToken(),
+    },
+    body: JSON.stringify(body || {}),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(data.error || "Request failed");
+  return data;
+}
+
+function bindDockerRestart(box) {
+  box.querySelectorAll("[data-docker-restart]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const name = btn.dataset.dockerRestart;
+      if (!name) return;
+      if (!window.confirm(`Restart ${name}? It will be briefly offline.`)) return;
+      btn.disabled = true;
+      try {
+        await postJson("/api/docker/restart/", { name });
+        const data = await fetch("/api/docker/").then((r) => r.json());
+        renderDocker(data);
+      } catch (err) {
+        window.alert(err.message);
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+function bindUsbUnmount(box) {
+  box.querySelectorAll("[data-usb-unmount]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const path = btn.dataset.usbUnmount;
+      if (!path) return;
+      if (!window.confirm(`Unmount ${path}?`)) return;
+      btn.disabled = true;
+      try {
+        await postJson("/api/system/usb/unmount/", { path });
+        const data = await fetch("/api/system/usb/").then((r) => r.json());
+        renderUsb(data);
+      } catch (err) {
+        window.alert(err.message);
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+function initHostOps() {
+  const refresh = el("usb-refresh-btn");
+  if (refresh) {
+    refresh.addEventListener("click", async () => {
+      refresh.disabled = true;
+      try {
+        const data = await fetch("/api/system/usb/").then((r) => r.json());
+        renderUsb(data);
+      } catch (err) {
+        console.warn("usb refresh failed", err);
+      } finally {
+        refresh.disabled = false;
+      }
+    });
+  }
+
+  const modal = el("host-reboot-modal");
+  const openBtn = el("host-reboot-btn");
+  const confirmBtn = el("host-reboot-confirm");
+  const close = () => {
+    if (modal) modal.hidden = true;
+  };
+  openBtn?.addEventListener("click", () => {
+    if (modal) modal.hidden = false;
+  });
+  modal?.querySelectorAll("[data-reboot-close]").forEach((node) => {
+    node.addEventListener("click", close);
+  });
+  confirmBtn?.addEventListener("click", async () => {
+    confirmBtn.disabled = true;
+    try {
+      const data = await postJson("/api/system/reboot/", {});
+      close();
+      window.alert(data.message || "Reboot scheduled.");
+    } catch (err) {
+      window.alert(err.message);
+    } finally {
+      confirmBtn.disabled = false;
+    }
+  });
+}
+
 const IS_GUEST = !document.querySelector('meta[name="csrf-token"]');
+const IS_ADMIN = document.querySelector(".ops-stack")?.dataset.admin === "1";
 
 async function pollGuest() {
   try {
@@ -621,19 +770,22 @@ async function pollWidgets() {
 
 async function pollFast() {
   try {
-    const [systemR, dockerR, alertsR] = await Promise.all([
+    const [systemR, dockerR, alertsR, usbR] = await Promise.all([
       fetchWithCache("/api/system/", "system"),
       fetchWithCache("/api/docker/", "docker"),
       fetchWithCache("/api/alerts/", "alerts"),
+      fetchWithCache("/api/system/usb/", "usb"),
     ]);
     renderSystem(systemR.data);
     renderDocker(dockerR.data);
     renderAlerts(alertsR.data);
-    const anyOk = systemR.ok || dockerR.ok || alertsR.ok;
+    renderUsb(usbR.data);
+    const anyOk = systemR.ok || dockerR.ok || alertsR.ok || usbR.ok;
     const anyStale =
       (systemR.stale && !systemR.ok) ||
       (dockerR.stale && !dockerR.ok) ||
-      (alertsR.stale && !alertsR.ok);
+      (alertsR.stale && !alertsR.ok) ||
+      (usbR.stale && !usbR.ok);
     setRefreshState(anyOk, anyStale && !anyOk);
   } catch (e) {
     console.warn("dashboard fast poll failed", e);
@@ -732,6 +884,7 @@ initStatusChips();
 if (!IS_GUEST) {
   initCollapsiblePanels();
   initAckButton();
+  initHostOps();
   updateGroupTitles();
 }
 refreshDashboard();

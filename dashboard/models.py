@@ -129,12 +129,14 @@ class Service(models.Model):
     def display_icon(self):
         if self.logo:
             return self.logo.url
-        if self.icon:
-            return self.icon
         if self.catalog_slug:
             from library.icons import icon_url_for_slug
 
             return icon_url_for_slug(self.catalog_slug)
+        if self.icon:
+            from library.icons import icon_url_for_entry
+
+            return icon_url_for_entry("", self.icon, name=self.name)
         from library.icons import default_icon_url
 
         return default_icon_url()
