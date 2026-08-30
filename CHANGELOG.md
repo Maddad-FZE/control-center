@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A finished previous install no longer blocks the next update (old 100% bar, log, and Reload popup)
+
 ## [0.3.1] - 2026-08-30
 
 ### Added

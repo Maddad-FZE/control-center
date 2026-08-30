@@ -151,7 +151,7 @@ def settings_view(request):
         "revision": get_git_revision(),
     }
 
-    update_status = UpdateStatus.load()
+    update_status = updates.clear_stale_install_progress(UpdateStatus.load())
 
     context = {
         "appearance_form": appearance_form,

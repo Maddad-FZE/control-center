@@ -246,5 +246,104 @@ class StartInstallTests(TestCase):
             cache.delete(updates.INSTALL_LOCK_KEY)
 
 
+class StaleInstallProgressTests(TestCase):
+    def _status(self, **kwargs):
+        status = UpdateStatus.load()
+        fields = {
+            "latest_version": "v0.3.1",
+            "install_state": UpdateStatus.InstallState.SUCCESS,
+            "install_log": "Installed 0.3.0",
+            "installed_version": "0.3.0",
+            "install_target_version": "v0.3.0",
+            "install_step": "done",
+            "install_step_index": 7,
+            "restart_required": False,
+        }
+        fields.update(kwargs)
+        for name, value in fields.items():
+            setattr(status, name, value)
+        status.save()
+        return status
+
+    def test_status_payload_resets_previous_success_when_newer_release_exists(self):
+        self._status()
+        with patch.object(updates, "get_current_version", return_value="0.3.0"):
+            payload = updates.status_payload()
+        self.assertEqual(payload["install_state"], "idle")
+        self.assertEqual(payload["install_log"], "")
+        self.assertEqual(payload["install_percent"], 0)
+        self.assertTrue(payload["update_available"])
+        status = UpdateStatus.load()
+        self.assertEqual(status.install_state, UpdateStatus.InstallState.IDLE)
+        self.assertEqual(status.install_target_version, "")
+
+    def test_keeps_failed_state_for_the_current_latest(self):
+        self._status(
+            install_state=UpdateStatus.InstallState.FAILED,
+            install_log="boom",
+            installed_version="",
+            install_target_version="v0.3.1",
+        )
+        with patch.object(updates, "get_current_version", return_value="0.3.0"):
+            payload = updates.status_payload()
+        self.assertEqual(payload["install_state"], "failed")
+        self.assertEqual(payload["install_log"], "boom")
+
+    def test_clears_failed_state_for_an_older_release(self):
+        self._status(
+            install_state=UpdateStatus.InstallState.FAILED,
+            install_log="boom 0.3.0",
+            installed_version="",
+            install_target_version="v0.3.0",
+        )
+        with patch.object(updates, "get_current_version", return_value="0.3.0"):
+            payload = updates.status_payload()
+        self.assertEqual(payload["install_state"], "idle")
+        self.assertEqual(payload["install_log"], "")
+
+    def test_keeps_success_when_already_on_latest(self):
+        self._status(
+            latest_version="v0.3.1",
+            installed_version="0.3.1",
+            install_target_version="v0.3.1",
+            install_log="done",
+        )
+        with patch.object(updates, "get_current_version", return_value="0.3.1"):
+            payload = updates.status_payload()
+        self.assertFalse(payload["update_available"])
+        self.assertEqual(payload["install_state"], "success")
+        self.assertEqual(payload["install_log"], "done")
+        self.assertEqual(payload["install_percent"], 100)
+
+    def test_does_not_clear_a_running_install(self):
+        self._status(
+            install_state=UpdateStatus.InstallState.RUNNING,
+            install_log="Downloading",
+            install_target_version="v0.3.1",
+            installed_version="0.3.0",
+            install_started_at=timezone.now(),
+        )
+        with patch.object(updates, "get_current_version", return_value="0.3.0"):
+            payload = updates.status_payload()
+        self.assertEqual(payload["install_state"], "running")
+        self.assertEqual(payload["install_log"], "Downloading")
+
+    def test_check_for_update_clears_old_success(self):
+        self._status(latest_version="v0.3.0")
+        release = {
+            "tag_name": "v0.3.1",
+            "html_url": "https://github.com/example/repo/releases/tag/v0.3.1",
+            "body": "notes",
+            "published_at": None,
+        }
+        with self.settings(GITHUB_REPO="example/repo"):
+            with patch.object(updates, "get_current_version", return_value="0.3.0"):
+                with patch.object(updates, "_fetch_latest_release", return_value=(release, "")):
+                    status = updates.check_for_update()
+        self.assertEqual(status.latest_version, "v0.3.1")
+        self.assertEqual(status.install_state, UpdateStatus.InstallState.IDLE)
+        self.assertEqual(status.install_log, "")
+
+
 if __name__ == "__main__":
     unittest.main()

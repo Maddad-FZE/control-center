@@ -102,6 +102,12 @@ def is_newer(latest, current):
     return latest_parsed > current_parsed
 
 
+def _same_version(left, right):
+    a = (left or "").strip().lstrip("vV")
+    b = (right or "").strip().lstrip("vV")
+    return bool(a) and a == b
+
+
 def _parse_published_at(value):
     if not value:
         return None
@@ -206,7 +212,7 @@ def check_for_update():
             status.latest_version,
             get_current_version(),
         )
-    return status
+    return clear_stale_install_progress(status)
 
 
 def maybe_check_for_update(force=False):
@@ -215,9 +221,9 @@ def maybe_check_for_update(force=False):
     if not force and status.last_checked_at:
         age = timezone.now() - status.last_checked_at
         if age.total_seconds() < settings.UPDATE_CHECK_INTERVAL_HOURS * 3600:
-            return status
+            return clear_stale_install_progress(status)
     if not cache.add(CHECK_LOCK_KEY, "1", CHECK_LOCK_TTL):
-        return status
+        return clear_stale_install_progress(status)
     try:
         return check_for_update()
     finally:
@@ -227,6 +233,36 @@ def maybe_check_for_update(force=False):
 def update_available(status=None):
     status = status or UpdateStatus.load()
     return is_newer(status.latest_version, get_current_version())
+
+
+def clear_stale_install_progress(status=None):
+    """Drop leftover SUCCESS/FAILED UI when a newer release is available.
+
+    After a successful install the row stays SUCCESS with the old log. When a
+    later GitHub release appears, that leftover would hide Install and show
+    100% complete for the previous update.
+    """
+    status = status or UpdateStatus.load()
+    if status.install_state not in (
+        UpdateStatus.InstallState.SUCCESS,
+        UpdateStatus.InstallState.FAILED,
+    ):
+        return status
+    if not update_available(status):
+        return status
+    last = (status.installed_version or status.install_target_version or "").strip()
+    latest = (status.latest_version or "").strip()
+    if last and _same_version(last, latest):
+        return status
+    status.install_state = UpdateStatus.InstallState.IDLE
+    status.install_log = ""
+    status.install_step = ""
+    status.install_step_index = 0
+    status.install_finished_at = None
+    status.restart_required = False
+    status.install_target_version = ""
+    status.save()
+    return status
 
 
 def _lock_path():
@@ -796,6 +832,7 @@ def status_payload(status=None):
     recovered = recover_stale_install()
     if status is None or recovered:
         status = UpdateStatus.load()
+    status = clear_stale_install_progress(status)
     current = get_current_version()
     total = status.install_total_steps or len(INSTALL_STEPS)
     index = status.install_step_index or 0

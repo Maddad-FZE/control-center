@@ -44,6 +44,34 @@
     return String(Math.max(0, Math.min(100, Math.round(n)))).padStart(3, "0");
   }
 
+  function sameVersion(a, b) {
+    const left = String(a || "").replace(/^v/i, "");
+    const right = String(b || "").replace(/^v/i, "");
+    return Boolean(left) && left === right;
+  }
+
+  function effectiveInstallState(data) {
+    const state = data.install_state;
+    if (state === "running") return state;
+    if (!data.update_available) return state;
+    if (state !== "success" && state !== "failed") return state;
+    const last = data.installed_version || data.install_target_version;
+    if (last && sameVersion(last, data.latest_version)) return state;
+    return "idle";
+  }
+
+  function normalizeStatus(data) {
+    const install_state = effectiveInstallState(data);
+    if (install_state === data.install_state) return data;
+    return {
+      ...data,
+      install_state,
+      install_log: install_state === "idle" ? "" : data.install_log,
+      install_percent: install_state === "idle" ? 0 : data.install_percent,
+      restart_required: install_state === "idle" ? false : data.restart_required,
+    };
+  }
+
   function stepLine(percent, label) {
     return `[${padPercent(percent)}%] ${(label || "PREPARING").toUpperCase()}`;
   }
@@ -85,6 +113,7 @@
   }
 
   function render(data) {
+    data = normalizeStatus(data);
     lastData = data;
     const running = data.install_state === "running";
     const available = !!data.update_available && !running && data.install_state !== "success";
@@ -153,12 +182,13 @@
       const wrap = document.getElementById(wrapId);
       const logEl = document.getElementById(logId);
       if (!wrap || !logEl) return;
-      if (data.install_log) {
+      if (data.install_log && data.install_state !== "idle") {
         wrap.hidden = false;
         logEl.textContent = data.install_log;
         logEl.scrollTop = logEl.scrollHeight;
-      } else if (wrapId !== "update-log-wrap") {
+      } else {
         wrap.hidden = true;
+        logEl.textContent = "";
       }
     });
 
