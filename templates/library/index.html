@@ -102,6 +102,32 @@
   </div>
 </div>
 
+<div class="library-modal" id="install-credentials-modal" hidden>
+  <div class="library-modal__backdrop" data-modal-close></div>
+  <div class="library-modal__panel" role="dialog" aria-labelledby="install-credentials-title" aria-modal="true">
+    <h2 class="library-modal__title" id="install-credentials-title">Install Nextcloud</h2>
+    <p class="settings-hint">Database is configured automatically. Password must be at least 10 characters.</p>
+    <form id="install-credentials-form">
+      <div class="form-group">
+        <label for="install-admin-user">Admin username</label>
+        <input type="text" id="install-admin-user" name="admin_user" value="admin" autocomplete="username" maxlength="64" required>
+      </div>
+      <div class="form-group">
+        <label for="install-admin-password">Admin password</label>
+        <div class="secret-field">
+          <input type="password" id="install-admin-password" name="admin_password" autocomplete="new-password" minlength="10" maxlength="128" required>
+          <button type="button" class="btn secondary" data-secret-toggle="install-admin-password">Show</button>
+        </div>
+      </div>
+      <p class="settings-hint" id="install-credentials-error" hidden></p>
+      <div class="library-modal__actions">
+        <button type="button" class="btn secondary" data-modal-close>Cancel</button>
+        <button type="submit" class="btn" id="install-credentials-submit">Install</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <div class="library-modal" id="uninstall-modal" hidden>
   <div class="library-modal__backdrop" data-modal-close></div>
   <div class="library-modal__panel" role="dialog" aria-labelledby="uninstall-modal-title">

@@ -389,6 +389,7 @@ SERVICES = [
         "default_port": 8080,
         "path": "/",
         "widget_type": "none",
+        "install_options": "admin-credentials",
         "compose": _compose("nextcloud", "nextcloud:latest", 8080, container_port=80, volumes=["./nextcloud:/var/www/html"]),
     },
     {
@@ -721,6 +722,7 @@ def build_catalog_items(
                 "version": release_map.get(entry["repo"], ""),
                 "url_name": "",
                 "service_id": service_id,
+                "needs_credentials": entry.get("install_options") == "admin-credentials",
             }
         )
     return items

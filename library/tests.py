@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 from django.contrib.auth.models import User
 from django.test import SimpleTestCase, TestCase
@@ -53,6 +54,14 @@ class DockerSpecPortTests(SimpleTestCase):
             self.assertIsInstance(spec["container_port"], int)
             self.assertGreater(spec["container_port"], 0)
 
+    def test_nextcloud_keeps_single_service_compose(self):
+        entry = get_service_by_slug("nextcloud")
+        self.assertEqual(entry["install_options"], "admin-credentials")
+        self.assertNotIn("postgres", entry["compose"])
+        spec = get_docker_spec(entry)
+        self.assertEqual(spec["container_port"], 80)
+        self.assertEqual(spec["image"], "nextcloud:latest")
+
 
 class DashboardCardTests(TestCase):
     def test_kuma_card_is_not_misc(self):
@@ -98,6 +107,8 @@ class LibrarySearchTests(TestCase):
         self.assertContains(resp, 'id="library-empty"')
         self.assertContains(resp, 'id="uninstall-remove-data"')
         self.assertContains(resp, 'id="uninstall-remove-data" checked')
+        self.assertContains(resp, 'id="install-credentials-modal"')
+        self.assertContains(resp, 'data-credentials="1"')
         self.assertContains(resp, 'data-slug="matter"')
         self.assertContains(resp, "Matter")
         self.assertContains(resp, "api.iconify.design/mdi/access-point")
@@ -125,6 +136,9 @@ class LibrarySearchTests(TestCase):
         self.assertIn("cardSearchText", text)
         self.assertIn("library-card__name", text)
         self.assertIn("dataset.slug", text)
+        self.assertIn("validateCredentials", text)
+        self.assertIn("admin_password", text)
+        self.assertIn('dataset.credentials === "1"', text)
 
     def test_query_param_applies_search(self):
         source = Path(__file__).resolve().parents[1] / "static" / "js" / "library.js"
@@ -489,3 +503,202 @@ class CloudflareTunnelTests(TestCase):
             TunnelRoute.objects.get(hostname="photos.example.com").origin_url,
             "http://192.168.0.40:2283",
         )
+
+
+class NextcloudInstallTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user("admin", password="x", is_superuser=True)
+
+    def _post_install(self, slug, payload=None):
+        kwargs = {}
+        if payload is not None:
+            kwargs["data"] = json.dumps(payload)
+            kwargs["content_type"] = "application/json"
+        return self.client.post(reverse("api_service_install", args=[slug]), **kwargs)
+
+    def test_install_api_rejects_missing_password(self):
+        self.client.force_login(self.admin)
+        resp = self._post_install("nextcloud", {"admin_user": "admin"})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("10 characters", resp.json()["error"])
+
+    def test_install_api_rejects_weak_password(self):
+        self.client.force_login(self.admin)
+        resp = self._post_install(
+            "nextcloud",
+            {"admin_user": "admin", "admin_password": "short"},
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("10 characters", resp.json()["error"])
+
+    def test_install_api_rejects_bad_username(self):
+        self.client.force_login(self.admin)
+        resp = self._post_install(
+            "nextcloud",
+            {"admin_user": "bad user", "admin_password": "longenough1"},
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("username", resp.json()["error"].lower())
+
+    def test_other_services_accept_empty_body(self):
+        from unittest.mock import patch
+
+        self.client.force_login(self.admin)
+        with patch("library.views.start_install", return_value=(True, "Installing")) as mocked:
+            resp = self._post_install("pihole")
+        self.assertEqual(resp.status_code, 200)
+        mocked.assert_called_once()
+        self.assertIsNone(mocked.call_args.kwargs.get("install_options"))
+
+    def test_install_api_passes_credentials(self):
+        from unittest.mock import patch
+
+        self.client.force_login(self.admin)
+        with patch("library.views.start_install", return_value=(True, "Installing")) as mocked:
+            resp = self._post_install(
+                "nextcloud",
+                {"admin_user": "admin", "admin_password": "longenough1"},
+            )
+        self.assertEqual(resp.status_code, 200)
+        options = mocked.call_args.kwargs["install_options"]
+        self.assertEqual(options["admin_user"], "admin")
+        self.assertEqual(options["admin_password"], "longenough1")
+
+    def _mock_docker(self, existing_db_env=None):
+        from unittest.mock import MagicMock
+
+        import docker
+
+        client = MagicMock()
+        client.images.get.return_value.attrs = {"Config": {"Labels": {}}}
+        client.images.get.return_value.tags = ["nextcloud:latest"]
+        client.containers.list.return_value = []
+        client.networks.get.side_effect = docker.errors.NotFound("missing")
+
+        db_container = MagicMock()
+        db_container.exec_run.return_value.exit_code = 0
+        if existing_db_env is not None:
+            db_container.attrs = {"Config": {"Env": existing_db_env}}
+        have_db = {"yes": existing_db_env is not None}
+
+        def get_container(name):
+            if name == "cc-nextcloud-db" and have_db["yes"]:
+                return db_container
+            raise docker.errors.NotFound("missing")
+
+        client.containers.get.side_effect = get_container
+        runs = []
+
+        def run(*args, **kwargs):
+            runs.append(kwargs)
+            if kwargs.get("name") == "cc-nextcloud-db":
+                have_db["yes"] = True
+                return db_container
+            return MagicMock()
+
+        client.containers.run.side_effect = run
+        client._runs = runs
+        return client
+
+    def test_worker_creates_app_and_db_on_shared_network(self):
+        from unittest.mock import patch
+
+        from dashboard.models import Service
+        from library.installer import NEXTCLOUD_NETWORK, _install_worker
+        from library.models import InstalledService
+
+        InstalledService.objects.create(
+            slug="nextcloud",
+            container_name="cc-nextcloud",
+            status=InstalledService.Status.INSTALLING,
+        )
+        client = self._mock_docker()
+        with patch("library.installer.get_docker_client", return_value=client), patch(
+            "library.installer._wait_for_nextcloud", return_value=True
+        ), patch("library.installer.secrets.token_urlsafe", return_value="generated-db-secret"):
+            _install_worker(
+                "nextcloud",
+                {"admin_user": "admin", "admin_password": "longenough1"},
+            )
+        runs = {row["name"]: row for row in client._runs}
+        self.assertEqual(set(runs), {"cc-nextcloud", "cc-nextcloud-db"})
+        db_run = runs["cc-nextcloud-db"]
+        app_run = runs["cc-nextcloud"]
+        self.assertNotIn("ports", db_run)
+        self.assertEqual(app_run["ports"], {"80/tcp": 8080})
+        self.assertEqual(db_run["network"], NEXTCLOUD_NETWORK)
+        self.assertEqual(app_run["network"], NEXTCLOUD_NETWORK)
+        self.assertEqual(db_run["environment"]["POSTGRES_PASSWORD"], "generated-db-secret")
+        self.assertEqual(app_run["environment"]["POSTGRES_PASSWORD"], "generated-db-secret")
+        self.assertEqual(app_run["environment"]["POSTGRES_HOST"], "cc-nextcloud-db")
+        self.assertEqual(app_run["environment"]["NEXTCLOUD_ADMIN_USER"], "admin")
+        self.assertEqual(app_run["environment"]["NEXTCLOUD_ADMIN_PASSWORD"], "longenough1")
+        self.assertNotIn("NEXTCLOUD_ADMIN_PASSWORD", db_run["environment"])
+        self.assertEqual(db_run["labels"]["control-center.role"], "db")
+        row = InstalledService.objects.get(slug="nextcloud")
+        self.assertEqual(row.status, InstalledService.Status.RUNNING)
+        self.assertEqual(row.host_port, 8080)
+        self.assertTrue(Service.objects.filter(catalog_slug="nextcloud").exists())
+
+    def test_reinstall_reuses_existing_db_password(self):
+        from unittest.mock import patch
+
+        from library.installer import _install_worker
+        from library.models import InstalledService
+
+        InstalledService.objects.create(
+            slug="nextcloud",
+            container_name="cc-nextcloud",
+            status=InstalledService.Status.INSTALLING,
+        )
+        client = self._mock_docker(
+            existing_db_env=["POSTGRES_PASSWORD=reused-secret", "POSTGRES_USER=nextcloud"]
+        )
+        with patch("library.installer.get_docker_client", return_value=client), patch(
+            "library.installer._wait_for_nextcloud", return_value=True
+        ), patch("library.installer.secrets.token_urlsafe", return_value="should-not-use"):
+            _install_worker(
+                "nextcloud",
+                {"admin_user": "admin", "admin_password": "longenough1"},
+            )
+        runs = {row["name"]: row for row in client._runs}
+        self.assertEqual(runs["cc-nextcloud-db"]["environment"]["POSTGRES_PASSWORD"], "reused-secret")
+        self.assertEqual(runs["cc-nextcloud"]["environment"]["POSTGRES_PASSWORD"], "reused-secret")
+
+    def test_uninstall_removes_db_volumes_and_network(self):
+        from unittest.mock import MagicMock, patch
+
+        from dashboard.models import Service
+        from library.installer import uninstall
+        from library.models import InstalledService
+
+        InstalledService.objects.create(
+            slug="nextcloud",
+            container_name="cc-nextcloud",
+            host_port=8082,
+            status=InstalledService.Status.RUNNING,
+        )
+        create_dashboard_card("nextcloud", get_service_by_slug("nextcloud"), 8082)
+        client = MagicMock()
+        vol_html = MagicMock()
+        vol_html.name = "cc-nextcloud-0"
+        vol_html.attrs = {"Labels": {"control-center.slug": "nextcloud"}}
+        vol_db = MagicMock()
+        vol_db.name = "cc-nextcloud-db-0"
+        vol_db.attrs = {"Labels": {}}
+        client.volumes.list.return_value = [vol_html, vol_db]
+        net = MagicMock()
+        client.networks.get.return_value = net
+        with patch("library.installer.get_docker_client", return_value=client):
+            ok, message = uninstall("nextcloud", remove_data=True)
+        self.assertTrue(ok)
+        names = [call.args[0] for call in client.containers.get.call_args_list]
+        self.assertIn("cc-nextcloud", names)
+        self.assertIn("cc-nextcloud-db", names)
+        vol_html.remove.assert_called()
+        vol_db.remove.assert_called()
+        client.networks.get.assert_called_with("cc-nextcloud-net")
+        net.remove.assert_called()
+        self.assertFalse(InstalledService.objects.filter(slug="nextcloud").exists())
+        self.assertFalse(Service.objects.filter(catalog_slug="nextcloud").exists())
+        self.assertEqual(message, "Uninstalled")

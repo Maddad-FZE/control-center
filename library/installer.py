@@ -1,10 +1,16 @@
 """Docker install/uninstall and dashboard card sync for library services."""
 
 import ipaddress
+import json
 import logging
 import os
+import re
+import secrets
 import socket
 import threading
+import time
+import urllib.error
+import urllib.request
 
 import docker
 from django.conf import settings
@@ -21,6 +27,16 @@ from .models import InstalledService
 logger = logging.getLogger(__name__)
 
 DOCKER_LABEL_SLUG = "control-center.slug"
+DOCKER_LABEL_ROLE = "control-center.role"
+
+NEXTCLOUD_SLUG = "nextcloud"
+NEXTCLOUD_DB_IMAGE = "postgres:16-alpine"
+NEXTCLOUD_DB_CONTAINER = "cc-nextcloud-db"
+NEXTCLOUD_NETWORK = "cc-nextcloud-net"
+NEXTCLOUD_DB_VOLUME = "cc-nextcloud-db-0"
+POSTGRES_WAIT_SECONDS = 60
+NEXTCLOUD_READY_SECONDS = 300
+ADMIN_USER_RE = re.compile(r"^[A-Za-z0-9._@-]+$")
 
 
 def _clear_uptime_cache_if_kuma(slug):
@@ -215,6 +231,166 @@ def _remove_service_volumes(client, slug, remove_data, extra_volume_names=None):
                 logger.warning("Could not remove volume %s: %s", name, exc)
 
 
+def _remove_network(client, name):
+    try:
+        client.networks.get(name).remove()
+    except docker.errors.NotFound:
+        pass
+    except docker.errors.APIError as exc:
+        logger.warning("Could not remove network %s: %s", name, exc)
+
+
+def _ensure_network(client, name, labels):
+    try:
+        client.networks.get(name)
+    except docker.errors.NotFound:
+        client.networks.create(name, labels=labels)
+
+
+def _ensure_volume(client, name, labels):
+    try:
+        client.volumes.create(name=name, labels=labels)
+    except docker.errors.APIError:
+        pass
+
+
+def _env_value(env_list, key):
+    prefix = f"{key}="
+    for item in env_list or []:
+        if isinstance(item, str) and item.startswith(prefix):
+            return item[len(prefix) :]
+    return ""
+
+
+def _previous_postgres_password(client, container_name):
+    try:
+        container = client.containers.get(container_name)
+    except docker.errors.NotFound:
+        return ""
+    env = (container.attrs or {}).get("Config", {}).get("Env") or []
+    return _env_value(env, "POSTGRES_PASSWORD")
+
+
+def validate_nextcloud_credentials(admin_user, admin_password):
+    user = (admin_user or "").strip()
+    password = admin_password or ""
+    if not user:
+        return "Admin username is required."
+    if len(user) > 64 or not ADMIN_USER_RE.fullmatch(user):
+        return "Admin username may only use letters, numbers, dots, underscores, @, and hyphens."
+    if len(password) < 10:
+        return "Admin password must be at least 10 characters."
+    if len(password) > 128:
+        return "Admin password is too long."
+    if password.lower() == user.lower():
+        return "Admin password must be different from the username."
+    return ""
+
+
+def _wait_for_postgres(container, timeout=POSTGRES_WAIT_SECONDS):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            result = container.exec_run(["pg_isready", "-U", "nextcloud", "-d", "nextcloud"])
+            if getattr(result, "exit_code", 1) == 0:
+                return
+        except docker.errors.APIError:
+            pass
+        time.sleep(1)
+    raise RuntimeError("Postgres did not become ready")
+
+
+def _wait_for_nextcloud(url, timeout=NEXTCLOUD_READY_SECONDS):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                raw = resp.read().decode("utf-8", errors="replace")
+            data = json.loads(raw)
+            if data.get("installed") is True:
+                return True
+        except (OSError, ValueError, json.JSONDecodeError, urllib.error.URLError):
+            pass
+        time.sleep(2)
+    logger.warning("Nextcloud did not finish setup in time")
+    return False
+
+
+def _install_nextcloud(client, entry, spec, options):
+    admin_user = (options.get("admin_user") or "").strip()
+    admin_password = options.get("admin_password") or ""
+    error = validate_nextcloud_credentials(admin_user, admin_password)
+    if error:
+        raise RuntimeError(error)
+
+    image = spec.get("image", "").strip() or "nextcloud:latest"
+    client.images.pull(image)
+    client.images.pull(NEXTCLOUD_DB_IMAGE)
+
+    db_password = _previous_postgres_password(client, NEXTCLOUD_DB_CONTAINER)
+    if not db_password:
+        db_password = secrets.token_urlsafe(32)
+
+    _remove_container(client, f"cc-{NEXTCLOUD_SLUG}")
+    _remove_container(client, NEXTCLOUD_DB_CONTAINER)
+
+    labels = {DOCKER_LABEL_SLUG: NEXTCLOUD_SLUG}
+    _ensure_network(client, NEXTCLOUD_NETWORK, labels)
+    _ensure_volume(client, f"cc-{NEXTCLOUD_SLUG}-0", labels)
+    _ensure_volume(client, NEXTCLOUD_DB_VOLUME, labels)
+
+    db_env = {
+        "POSTGRES_DB": "nextcloud",
+        "POSTGRES_USER": "nextcloud",
+        "POSTGRES_PASSWORD": db_password,
+    }
+    db_container = client.containers.run(
+        NEXTCLOUD_DB_IMAGE,
+        name=NEXTCLOUD_DB_CONTAINER,
+        detach=True,
+        network=NEXTCLOUD_NETWORK,
+        volumes={NEXTCLOUD_DB_VOLUME: {"bind": "/var/lib/postgresql/data", "mode": "rw"}},
+        environment=db_env,
+        labels={**labels, DOCKER_LABEL_ROLE: "db"},
+        restart_policy={"Name": "unless-stopped"},
+    )
+    _wait_for_postgres(db_container)
+
+    host_port = pick_host_port(client, int(spec.get("host_port_hint") or 8080))
+    host = services_host()
+    app_env = {
+        "POSTGRES_HOST": NEXTCLOUD_DB_CONTAINER,
+        "POSTGRES_DB": "nextcloud",
+        "POSTGRES_USER": "nextcloud",
+        "POSTGRES_PASSWORD": db_password,
+        "NEXTCLOUD_ADMIN_USER": admin_user,
+        "NEXTCLOUD_ADMIN_PASSWORD": admin_password,
+        "NEXTCLOUD_TRUSTED_DOMAINS": f"{host} {host}:{host_port} localhost",
+    }
+    client.containers.run(
+        image,
+        name=f"cc-{NEXTCLOUD_SLUG}",
+        detach=True,
+        network=NEXTCLOUD_NETWORK,
+        ports={"80/tcp": host_port},
+        volumes={f"cc-{NEXTCLOUD_SLUG}-0": {"bind": "/var/www/html", "mode": "rw"}},
+        environment=app_env,
+        labels=labels,
+        restart_policy={"Name": "unless-stopped"},
+    )
+    _wait_for_nextcloud(f"http://{host}:{host_port}/status.php")
+
+    installed_version = _image_version(client, image)
+    InstalledService.objects.filter(slug=NEXTCLOUD_SLUG).update(
+        host_port=host_port,
+        installed_version=installed_version,
+        status=InstalledService.Status.RUNNING,
+        error="",
+    )
+    create_dashboard_card(NEXTCLOUD_SLUG, entry, host_port)
+
+
 def create_dashboard_card(slug, entry, host_port):
     host = services_host()
     category_name = entry.get("category", "Services")
@@ -262,7 +438,7 @@ def delete_dashboard_card(slug):
     Service.objects.filter(catalog_slug=slug).delete()
 
 
-def _install_worker(slug):
+def _install_worker(slug, install_options=None):
     entry = get_service_by_slug(slug)
     if not entry:
         InstalledService.objects.filter(slug=slug).update(
@@ -285,6 +461,9 @@ def _install_worker(slug):
 
     try:
         client = get_docker_client()
+        if slug == NEXTCLOUD_SLUG:
+            _install_nextcloud(client, entry, spec, install_options or {})
+            return
         client.images.pull(image)
         _remove_container(client, container_name)
 
@@ -347,7 +526,7 @@ def _install_worker(slug):
         )
 
 
-def start_install(slug, request=None):
+def start_install(slug, request=None, install_options=None):
     entry = get_service_by_slug(slug)
     if not entry:
         return False, "Unknown service"
@@ -376,7 +555,7 @@ def start_install(slug, request=None):
     _clear_uptime_cache_if_kuma(slug)
     thread = threading.Thread(
         target=_install_worker,
-        args=(slug,),
+        args=(slug, install_options),
         name=f"install-{slug}",
         daemon=True,
     )
@@ -393,12 +572,16 @@ def uninstall(slug, remove_data=False):
         if remove_data and row and not row.managed:
             extra_volumes = _collect_container_volume_names(client, container_name)
         _remove_container(client, container_name)
+        if slug == NEXTCLOUD_SLUG:
+            _remove_container(client, NEXTCLOUD_DB_CONTAINER)
         _remove_service_volumes(
             client,
             slug,
             remove_data,
             extra_volume_names=extra_volumes,
         )
+        if slug == NEXTCLOUD_SLUG:
+            _remove_network(client, NEXTCLOUD_NETWORK)
     except docker.errors.DockerException as exc:
         logger.warning("Docker uninstall issue for %s: %s", slug, exc)
         InstalledService.objects.filter(slug=slug).update(

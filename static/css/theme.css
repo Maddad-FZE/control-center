@@ -1612,6 +1612,20 @@ table.data th {
   margin-top: 0.85rem;
 }
 
+.library-modal .form-group {
+  margin-top: 0.75rem;
+  margin-bottom: 0;
+}
+
+.library-modal .form-group + .form-group {
+  margin-top: 0.65rem;
+}
+
+#install-credentials-error:not([hidden]) {
+  color: #fca5a5;
+  margin-top: 0.65rem;
+}
+
 .tunnel-host-field {
   display: flex;
   align-items: stretch;

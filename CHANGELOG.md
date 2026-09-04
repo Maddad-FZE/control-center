@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Matter in the Library Home Automation catalog
 - Library and catalog cards use the bundled icon list, then the original icon if there is no match
 - Merlin swoops in on the first visit, then teleports or uses another entrance when you change pages
+- Nextcloud Library install creates a Postgres sidecar and skips the setup wizard (admin username and password only)
 
 ### Fixed
 

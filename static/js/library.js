@@ -58,6 +58,10 @@
 
   const installModal = document.getElementById("install-progress-modal");
   const installDesc = document.getElementById("install-progress-desc");
+  const credModal = document.getElementById("install-credentials-modal");
+  const credForm = document.getElementById("install-credentials-form");
+  const credError = document.getElementById("install-credentials-error");
+  let pendingInstall = null;
 
   function showInstallModal(name) {
     if (!installModal) return;
@@ -68,6 +72,60 @@
   function hideInstallModal() {
     if (installModal) installModal.hidden = true;
   }
+
+  function showCredentialsError(message) {
+    if (!credError) return;
+    credError.textContent = message;
+    credError.hidden = !message;
+  }
+
+  function validateCredentials(user, password) {
+    if (!user) return "Admin username is required.";
+    if (user.length > 64 || !/^[A-Za-z0-9._@-]+$/.test(user)) {
+      return "Admin username may only use letters, numbers, dots, underscores, @, and hyphens.";
+    }
+    if (password.length < 10) return "Admin password must be at least 10 characters.";
+    if (password.length > 128) return "Admin password is too long.";
+    if (password.toLowerCase() === user.toLowerCase()) {
+      return "Admin password must be different from the username.";
+    }
+    return "";
+  }
+
+  function openCredentialsModal(slug, name, btn) {
+    pendingInstall = { slug, name, btn };
+    showCredentialsError("");
+    const user = document.getElementById("install-admin-user");
+    const pass = document.getElementById("install-admin-password");
+    if (user && !user.value) user.value = "admin";
+    if (pass) {
+      pass.value = "";
+      pass.type = "password";
+    }
+    const toggle = credModal?.querySelector("[data-secret-toggle]");
+    if (toggle) toggle.textContent = "Show";
+    if (credModal) credModal.hidden = false;
+    pass?.focus();
+  }
+
+  function closeCredentialsModal() {
+    if (credModal) credModal.hidden = true;
+    pendingInstall = null;
+  }
+
+  credModal?.querySelectorAll("[data-modal-close]").forEach((el) => {
+    el.addEventListener("click", closeCredentialsModal);
+  });
+
+  credModal?.querySelectorAll("[data-secret-toggle]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const field = document.getElementById(btn.dataset.secretToggle);
+      if (!field) return;
+      const hidden = field.type === "password";
+      field.type = hidden ? "text" : "password";
+      btn.textContent = hidden ? "Hide" : "Show";
+    });
+  });
 
   const modal = document.getElementById("uninstall-modal");
   const modalDesc = document.getElementById("uninstall-modal-desc");
@@ -191,39 +249,84 @@
     });
   });
 
+  async function startServiceInstall(slug, name, btn, body) {
+    btn.disabled = true;
+    btn.textContent = "Installing…";
+    showInstallModal(name);
+    try {
+      const headers = { "X-CSRFToken": getCsrfToken() };
+      let payload;
+      if (body) {
+        headers["Content-Type"] = "application/json";
+        payload = JSON.stringify(body);
+      }
+      const resp = await fetch(`/library/api/services/${slug}/install/`, {
+        method: "POST",
+        headers,
+        body: payload,
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || "Install failed");
+      await pollInstall(slug);
+    } catch (e) {
+      console.warn("install failed", e);
+      hideInstallModal();
+      btn.disabled = false;
+      btn.textContent = "Install";
+      alert(e.message || "Install failed");
+    }
+  }
+
+  credForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!pendingInstall) return;
+    const user = (document.getElementById("install-admin-user")?.value || "").trim();
+    const password = document.getElementById("install-admin-password")?.value || "";
+    const error = validateCredentials(user, password);
+    if (error) {
+      showCredentialsError(error);
+      return;
+    }
+    const { slug, name, btn } = pendingInstall;
+    if (credModal) credModal.hidden = true;
+    pendingInstall = null;
+    await startServiceInstall(slug, name, btn, {
+      admin_user: user,
+      admin_password: password,
+    });
+  });
+
   document.querySelectorAll(".library-install-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const type = btn.dataset.type;
       const slug = btn.dataset.slug;
       if (!slug) return;
-      btn.disabled = true;
-      btn.textContent = type === "addon" ? "Enabling…" : "Installing…";
       const card = btn.closest(".library-card");
       const name = card?.querySelector(".library-card__name")?.textContent || slug;
-      if (type === "service") showInstallModal(name);
-      try {
-        const url =
-          type === "addon"
-            ? `/library/api/addons/${slug}/toggle/`
-            : `/library/api/services/${slug}/install/`;
-        const resp = await fetch(url, {
-          method: "POST",
-          headers: { "X-CSRFToken": getCsrfToken() },
-        });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || "Install failed");
-        if (type === "service") {
-          await pollInstall(slug);
-        } else {
+      if (type === "addon") {
+        btn.disabled = true;
+        btn.textContent = "Enabling…";
+        try {
+          const resp = await fetch(`/library/api/addons/${slug}/toggle/`, {
+            method: "POST",
+            headers: { "X-CSRFToken": getCsrfToken() },
+          });
+          const data = await resp.json();
+          if (!resp.ok) throw new Error(data.error || "Install failed");
           window.location.reload();
+        } catch (e) {
+          console.warn("install failed", e);
+          btn.disabled = false;
+          btn.textContent = "Install";
+          alert(e.message || "Install failed");
         }
-      } catch (e) {
-        console.warn("install failed", e);
-        hideInstallModal();
-        btn.disabled = false;
-        btn.textContent = "Install";
-        alert(e.message || "Install failed");
+        return;
       }
+      if (btn.dataset.credentials === "1") {
+        openCredentialsModal(slug, name, btn);
+        return;
+      }
+      await startServiceInstall(slug, name, btn, null);
     });
   });
 

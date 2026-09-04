@@ -15,7 +15,13 @@ from .addons import addon_states_for_catalog, get_addon_by_slug, is_addon_enable
 from .catalog import build_catalog_items, all_categories
 from .icons import default_icon_url
 from . import cloudflare as cf
-from .installer import detect_services_host, start_install, status_payload, uninstall
+from .installer import (
+    detect_services_host,
+    start_install,
+    status_payload,
+    uninstall,
+    validate_nextcloud_credentials,
+)
 from .models import CatalogRelease, InstalledService, LibraryNote, TunnelRoute
 
 _ALLOWED_TAGS = {
@@ -152,7 +158,22 @@ def api_addon_toggle(request, slug):
 def api_service_install(request, slug):
     if not request.user.is_superuser:
         return JsonResponse({"error": "Forbidden"}, status=403)
-    started, message = start_install(slug, request=request)
+    install_options = None
+    if slug == "nextcloud":
+        body = _json_body(request)
+        if body is None:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+        error = validate_nextcloud_credentials(
+            body.get("admin_user"),
+            body.get("admin_password"),
+        )
+        if error:
+            return JsonResponse({"error": error}, status=400)
+        install_options = {
+            "admin_user": (body.get("admin_user") or "").strip(),
+            "admin_password": body.get("admin_password") or "",
+        }
+    started, message = start_install(slug, request=request, install_options=install_options)
     if not started:
         return JsonResponse({"error": message}, status=409)
     log_audit(

@@ -125,6 +125,10 @@ Requirements and caveats:
 - Gunicorn workers: **1** (or use PostgreSQL for multi-worker)
 - WAL mode enabled automatically on connection
 
+## Nextcloud
+
+Library install starts Nextcloud with a managed PostgreSQL sidecar (`cc-nextcloud-db`) on a private Docker network. A previous SQLite-only `cc-nextcloud` should be uninstalled (optionally with data) and reinstalled — there is no in-place migration.
+
 ## Import Homepage YAML from Pi
 
 ```bash

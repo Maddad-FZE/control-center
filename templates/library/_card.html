@@ -63,7 +63,7 @@
         {% elif item.status == "installing" %}
         <button type="button" class="btn secondary" disabled>Installing…</button>
         {% else %}
-        <button type="button" class="btn library-install-btn" data-type="service" data-slug="{{ item.slug }}">Install</button>
+        <button type="button" class="btn library-install-btn" data-type="service" data-slug="{{ item.slug }}"{% if item.needs_credentials %} data-credentials="1"{% endif %}>Install</button>
         {% endif %}
       {% endif %}
     </div>
