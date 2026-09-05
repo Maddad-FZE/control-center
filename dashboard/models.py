@@ -152,14 +152,14 @@ class Service(models.Model):
 
     @property
     def display_description(self):
-        from library.catalog import LIBRARY_DESCRIPTIONS, SERVICES
+        from library.catalog import LIBRARY_DESCRIPTIONS, all_services, get_service_by_slug
 
         if self.catalog_slug:
             blurb = LIBRARY_DESCRIPTIONS.get(self.catalog_slug)
             if blurb:
                 return blurb
         name = (self.name or "").strip().lower()
-        for entry in SERVICES:
+        for entry in all_services():
             if entry["name"].lower() == name:
                 blurb = LIBRARY_DESCRIPTIONS.get(entry["slug"])
                 if blurb:

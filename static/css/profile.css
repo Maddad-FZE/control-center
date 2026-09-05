@@ -1,0 +1,36 @@
+/* Profile — 2FA QR and vault fill on the Settings board */
+
+#twofa-qr {
+  border: 1px solid var(--tva-border);
+  border-radius: 2px;
+  background: var(--tva-cream);
+  padding: 0.35rem;
+}
+
+#profile-vault.settings-pane.is-active {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+#profile-vault .settings-mosaic {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  align-items: stretch;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+#profile-vault .settings-mosaic__full.panel {
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#profile-vault .library-repos-list-wrap {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}

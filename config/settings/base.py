@@ -50,6 +50,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "core.middleware.AddonEnabledMiddleware",
     "django.contrib.auth.middleware.LoginRequiredMiddleware",
+    "core.middleware.AccountGuardMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "csp.middleware.CSPMiddleware",
@@ -192,6 +193,78 @@ UPDATE_RESTART_COMMAND = os.environ.get("UPDATE_RESTART_COMMAND", "")
 HOST_REBOOT_COMMAND = os.environ.get("HOST_REBOOT_COMMAND", "")
 USB_SYSFS_ROOT = os.environ.get("USB_SYSFS_ROOT", "")
 SERVICES_HOST = os.environ.get("SERVICES_HOST", "")
+
+# Logging
+CC_LOG_DIR = os.environ.get("CC_LOG_DIR", str(BASE_DIR / "data" / "logs"))
+CC_LOG_FILE = os.environ.get("CC_LOG_FILE", str(Path(CC_LOG_DIR) / "app.log"))
+CC_TICK_LOG_FILE = os.environ.get("CC_TICK_LOG_FILE", str(Path(CC_LOG_DIR) / "tick.log"))
+CC_CONSOLE_LOG_DIR = os.environ.get(
+    "CC_CONSOLE_LOG_DIR", str(Path(CC_LOG_DIR) / "console")
+)
+Path(CC_LOG_DIR).mkdir(parents=True, exist_ok=True)
+Path(CC_CONSOLE_LOG_DIR).mkdir(parents=True, exist_ok=True)
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+        "file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": CC_LOG_FILE,
+            "maxBytes": 2 * 1024 * 1024,
+            "backupCount": 5,
+            "formatter": "verbose",
+        },
+    },
+    "root": {
+        "handlers": ["console", "file"],
+        "level": LOG_LEVEL,
+    },
+    "loggers": {
+        "django.request": {
+            "handlers": ["console", "file"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+    },
+}
+
+# Interactive console (Settings → Console)
+CONSOLE_ENABLED = os.environ.get("CONSOLE_ENABLED", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+CONSOLE_HOST_ENABLED = os.environ.get("CONSOLE_HOST_ENABLED", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+CONSOLE_RECORD = os.environ.get("CONSOLE_RECORD", "false").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+CONSOLE_IDLE_SECONDS = int(os.environ.get("CONSOLE_IDLE_SECONDS", "900"))
+CONSOLE_MAX_SECONDS = int(os.environ.get("CONSOLE_MAX_SECONDS", "14400"))
+CONSOLE_MAX_PER_USER = int(os.environ.get("CONSOLE_MAX_PER_USER", "2"))
+CONSOLE_MAX_GLOBAL = int(os.environ.get("CONSOLE_MAX_GLOBAL", "6"))
+
+ASGI_APPLICATION = "config.asgi.application"
+CC_VAULT_KEY_FILE = os.environ.get(
+    "CC_VAULT_KEY_FILE", str(BASE_DIR / "data" / "vault.key")
+)
 
 # Public subdomain → Django app name (notes, etc.)
 HOST_APP_MAP = {

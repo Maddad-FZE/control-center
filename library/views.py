@@ -1,13 +1,12 @@
 import json
-from html.parser import HTMLParser
 
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
-from django.utils.html import escape
 from django.views.decorators.http import require_GET, require_POST
 
 from core.models import log_audit
+from core.notes import sanitize_note_html
 from core.version import get_current_version
 from dashboard.models import Service
 
@@ -23,53 +22,6 @@ from .installer import (
     validate_nextcloud_credentials,
 )
 from .models import CatalogRelease, InstalledService, LibraryNote, TunnelRoute
-
-_ALLOWED_TAGS = {
-    "b",
-    "strong",
-    "i",
-    "em",
-    "u",
-    "s",
-    "ul",
-    "ol",
-    "li",
-    "p",
-    "br",
-    "div",
-    "span",
-    "h3",
-    "h4",
-}
-
-
-class _NoteSanitizer(HTMLParser):
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self._out = []
-
-    def handle_starttag(self, tag, attrs):
-        if tag not in _ALLOWED_TAGS:
-            return
-        self._out.append(f"<{tag}>")
-
-    def handle_endtag(self, tag):
-        if tag not in _ALLOWED_TAGS:
-            return
-        self._out.append(f"</{tag}>")
-
-    def handle_data(self, data):
-        self._out.append(escape(data))
-
-    def result(self):
-        return "".join(self._out)
-
-
-def sanitize_note_html(raw):
-    parser = _NoteSanitizer()
-    parser.feed(raw or "")
-    parser.close()
-    return parser.result()[:20000]
 
 
 @login_required
@@ -364,3 +316,54 @@ def api_tunnel_unpublish(request):
         message=f"Unpublished {body.get('hostname')}",
     )
     return JsonResponse({"ok": True})
+
+
+@login_required
+@require_GET
+def api_catalog_list(request):
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Forbidden"}, status=403)
+    from .catalog_store import list_catalog_rows
+
+    return JsonResponse({"items": list_catalog_rows()})
+
+
+@login_required
+@require_POST
+def api_catalog_save(request, slug=""):
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Forbidden"}, status=403)
+    body = _json_body(request)
+    if body is None:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+    from .catalog_store import save_catalog_item
+
+    item, errors = save_catalog_item(body, slug=slug)
+    if errors:
+        return JsonResponse({"error": errors[0], "errors": errors}, status=400)
+    log_audit(
+        "admin",
+        request=request,
+        user=request.user,
+        message=f"Updated library catalog entry {item.slug}",
+    )
+    return JsonResponse({"ok": True, "slug": item.slug})
+
+
+@login_required
+@require_POST
+def api_catalog_delete(request, slug):
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Forbidden"}, status=403)
+    from .catalog_store import delete_catalog_item
+
+    ok, message = delete_catalog_item(slug)
+    if not ok:
+        return JsonResponse({"error": message}, status=400)
+    log_audit(
+        "admin",
+        request=request,
+        user=request.user,
+        message=f"Removed library catalog entry {slug}",
+    )
+    return JsonResponse({"ok": True, "message": message})

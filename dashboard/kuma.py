@@ -317,30 +317,55 @@ def _heartbeat_verdict(status):
     return None
 
 
+def _normalize_heartbeats(heartbeats):
+    if not heartbeats:
+        return {}
+    nested = heartbeats.get("heartbeatList") if isinstance(heartbeats, dict) else None
+    if isinstance(nested, dict):
+        return nested
+    return heartbeats if isinstance(heartbeats, dict) else {}
+
+
 def _heartbeats_for(heartbeats, monitor_id):
     if not heartbeats or monitor_id is None:
         return []
-    return heartbeats.get(monitor_id) or heartbeats.get(str(monitor_id)) or []
+    beats = heartbeats.get(monitor_id)
+    if beats is None:
+        beats = heartbeats.get(str(monitor_id))
+    if isinstance(beats, dict):
+        beats = list(beats.values())
+    return beats or []
+
+
+def _latest_beat(beats):
+    usable = [row for row in beats if isinstance(row, dict)]
+    if not usable:
+        return None
+    return max(
+        usable,
+        key=lambda row: str(row.get("time") or row.get("timestamp") or ""),
+    )
 
 
 def read_status(api):
     """Return [(service, is_up, response_ms, error), ...] from recent heartbeats."""
     try:
-        heartbeats = api.get_heartbeats() or {}
+        raw = api.get_heartbeats()
     except Exception as exc:
         logger.debug("Kuma get_heartbeats failed: %s", exc)
-        return []
+        return None
+    heartbeats = _normalize_heartbeats(raw)
 
     out = []
     for service in _monitored_services():
         beats = _heartbeats_for(heartbeats, service.kuma_monitor_id)
-        if not beats:
+        last = _latest_beat(beats)
+        if last is None:
             continue
-        last = beats[-1]
-        verdict = _heartbeat_verdict(last.get("status") if isinstance(last, dict) else None)
+        verdict = _heartbeat_verdict(last.get("status"))
         if verdict is None:
             continue
-        ping = last.get("ping") if isinstance(last, dict) else None
+        ping = last.get("ping")
         try:
             ms = int(round(float(ping))) if ping is not None else None
             if ms is not None and ms < 0:
@@ -349,7 +374,7 @@ def read_status(api):
             ms = None
         err = ""
         if not verdict:
-            err = str((last.get("msg") if isinstance(last, dict) else "") or "Monitor down")[:200]
+            err = str(last.get("msg") or "Monitor down")[:200]
         out.append((service, verdict, ms, err))
     return out
 

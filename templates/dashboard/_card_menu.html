@@ -13,6 +13,9 @@
     {% if is_admin and service.container_name %}
     <button type="button" class="service-card-dropdown__item" data-action="restart" data-container="{{ service.container_name }}" role="menuitem">Restart service</button>
     {% endif %}
+    {% if user.is_authenticated %}
+    <a href="{% url 'profile' %}?section=vault&service={{ service.id }}" class="service-card-dropdown__item" role="menuitem">Credentials</a>
+    {% endif %}
     {% if is_admin %}
     <button type="button" class="service-card-dropdown__item" data-action="visibility" role="menuitem">
       {% if service.is_public %}Make private{% else %}Make public{% endif %}

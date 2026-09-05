@@ -10,7 +10,8 @@ from .models import UserProfile, log_audit
 @receiver(post_save, sender=User)
 def create_profile(sender, instance, created, **kwargs):
     if created:
-        UserProfile.objects.get_or_create(user=instance)
+        role = UserProfile.Role.ADMIN if instance.is_superuser else UserProfile.Role.MEMBER
+        UserProfile.objects.get_or_create(user=instance, defaults={"role": role})
 
 
 @receiver(user_logged_in)

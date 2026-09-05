@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 CONTAINER_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,126}$")
 USB_DEVICE_RE = re.compile(r"^\d+-\d+(\.\d+)*$")
 BLOCK_NAME_RE = re.compile(r"^(sd[a-z]+|mmcblk\d+|nvme\d+n\d+)$")
+USB_CACHE_KEY = "usb:devices"
+USB_CACHE_TTL = 15
 REBOOT_LOCK_KEY = "host:reboot_lock"
 REBOOT_LOCK_TTL = 90
 UNMOUNT_PREFIXES = (
@@ -199,6 +201,15 @@ def list_usb_devices():
     return {"available": True, "devices": devices, "message": ""}
 
 
+def get_cached_usb():
+    cached = cache.get(USB_CACHE_KEY)
+    if cached is not None:
+        return cached
+    result = list_usb_devices()
+    cache.set(USB_CACHE_KEY, result, USB_CACHE_TTL)
+    return result
+
+
 def unmount_path(mount_path):
     path = (mount_path or "").strip()
     if not path.startswith("/") or ".." in path.split("/"):
@@ -224,6 +235,7 @@ def unmount_path(mount_path):
     if result.returncode != 0:
         err = (result.stderr or result.stdout or "umount failed").strip()
         return False, err[:200]
+    cache.delete(USB_CACHE_KEY)
     return True, f"Unmounted {path}."
 
 
@@ -349,4 +361,4 @@ def schedule_reboot():
     if not cache.add(REBOOT_LOCK_KEY, "1", REBOOT_LOCK_TTL):
         return False, "A reboot is already in progress."
     threading.Timer(2.0, _reboot_now).start()
-    return True, "The Pi will reboot in a few seconds."
+    return True, "The server will reboot in a few seconds."

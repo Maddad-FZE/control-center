@@ -1,353 +1,719 @@
 {% extends "core/base.html" %}
 {% load static assets %}
 {% block title %}Settings — {{ site_title }}{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{% vstatic 'css/settings.css' %}">
+{% if console_enabled %}
+<link rel="stylesheet" href="{% vstatic 'vendor/xterm/xterm.css' %}">
+{% endif %}
+{% endblock %}
 {% block content %}
 <meta name="csrf-token" content="{{ csrf_token }}">
-<section class="settings-layout panel panel-wide">
-  <div class="panel-head">Settings</div>
-  <div class="panel-body settings-layout__body">
-    <nav class="settings-nav" aria-label="Settings sections">
-      <a href="?section=appearance" class="settings-nav__item{% if active_section == 'appearance' %} is-active{% endif %}" data-section="appearance">Appearance</a>
-      <a href="?section=site" class="settings-nav__item{% if active_section == 'site' %} is-active{% endif %}" data-section="site">Site</a>
-      <a href="?section=tunnel" class="settings-nav__item{% if active_section == 'tunnel' %} is-active{% endif %}" data-section="tunnel">Tunnel</a>
-      <a href="?section=users" class="settings-nav__item{% if active_section == 'users' %} is-active{% endif %}" data-section="users">Users</a>
-      <a href="?section=updates" class="settings-nav__item{% if active_section == 'updates' %} is-active{% endif %}" data-section="updates">
-        Updates
-        {% if update_ready %}<span class="settings-nav__badge" title="Update available"></span>{% endif %}
-      </a>
-      <a href="?section=platform" class="settings-nav__item{% if active_section == 'platform' %} is-active{% endif %}" data-section="platform">Platform</a>
-      <a href="?section=audit" class="settings-nav__item{% if active_section == 'audit' %} is-active{% endif %}" data-section="audit">Audit</a>
-    </nav>
+<div class="settings-board">
+  <div class="settings-rail">
+    <section class="settings-group settings-group--nav">
+      <h2 class="group-title">1 — Categories</h2>
+      <nav class="settings-nav" aria-label="Settings sections">
+        <a href="?section=appearance" class="settings-nav__item{% if active_section == 'appearance' %} is-active{% endif %}" data-section="appearance" data-label="Appearance">Appearance</a>
+        <a href="?section=site" class="settings-nav__item{% if active_section == 'site' %} is-active{% endif %}" data-section="site" data-label="Site">Site</a>
+        <a href="?section=tunnel" class="settings-nav__item{% if active_section == 'tunnel' %} is-active{% endif %}" data-section="tunnel" data-label="Tunnel">Tunnel</a>
+        <a href="?section=users" class="settings-nav__item{% if active_section == 'users' %} is-active{% endif %}" data-section="users" data-label="Users">Users</a>
+        <a href="?section=updates" class="settings-nav__item{% if active_section == 'updates' %} is-active{% endif %}" data-section="updates" data-label="Updates">
+          Updates
+          {% if update_ready %}<span class="settings-nav__badge" title="Update available"></span>{% endif %}
+        </a>
+        <a href="?section=platform" class="settings-nav__item{% if active_section == 'platform' %} is-active{% endif %}" data-section="platform" data-label="Platform">Platform</a>
+        <a href="?section=audit" class="settings-nav__item{% if active_section == 'audit' %} is-active{% endif %}" data-section="audit" data-label="Audit">Audit</a>
+        <a href="?section=logs" class="settings-nav__item{% if active_section == 'logs' %} is-active{% endif %}" data-section="logs" data-label="Logs">Logs</a>
+        {% if console_enabled %}
+        <a href="?section=console" class="settings-nav__item{% if active_section == 'console' %} is-active{% endif %}" data-section="console" data-label="Console">Console</a>
+        {% endif %}
+      </nav>
+    </section>
 
-    <div class="settings-content">
-      <section class="settings-pane{% if active_section == 'appearance' %} is-active{% endif %}" id="settings-appearance" data-section="appearance">
-        <h2 class="settings-section-title">Appearance</h2>
-        <p class="settings-hint">Personal theme for your account. CRT scanlines are site-wide (Site section).</p>
-        <form method="post">
-          {% csrf_token %}
-          <input type="hidden" name="form" value="appearance">
-          <input type="hidden" name="section" value="appearance">
-          <div class="form-group">
-            <label for="{{ appearance_form.theme.id_for_label }}">Color theme</label>
-            {{ appearance_form.theme }}
-          </div>
-          <div class="theme-preview" aria-hidden="true">
-            <span class="theme-swatch theme-swatch--wood" title="Wood"></span>
-            <span class="theme-swatch theme-swatch--slate" title="Slate"></span>
-            <span class="theme-swatch theme-swatch--terminal" title="Terminal"></span>
-          </div>
-          <button type="submit" class="btn">Save appearance</button>
-        </form>
-      </section>
+    {% include "core/_merlin_dock.html" %}
+  </div>
 
-      <section class="settings-pane{% if active_section == 'site' %} is-active{% endif %}" id="settings-site" data-section="site">
-        <h2 class="settings-section-title">Site</h2>
-        <form method="post" enctype="multipart/form-data">
-          {% csrf_token %}
-          <input type="hidden" name="form" value="site">
-          <input type="hidden" name="section" value="site">
-          <div class="form-group">
-            <label for="{{ site_form.title.id_for_label }}">Title</label>
-            {{ site_form.title }}
-            <p class="settings-hint">Shown in the header and browser tab. Leave blank to use the default.</p>
+  <section class="settings-group settings-group--info">
+      <h2 class="group-title">3 — Information</h2>
+      <div class="panel">
+        <div class="panel-body">
+          <div class="settings-briefing{% if active_section == 'appearance' %} is-active{% endif %}" data-section="appearance">
+            <p>Color theme is personal. It only changes your account, not anyone else on this board.</p>
+            <p>CRT scanlines and Merlin’s on/off switches are under Site. He stands under Categories on this page.</p>
           </div>
-          <div class="form-group">
-            <label for="{{ site_form.tagline.id_for_label }}">Tagline</label>
-            {{ site_form.tagline }}
-            <p class="settings-hint">Optional line under the title in the header.</p>
+          <div class="settings-briefing{% if active_section == 'site' %} is-active{% endif %}" data-section="site">
+            <p>Names, marks, and host details for this Control Center. Title and tagline sit in the header. Logo and favicon are the brand marks.</p>
+            <p>Location, Monitor, CRT, and Merlin are shared with every signed-in user. Guests see the weather chip and CRT as well. Call in the Wizard from Display.</p>
           </div>
-          <div class="form-group">
-            <label for="{{ site_form.logo.id_for_label }}">Logo</label>
-            {{ site_form.logo }}
-            {% if site_settings.logo %}
-            <p class="settings-hint">Current: <a href="{{ site_settings.logo.url }}" target="_blank" rel="noopener">view logo</a></p>
-            {% endif %}
+          <div class="settings-briefing{% if active_section == 'tunnel' %} is-active{% endif %}" data-section="tunnel">
+            <p>Cloudflare Tunnel publishes Library services on public hostnames. Control Center itself stays on the LAN.</p>
+            <p>Install the tunnel from Library, then connect an API token here. Nothing is published until you choose a service.</p>
           </div>
-          <div class="form-group">
-            <label for="{{ site_form.favicon.id_for_label }}">Favicon</label>
-            {{ site_form.favicon }}
-            {% if site_settings.favicon %}
-            <p class="settings-hint">Current: <a href="{{ site_settings.favicon.url }}" target="_blank" rel="noopener">view favicon</a></p>
-            {% endif %}
+          <div class="settings-briefing{% if active_section == 'users' %} is-active{% endif %}" data-section="users">
+            <p>Create and manage accounts here. Admins see Settings and Library. Members see the cards you assign. Viewers can look but not acknowledge alerts.</p>
+            <p>Each person can turn on 2FA and store their own service passwords in Profile → Vault.</p>
           </div>
-          <div class="form-group">
-            <label for="{{ site_form.weather_location.id_for_label }}">Weather location</label>
-            {{ site_form.weather_location }}
-            <p class="settings-hint">City name for the weather chip in the header. This is the server location, shown to everyone including guests.</p>
+          <div class="settings-briefing{% if active_section == 'updates' %} is-active{% endif %}" data-section="updates">
+            <p>Releases are read from <code>{{ github_repo }}</code> on GitHub, including prereleases, at most once every {{ check_interval_hours|floatformat:"-1" }} hours.</p>
+            <p>Install downloads that release and applies it in place. Your database, <code>.env</code>, and media stay put. On Docker, Install reloads gunicorn in the running container. If the project is not bind-mounted (<code>.:/app</code>), rebuild the image for a lasting upgrade.</p>
           </div>
-          <div class="form-group">
-            <label for="{{ site_form.services_host.id_for_label }}">Services host</label>
-            {{ site_form.services_host }}
-            <p class="settings-hint">LAN IP or hostname for library-installed cards (for example 192.168.0.40). Docker bridge IPs like 172.18.0.x are ignored. Leave blank to auto-detect from the address you used to open this site.</p>
+          <div class="settings-briefing{% if active_section == 'platform' %} is-active{% endif %}" data-section="platform">
+            <p>Runtime snapshot of this install: version, health checks, and push alerts.</p>
+            <p>Library repositories are the catalog entries shown in Library. Installed services or leftover data volumes must be removed before an entry can be deleted.</p>
           </div>
-          <h3 class="settings-section-title">Monitor</h3>
-          <div class="form-group">
-            <label for="{{ site_form.kuma_username.id_for_label }}">Username</label>
-            {{ site_form.kuma_username }}
+          <div class="settings-briefing{% if active_section == 'audit' %} is-active{% endif %}" data-section="audit">
+            <p>Platform events: logins, admin changes, service up/down, and updates.</p>
+            <p>Filter by type or search username, message, and IP.</p>
           </div>
-          <div class="form-group">
-            <label for="{{ site_form.kuma_password.id_for_label }}">Password</label>
-            <div class="secret-field">
-              {{ site_form.kuma_password }}
-              <button type="button" class="btn secondary" id="kuma-password-show" data-secret-toggle="{{ site_form.kuma_password.id_for_label }}">Show</button>
-              <button type="button" class="btn secondary" id="kuma-password-copy" data-secret-copy="{{ site_form.kuma_password.id_for_label }}">Copy</button>
-            </div>
-            <p class="settings-hint">Generated for Uptime Kuma. Control Center uses this so you do not open Kuma.</p>
+          <div class="settings-briefing{% if active_section == 'logs' %} is-active{% endif %}" data-section="logs">
+            <p>Tail Control Center and installed service logs. Pick a source, filter by keyword, and download the current tail.</p>
+            <p>Live mode polls for new lines. Audit events stay under Audit.</p>
           </div>
-          <div class="form-group form-group--checkbox">
-            <label class="checkbox-label">
-              {{ site_form.crt_enabled }}
-              <span>CRT scanline effect (site-wide)</span>
-            </label>
+          {% if console_enabled %}
+          <div class="settings-briefing{% if active_section == 'console' %} is-active{% endif %}" data-section="console">
+            <p>Interactive shells for this install. App opens inside Control Center; Host opens on the machine running it.</p>
+            <p>Confirm with your password. Sessions time out when idle.</p>
           </div>
-          <div class="form-group form-group--checkbox">
-            <label class="checkbox-label">
-              {{ site_form.wizard_enabled }}
-              <span>Call in the Wizard</span>
-            </label>
-            <p class="settings-hint">Shows Merlin on signed-in pages. Click him for a tip about the page you are on.</p>
-          </div>
-          <div class="form-group form-group--checkbox form-group--nested" id="wizard-notify-group">
-            <label class="checkbox-label">
-              {{ site_form.wizard_notify }}
-              <span>Let the wizard notify me</span>
-            </label>
-            <p class="settings-hint">Merlin reads site messages instead of showing toast popups.</p>
-          </div>
-          <button type="submit" class="btn">Save site settings</button>
-        </form>
-      </section>
-
-      <section class="settings-pane{% if active_section == 'tunnel' %} is-active{% endif %}" id="settings-tunnel" data-section="tunnel">
-        <h2 class="settings-section-title">Tunnel</h2>
-        <div id="tunnel-not-installed"{% if tunnel_status.installed %} hidden{% endif %}>
-          <p class="settings-hint" id="tunnel-status-line">Cloudflare Tunnel is not installed.</p>
-          <div id="tunnel-install-cta">
-            <a class="btn" href="{% url 'library' %}?q=cloudflare-tunnel">Install Cloudflare Tunnel</a>
-          </div>
+          {% endif %}
         </div>
-        <div id="tunnel-installed-settings"{% if not tunnel_status.installed %} hidden{% endif %}>
-          <p class="settings-hint">Paste an API token and click Connect. On Cloudflare’s token page, leave Account and Zone on All and confirm Account includes Cloudflare Tunnel Edit. Link account is the last step. Nothing is published until you choose a service. Control Center stays on the LAN.</p>
-          <p class="settings-hint" id="tunnel-installed-status">Checking tunnel…</p>
-          <div id="tunnel-link-form"{% if tunnel_status.linked %} hidden{% endif %}>
-            <div class="form-group">
-              <label for="tunnel-api-token">API token</label>
-              <div class="secret-field">
-                <input type="password" id="tunnel-api-token" autocomplete="off">
-                <button type="button" class="btn secondary" data-secret-toggle="tunnel-api-token">Show</button>
-                <button type="button" class="btn secondary" data-secret-copy="tunnel-api-token">Copy</button>
+      </div>
+    </section>
+
+    <section class="settings-group settings-group--notes" data-notes-panel>
+      <h2 class="group-title">4 — Notes <span class="notes-status" id="settings-notes-status" aria-live="polite"></span></h2>
+      <div class="panel">
+        <div class="panel-body settings-notes-body">
+          <div class="library-notes-toolbar" role="toolbar" aria-label="Notes formatting">
+            <button type="button" class="library-notes-fmt" data-cmd="bold" title="Bold"><strong>B</strong></button>
+            <button type="button" class="library-notes-fmt" data-cmd="italic" title="Italic"><em>I</em></button>
+            <button type="button" class="library-notes-fmt" data-cmd="underline" title="Underline"><u>U</u></button>
+            <button type="button" class="library-notes-fmt" data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+            <button type="button" class="library-notes-fmt" data-cmd="insertUnorderedList" title="Bullet list">•</button>
+            <button type="button" class="library-notes-fmt" data-cmd="insertOrderedList" title="Numbered list">1.</button>
+            <button type="button" class="library-notes-fmt" data-cmd="formatBlock" data-value="<h3>" title="Heading">H</button>
+          </div>
+          <div
+            class="library-notes-editor"
+            id="settings-notes-editor"
+            contenteditable="true"
+            role="textbox"
+            aria-multiline="true"
+            aria-label="Settings notes"
+            data-notes-save="{% url 'api_settings_notes' %}"
+            data-notes-status="settings-notes-status"
+            data-placeholder="Scratch notes for Settings…"
+          >{{ settings_note.body|safe }}</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-group settings-group--selected">
+      <h2 class="group-title" id="settings-selected-title">5 — {% if active_section == 'site' %}Site{% elif active_section == 'tunnel' %}Tunnel{% elif active_section == 'users' %}Users{% elif active_section == 'updates' %}Updates{% elif active_section == 'platform' %}Platform{% elif active_section == 'audit' %}Audit{% elif active_section == 'logs' %}Logs{% elif active_section == 'console' %}Console{% else %}Appearance{% endif %}</h2>
+      <div class="settings-content">
+    <section class="settings-pane{% if active_section == 'appearance' %} is-active{% endif %}" id="settings-appearance" data-section="appearance">
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="form" value="appearance">
+        <input type="hidden" name="section" value="appearance">
+        <div class="settings-mosaic">
+          <div class="panel">
+            <div class="panel-head">Theme</div>
+            <div class="panel-body">
+              <div class="form-group">
+                <div class="field-head">
+                  <label for="{{ appearance_form.theme.id_for_label }}">Color theme{% include "core/_help_tip.html" with tip_id="tip-theme" tip_text="Personal color theme for your account. Other people keep their own." %}</label>
+                </div>
+                {{ appearance_form.theme }}
+              </div>
+              <div class="theme-preview" aria-hidden="true">
+                <span class="theme-swatch theme-swatch--wood" title="Wood"></span>
+                <span class="theme-swatch theme-swatch--slate" title="Slate"></span>
+                <span class="theme-swatch theme-swatch--terminal" title="Terminal"></span>
               </div>
             </div>
-            <div class="form-group" id="tunnel-account-group" hidden>
-              <label for="tunnel-account">Account</label>
-              <select id="tunnel-account"></select>
-            </div>
-            <div class="form-group" id="tunnel-zone-group" hidden>
-              <label for="tunnel-zone">Zone</label>
-              <select id="tunnel-zone"></select>
-            </div>
-            <div class="form-group">
-              <a class="btn secondary" id="tunnel-token-link" href="{{ tunnel_status.token_url|default:'#' }}" target="_blank" rel="noopener">Create Cloudflare token</a>
-              <button type="button" class="btn" id="tunnel-link-btn" data-step="connect">Connect</button>
-            </div>
-            <p class="settings-hint" id="tunnel-link-error" hidden></p>
-          </div>
-          <div id="tunnel-linked-panel"{% if not tunnel_status.linked %} hidden{% endif %}>
-            <p class="settings-hint" id="tunnel-linked-meta">{% if tunnel_status.zone_name %}Zone {{ tunnel_status.zone_name }}{% endif %}</p>
-            <h3 class="settings-section-title">Published hostnames</h3>
-            <ul class="tunnel-route-list" id="tunnel-route-list"></ul>
-            <p class="settings-hint" id="tunnel-route-empty"{% if tunnel_status.routes %} hidden{% endif %}>Nothing is published. Use Publish on a Library service or a dashboard card.</p>
-            <button type="button" class="btn danger" id="tunnel-unlink-btn">Unlink account</button>
           </div>
         </div>
-      </section>
-
-      <section class="settings-pane{% if active_section == 'users' %} is-active{% endif %}" id="settings-users" data-section="users">
-        <h2 class="settings-section-title">Users</h2>
-        <p class="settings-hint">Manage accounts via Django admin for full control (password reset, permissions).</p>
-        <table class="data">
-          <thead>
-            <tr>
-              <th>Username</th>
-              <th>Active</th>
-              <th>Staff</th>
-              <th>Superuser</th>
-              <th>Last login</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for u in users %}
-            <tr>
-              <td>{{ u.username }}</td>
-              <td>{% if u.is_active %}Yes{% else %}No{% endif %}</td>
-              <td>{% if u.is_staff %}Yes{% else %}No{% endif %}</td>
-              <td>{% if u.is_superuser %}Yes{% else %}No{% endif %}</td>
-              <td>{{ u.last_login|date:"Y-m-d H:i"|default:"—" }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        <p class="settings-hint">
-          <a href="{% url 'admin:auth_user_changelist' %}">Open user admin</a>
-        </p>
-      </section>
-
-      <section class="settings-pane{% if active_section == 'updates' %} is-active{% endif %}" id="settings-updates" data-section="updates">
-        <h2 class="settings-section-title">Updates</h2>
-        <p class="settings-hint">
-          Releases are read from <code>{{ github_repo }}</code> on GitHub, including
-          prereleases, at most once every {{ check_interval_hours|floatformat:"-1" }} hours.
-          Install downloads that release and applies it in place. Your database,
-          <code>.env</code>, and media stay put. On Docker, Install reloads
-          gunicorn in the running container. If the project is not bind-mounted
-          (<code>.:/app</code>), rebuild the image for a lasting upgrade.
-        </p>
-
-        <div class="stat-row">
-          <span class="stat-label">Current version</span>
-          <span class="stat-value" id="update-current">v{{ current_version }}</span>
+        <div class="settings-save">
+          <button type="submit" class="btn">Save appearance</button>
         </div>
-        <div class="stat-row">
-          <span class="stat-label">Latest release</span>
-          <span class="stat-value" id="update-latest">{% if update_status.latest_version %}{{ update_status.latest_version }}{% else %}—{% endif %}</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">Last checked</span>
-          <span class="stat-value" id="update-checked">{% if update_status.last_checked_at %}{{ update_status.last_checked_at|timesince }} ago{% else %}Never{% endif %}</span>
-        </div>
+      </form>
+    </section>
 
-        <p class="update-banner{% if update_ready %} update-banner--available{% endif %}" id="update-banner">
-          {% if update_ready %}
-            Update {{ update_status.latest_version }} is available.
-          {% elif update_status.check_error %}
-            {{ update_status.check_error }}
-          {% else %}
-            You are running the latest version.
-          {% endif %}
-        </p>
-
-        <div class="update-progress settings-update-progress" id="settings-update-progress" hidden>
-          <div class="update-progress__track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="settings-update-bar">
-            <div class="update-progress__fill" id="settings-update-fill"></div>
+    <section class="settings-pane{% if active_section == 'site' %} is-active{% endif %}" id="settings-site" data-section="site">
+      <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <input type="hidden" name="form" value="site">
+        <input type="hidden" name="section" value="site">
+        <div class="settings-mosaic">
+          <div class="panel">
+            <div class="panel-head">Identity</div>
+            <div class="panel-body">
+              <div class="form-group">
+                <div class="field-head">
+                  <label for="{{ site_form.title.id_for_label }}">Title{% include "core/_help_tip.html" with tip_id="tip-title" tip_text="Shown in the header and browser tab. Leave blank to use the default." %}</label>
+                </div>
+                {{ site_form.title }}
+              </div>
+              <div class="form-group">
+                <div class="field-head">
+                  <label for="{{ site_form.tagline.id_for_label }}">Tagline{% include "core/_help_tip.html" with tip_id="tip-tagline" tip_text="Optional line under the title in the header." %}</label>
+                </div>
+                {{ site_form.tagline }}
+              </div>
+            </div>
           </div>
-          <p class="update-progress__status" id="settings-update-step">[000%] PREPARING</p>
+          <div class="panel">
+            <div class="panel-head">Brand</div>
+            <div class="panel-body">
+              <div class="settings-brand-row">
+                <div class="form-group">
+                  <div class="field-head">
+                    <label for="{{ site_form.logo.id_for_label }}">Logo</label>
+                  </div>
+                  {{ site_form.logo }}
+                </div>
+                <div class="form-group">
+                  <div class="field-head">
+                    <label for="{{ site_form.favicon.id_for_label }}">Favicon</label>
+                  </div>
+                  {{ site_form.favicon }}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-head">Location</div>
+            <div class="panel-body">
+              <div class="form-group">
+                <div class="field-head">
+                  <label for="{{ site_form.weather_location.id_for_label }}">Weather location{% include "core/_help_tip.html" with tip_id="tip-weather" tip_text="City name for the weather chip in the header. This is the server location, shown to everyone including guests." %}</label>
+                </div>
+                {{ site_form.weather_location }}
+              </div>
+              <div class="form-group">
+                <div class="field-head">
+                  <label for="{{ site_form.services_host.id_for_label }}">Services host{% include "core/_help_tip.html" with tip_id="tip-host" tip_text="LAN IP or hostname for library-installed cards (for example 192.168.0.40). Docker bridge IPs like 172.18.0.x are ignored. Leave blank to auto-detect from the address you used to open this site." %}</label>
+                </div>
+                {{ site_form.services_host }}
+              </div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-head">Monitor</div>
+            <div class="panel-body">
+              <div class="form-group">
+                <div class="field-head">
+                  <label for="{{ site_form.kuma_username.id_for_label }}">Username</label>
+                </div>
+                {{ site_form.kuma_username }}
+              </div>
+              <div class="form-group">
+                <div class="field-head">
+                  <label for="{{ site_form.kuma_password.id_for_label }}">Password{% include "core/_help_tip.html" with tip_id="tip-kuma" tip_text="Generated for Uptime Kuma. Control Center uses this so you do not open Kuma." %}</label>
+                </div>
+                <div class="secret-field">
+                  {{ site_form.kuma_password }}
+                  <button type="button" class="btn secondary" id="kuma-password-show" data-secret-toggle="{{ site_form.kuma_password.id_for_label }}">Show</button>
+                  <button type="button" class="btn secondary" id="kuma-password-copy" data-secret-copy="{{ site_form.kuma_password.id_for_label }}">Copy</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="panel settings-mosaic__full">
+            <div class="panel-head">Display</div>
+            <div class="panel-body">
+              <div class="form-group form-group--checkbox">
+                <div class="field-head field-head--checkbox">
+                  <label class="checkbox-label">
+                    {{ site_form.crt_enabled }}
+                    <span>CRT scanline effect (site-wide){% include "core/_help_tip.html" with tip_id="tip-crt" tip_text="Scanlines on every page for everyone, including guests." %}</span>
+                  </label>
+                </div>
+              </div>
+              <div class="form-group form-group--checkbox">
+                <div class="field-head field-head--checkbox">
+                  <label class="checkbox-label">
+                    {{ site_form.wizard_enabled }}
+                    <span>Call in the Wizard{% include "core/_help_tip.html" with tip_id="tip-wizard" tip_text="Shows Merlin on signed-in pages. On Settings he stays in section 2 and cannot be dragged." %}</span>
+                  </label>
+                </div>
+              </div>
+              <div class="form-group form-group--checkbox form-group--nested" id="wizard-notify-group">
+                <div class="field-head field-head--checkbox">
+                  <label class="checkbox-label">
+                    {{ site_form.wizard_notify }}
+                    <span>Let the wizard notify me{% include "core/_help_tip.html" with tip_id="tip-wizard-notify" tip_text="Merlin reads site messages instead of showing toast popups." %}</span>
+                  </label>
+                </div>
+              </div>
+              <div class="form-group form-group--checkbox">
+                <div class="field-head field-head--checkbox">
+                  <label class="checkbox-label">
+                    {{ site_form.require_2fa_for_admins }}
+                    <span>Require 2FA for admins{% include "core/_help_tip.html" with tip_id="tip-2fa-admin" tip_text="Admins must enrol an authenticator before using the rest of the site." %}</span>
+                  </label>
+                </div>
+              </div>
+              <div class="form-group form-group--checkbox">
+                <div class="field-head field-head--checkbox">
+                  <label class="checkbox-label">
+                    {{ site_form.require_2fa_for_all }}
+                    <span>Require 2FA for everyone{% include "core/_help_tip.html" with tip_id="tip-2fa-all" tip_text="Every signed-in account must enrol 2FA. Stronger than the admin-only switch." %}</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
+        <div class="settings-save">
+          <button type="submit" class="btn">Save site settings</button>
+        </div>
+      </form>
+    </section>
 
+    <section class="settings-pane{% if active_section == 'tunnel' %} is-active{% endif %}" id="settings-tunnel" data-section="tunnel">
+      <div class="settings-mosaic">
+        <div class="panel settings-mosaic__full" id="tunnel-not-installed"{% if tunnel_status.installed %} hidden{% endif %}>
+          <div class="panel-head">Install</div>
+          <div class="panel-body">
+            <p class="settings-status" id="tunnel-status-line">Cloudflare Tunnel is not installed.</p>
+            <div id="tunnel-install-cta">
+              <a class="btn" href="{% url 'library' %}?q=cloudflare-tunnel">Install Cloudflare Tunnel</a>
+            </div>
+          </div>
+        </div>
+        <div class="panel settings-mosaic__full" id="tunnel-installed-settings"{% if not tunnel_status.installed %} hidden{% endif %}>
+          <div class="panel-head">Account</div>
+          <div class="panel-body">
+            <p class="settings-status" id="tunnel-installed-status">Checking tunnel…</p>
+            <div id="tunnel-link-form"{% if tunnel_status.linked %} hidden{% endif %}>
+              <div class="form-group">
+                <div class="field-head">
+                  <label for="tunnel-api-token">API token{% include "core/_help_tip.html" with tip_id="tip-token" tip_text="Paste an API token and click Connect. On Cloudflare’s token page, leave Account and Zone on All and confirm Account includes Cloudflare Tunnel Edit. Link account is the last step." %}</label>
+                </div>
+                <div class="secret-field">
+                  <input type="password" id="tunnel-api-token" autocomplete="off">
+                  <button type="button" class="btn secondary" data-secret-toggle="tunnel-api-token">Show</button>
+                  <button type="button" class="btn secondary" data-secret-copy="tunnel-api-token">Copy</button>
+                </div>
+              </div>
+              <div class="form-group" id="tunnel-account-group" hidden>
+                <div class="field-head">
+                  <label for="tunnel-account">Account</label>
+                </div>
+                <select id="tunnel-account"></select>
+              </div>
+              <div class="form-group" id="tunnel-zone-group" hidden>
+                <div class="field-head">
+                  <label for="tunnel-zone">Zone</label>
+                </div>
+                <select id="tunnel-zone"></select>
+              </div>
+              <div class="form-group">
+                <a class="btn secondary" id="tunnel-token-link" href="{{ tunnel_status.token_url|default:'#' }}" target="_blank" rel="noopener">Create Cloudflare token</a>
+                <button type="button" class="btn" id="tunnel-link-btn" data-step="connect">Connect</button>
+              </div>
+              <p class="settings-status" id="tunnel-link-error" hidden></p>
+            </div>
+            <div id="tunnel-linked-panel"{% if not tunnel_status.linked %} hidden{% endif %}>
+              <p class="settings-status" id="tunnel-linked-meta">{% if tunnel_status.zone_name %}Zone {{ tunnel_status.zone_name }}{% endif %}</p>
+              <h3 class="settings-section-title">Published hostnames</h3>
+              <ul class="tunnel-route-list" id="tunnel-route-list"></ul>
+              <p class="settings-status" id="tunnel-route-empty"{% if tunnel_status.routes %} hidden{% endif %}>Nothing is published. Use Publish on a Library service or a dashboard card.</p>
+              <button type="button" class="btn danger" id="tunnel-unlink-btn">Unlink account</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-pane{% if active_section == 'users' %} is-active{% endif %}" id="settings-users" data-section="users">
+      <div class="settings-mosaic">
+        <div class="panel settings-mosaic__full">
+          <div class="panel-head">Accounts</div>
+          <div class="panel-body">
+            <div class="settings-users-toolbar">
+              <button type="button" class="btn secondary" id="users-add-btn">Add user</button>
+              <span class="library-repos-status" id="users-status" aria-live="polite"></span>
+            </div>
+            <div class="library-repos-list-wrap" id="users-list-wrap">
+              <table class="library-repos-table" id="users-table">
+                <thead>
+                  <tr>
+                    <th>Username</th>
+                    <th>Role</th>
+                    <th>2FA</th>
+                    <th>Active</th>
+                    <th>Last login</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="users-tbody"></tbody>
+              </table>
+            </div>
+            <form class="settings-users-form" id="users-form" hidden>
+              <input type="hidden" id="user-id">
+              <h3 class="settings-section-title" id="users-form-title">Add user</h3>
+              <div class="form-group">
+                <label for="user-username">Username</label>
+                <input type="text" id="user-username" autocomplete="off" required>
+              </div>
+              <div class="form-group">
+                <label for="user-email">Email</label>
+                <input type="email" id="user-email" autocomplete="off">
+              </div>
+              <div class="form-group">
+                <label for="user-role">Role</label>
+                <select id="user-role">
+                  <option value="member">Member</option>
+                  <option value="viewer">Viewer</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div class="form-group" id="user-password-group">
+                <label for="user-password">Password</label>
+                <input type="password" id="user-password" autocomplete="new-password" placeholder="Leave blank to generate">
+              </div>
+              <label class="checkbox-label">
+                <input type="checkbox" id="user-active" checked>
+                <span>Active</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="user-must-change">
+                <span>Must change password on next login</span>
+              </label>
+              <div class="form-group" id="user-services-group">
+                <label>Allowed services</label>
+                <div class="service-checks" id="user-services"></div>
+              </div>
+              <p class="alert-item error" id="users-form-error" hidden></p>
+              <div class="generated-secret" id="users-generated" hidden>
+                <p class="settings-hint">Show this password once:</p>
+                <code id="users-generated-value"></code>
+              </div>
+              <div class="library-modal__actions">
+                <button type="button" class="btn secondary" id="users-cancel-btn">Cancel</button>
+                <button type="submit" class="btn">Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-pane{% if active_section == 'updates' %} is-active{% endif %}" id="settings-updates" data-section="updates">
+      <div class="settings-mosaic">
+        <div class="panel">
+          <div class="panel-head">Version</div>
+          <div class="panel-body">
+            <div class="stat-row">
+              <span class="stat-label">Current version</span>
+              <span class="stat-value" id="update-current">v{{ current_version }}</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Latest release</span>
+              <span class="stat-value" id="update-latest">{% if update_status.latest_version %}{{ update_status.latest_version }}{% else %}—{% endif %}</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Last checked</span>
+              <span class="stat-value" id="update-checked">{% if update_status.last_checked_at %}{{ update_status.last_checked_at|timesince }} ago{% else %}Never{% endif %}</span>
+            </div>
+            <p class="update-banner{% if update_ready %} update-banner--available{% endif %}" id="update-banner">
+              {% if update_ready %}
+                Update {{ update_status.latest_version }} is available.
+              {% elif update_status.check_error %}
+                {{ update_status.check_error }}
+              {% else %}
+                You are running the latest version.
+              {% endif %}
+            </p>
+            <div class="update-progress settings-update-progress" id="settings-update-progress" hidden>
+              <div class="update-progress__track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="settings-update-bar">
+                <div class="update-progress__fill" id="settings-update-fill"></div>
+              </div>
+              <p class="update-progress__status" id="settings-update-step">[000%] PREPARING</p>
+            </div>
+            <div class="update-actions">
+              <button type="button" class="btn secondary" id="update-check-btn">Check now</button>
+              <button type="button" class="btn" id="update-install-btn"{% if not update_ready or not install_allowed %} disabled{% endif %}>Install update</button>
+            </div>
+            {% if not install_allowed %}
+            <p class="settings-status">In-app installs are disabled. Set <code>UPDATES_ALLOW_INSTALL=true</code> to enable them.</p>
+            {% endif %}
+          </div>
+        </div>
         {% if update_status.release_notes %}
-        <details class="update-notes"{% if update_ready %} open{% endif %}>
-          <summary>Release notes</summary>
-          <pre class="update-notes__body" id="update-notes">{{ update_status.release_notes }}</pre>
-          {% if update_status.release_url %}
-          <p class="settings-hint"><a href="{{ update_status.release_url }}" target="_blank" rel="noopener">View on GitHub</a></p>
-          {% endif %}
-        </details>
-        {% endif %}
-
-        <div class="update-actions">
-          <button type="button" class="btn secondary" id="update-check-btn">Check now</button>
-          <button type="button" class="btn" id="update-install-btn"{% if not update_ready or not install_allowed %} disabled{% endif %}>Install update</button>
-        </div>
-
-        {% if not install_allowed %}
-        <p class="settings-hint">In-app installs are disabled. Set <code>UPDATES_ALLOW_INSTALL=true</code> to enable them.</p>
-        {% endif %}
-
-        <div class="update-log-wrap" id="update-log-wrap"{% if update_status.install_state == 'idle' %} hidden{% endif %}>
-          <h3 class="settings-section-title">Install log</h3>
-          <pre class="update-log" id="update-log">{{ update_status.install_log }}</pre>
-        </div>
-      </section>
-
-      <section class="settings-pane{% if active_section == 'platform' %} is-active{% endif %}" id="settings-platform" data-section="platform">
-        <h2 class="settings-section-title">Platform</h2>
-        <div class="stat-row">
-          <span class="stat-label">Version</span>
-          <span class="stat-value">v{{ platform.version }}{% if platform.revision %} ({{ platform.revision }}){% endif %}</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">Site title</span>
-          <span class="stat-value">{{ platform.site_title }}</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">Health checks</span>
-          <span class="stat-value">{% if platform.health_check_enabled %}Enabled{% else %}Disabled{% endif %}</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">Push alerts (ntfy)</span>
-          <span class="stat-value">{% if platform.ntfy_configured %}Configured{% else %}Not configured{% endif %}</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">Debug mode</span>
-          <span class="stat-value">{% if platform.debug %}On{% else %}Off{% endif %}</span>
-        </div>
-        <p class="settings-hint">
-          <a href="{% url 'admin:index' %}">Django admin</a>
-        </p>
-      </section>
-
-      <section class="settings-pane{% if active_section == 'audit' %} is-active{% endif %}" id="settings-audit" data-section="audit">
-        <h2 class="settings-section-title">Audit log</h2>
-        <p class="settings-hint">Platform events: logins, admin changes, service up/down, and updates.</p>
-        <form method="get" class="audit-filters">
-          <input type="hidden" name="section" value="audit">
-          <div class="audit-filters__row">
-            <div class="form-group">
-              <label for="audit-event-type">Event type</label>
-              <select name="event_type" id="audit-event-type">
-                <option value="">All types</option>
-                {% for value, label in audit_event_types %}
-                <option value="{{ value }}"{% if audit_event_type == value %} selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="form-group">
-              <label for="audit-search">Search</label>
-              <input type="search" name="q" id="audit-search" value="{{ audit_search }}" placeholder="Username, message, IP">
-            </div>
-            <button type="submit" class="btn secondary">Filter</button>
+        <div class="panel">
+          <div class="panel-head">Release notes</div>
+          <div class="panel-body">
+            <details class="update-notes"{% if update_ready %} open{% endif %}>
+              <summary>Release notes</summary>
+              <pre class="update-notes__body" id="update-notes">{{ update_status.release_notes }}</pre>
+              {% if update_status.release_url %}
+              <p class="settings-status"><a href="{{ update_status.release_url }}" target="_blank" rel="noopener">View on GitHub</a></p>
+              {% endif %}
+            </details>
           </div>
-        </form>
-        <table class="data">
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Type</th>
-              <th>User</th>
-              <th>IP</th>
-              <th>Message</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for ev in audit_events %}
-            <tr>
-              <td>{{ ev.created_at|date:"Y-m-d H:i:s" }}</td>
-              <td>{{ ev.get_event_type_display }}</td>
-              <td>{{ ev.username|default:"—" }}</td>
-              <td>{{ ev.ip_address|default:"—" }}</td>
-              <td>{{ ev.message }}</td>
-            </tr>
-            {% empty %}
-            <tr><td colspan="5">No events match your filters.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        {% if audit_events.has_other_pages %}
-        <nav class="audit-pagination" aria-label="Audit pagination">
-          {% if audit_events.has_previous %}
-          <a class="btn secondary" href="?section=audit&amp;page={{ audit_events.previous_page_number }}{% if audit_event_type %}&amp;event_type={{ audit_event_type }}{% endif %}{% if audit_search %}&amp;q={{ audit_search|urlencode }}{% endif %}">Previous</a>
-          {% endif %}
-          <span class="audit-pagination__meta">Page {{ audit_events.number }} of {{ audit_events.paginator.num_pages }}</span>
-          {% if audit_events.has_next %}
-          <a class="btn secondary" href="?section=audit&amp;page={{ audit_events.next_page_number }}{% if audit_event_type %}&amp;event_type={{ audit_event_type }}{% endif %}{% if audit_search %}&amp;q={{ audit_search|urlencode }}{% endif %}">Next</a>
-          {% endif %}
-        </nav>
+        </div>
         {% endif %}
-      </section>
+        <div class="panel settings-mosaic__full" id="update-log-wrap"{% if update_status.install_state == 'idle' %} hidden{% endif %}>
+          <div class="panel-head">Install log</div>
+          <div class="panel-body">
+            <pre class="update-log" id="update-log">{{ update_status.install_log }}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-pane{% if active_section == 'platform' %} is-active{% endif %}" id="settings-platform" data-section="platform">
+      <div class="settings-mosaic">
+        <div class="panel">
+          <div class="panel-head">Runtime</div>
+          <div class="panel-body">
+            <div class="stat-row">
+              <span class="stat-label">Version</span>
+              <span class="stat-value">v{{ platform.version }}{% if platform.revision %} ({{ platform.revision }}){% endif %}</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Site title</span>
+              <span class="stat-value">{{ platform.site_title }}</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Health checks</span>
+              <span class="stat-value">{% if platform.health_check_enabled %}Enabled{% else %}Disabled{% endif %}</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Push alerts (ntfy)</span>
+              <span class="stat-value">{% if platform.ntfy_configured %}Configured{% else %}Not configured{% endif %}</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Debug mode</span>
+              <span class="stat-value">{% if platform.debug %}On{% else %}Off{% endif %}</span>
+            </div>
+            <p class="settings-status">
+              <a href="{% url 'admin:index' %}">Django admin</a>
+            </p>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">Catalog</div>
+          <div class="panel-body">
+            <div class="stat-row stat-row--actions">
+              <span class="stat-label">Library repositories</span>
+              <span class="stat-value">
+                <button type="button" class="btn secondary" id="library-repos-edit-btn">Edit</button>
+              </span>
+            </div>
+            <p class="settings-status">Add or edit apps in the Library catalog.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-pane{% if active_section == 'audit' %} is-active{% endif %}" id="settings-audit" data-section="audit">
+      <div class="settings-mosaic">
+        <div class="panel settings-mosaic__full">
+          <div class="panel-head">Log</div>
+          <div class="panel-body">
+            <form method="get" class="audit-filters">
+              <input type="hidden" name="section" value="audit">
+              <div class="audit-filters__row">
+                <div class="form-group">
+                  <div class="field-head">
+                    <label for="audit-event-type">Event type</label>
+                  </div>
+                  <select name="event_type" id="audit-event-type">
+                    <option value="">All types</option>
+                    {% for value, label in audit_event_types %}
+                    <option value="{{ value }}"{% if audit_event_type == value %} selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="form-group">
+                  <div class="field-head">
+                    <label for="audit-search">Search</label>
+                  </div>
+                  <input type="search" name="q" id="audit-search" value="{{ audit_search }}" placeholder="Username, message, IP">
+                </div>
+                <button type="submit" class="btn secondary">Filter</button>
+              </div>
+            </form>
+            <table class="data">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Type</th>
+                  <th>User</th>
+                  <th>IP</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for ev in audit_events %}
+                <tr>
+                  <td>{{ ev.created_at|date:"Y-m-d H:i:s" }}</td>
+                  <td>{{ ev.get_event_type_display }}</td>
+                  <td>{{ ev.username|default:"—" }}</td>
+                  <td>{{ ev.ip_address|default:"—" }}</td>
+                  <td>{{ ev.message }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5">No events match your filters.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            {% if audit_events.has_other_pages %}
+            <nav class="audit-pagination" aria-label="Audit pagination">
+              {% if audit_events.has_previous %}
+              <a class="btn secondary" href="?section=audit&amp;page={{ audit_events.previous_page_number }}{% if audit_event_type %}&amp;event_type={{ audit_event_type }}{% endif %}{% if audit_search %}&amp;q={{ audit_search|urlencode }}{% endif %}">Previous</a>
+              {% endif %}
+              <span class="audit-pagination__meta">Page {{ audit_events.number }} of {{ audit_events.paginator.num_pages }}</span>
+              {% if audit_events.has_next %}
+              <a class="btn secondary" href="?section=audit&amp;page={{ audit_events.next_page_number }}{% if audit_event_type %}&amp;event_type={{ audit_event_type }}{% endif %}{% if audit_search %}&amp;q={{ audit_search|urlencode }}{% endif %}">Next</a>
+              {% endif %}
+            </nav>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-pane{% if active_section == 'logs' %} is-active{% endif %}" id="settings-logs" data-section="logs">
+      <div class="settings-mosaic">
+        <div class="panel settings-mosaic__full settings-logs-panel">
+          <div class="panel-body settings-logs-body">
+            <div class="settings-logs-toolbar" role="toolbar" aria-label="Log filters">
+              <select id="logs-source" aria-label="Log source"></select>
+              <input type="search" id="logs-filter" placeholder="Keyword…" aria-label="Keyword filter" autocomplete="off" spellcheck="false">
+              <label class="checkbox-label settings-logs-live">
+                <input type="checkbox" id="logs-live">
+                <span>Live</span>
+              </label>
+              <button type="button" class="btn secondary" id="logs-refresh-btn">Refresh</button>
+              <button type="button" class="btn secondary" id="logs-download-btn">Download</button>
+              <span class="settings-logs-status" id="logs-status" aria-live="polite"></span>
+            </div>
+            <pre class="update-log settings-logs-view" id="logs-view" tabindex="0">Loading…</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    {% if console_enabled %}
+    <section class="settings-pane{% if active_section == 'console' %} is-active{% endif %}" id="settings-console" data-section="console" data-host-enabled="{% if console_host_enabled %}1{% else %}0{% endif %}" data-twofa="{% if twofa_enabled %}1{% else %}0{% endif %}">
+      <div class="settings-mosaic">
+        <div class="panel settings-mosaic__full">
+          <div class="panel-head settings-console-head">
+            <div class="settings-console-tabs" role="tablist" aria-label="Console target">
+              <button type="button" class="settings-console-tab is-active" data-console-target="app" role="tab" aria-selected="true">App</button>
+              {% if console_host_enabled %}
+              <button type="button" class="settings-console-tab" data-console-target="host" role="tab" aria-selected="false">Host</button>
+              {% endif %}
+            </div>
+            <button type="button" class="btn secondary" id="console-connect-btn">Connect</button>
+          </div>
+          <div class="panel-body settings-console-body">
+            <div class="settings-console-wrap" id="console-terminal" hidden></div>
+            <p class="settings-status" id="console-status">Enter your password to open a shell.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+    {% endif %}
+      </div>
+    </section>
+</div>
+
+<div class="library-modal library-repos-modal" id="library-repos-modal" hidden>
+  <div class="library-modal__backdrop" data-repos-close></div>
+  <div class="library-modal__panel library-repos-modal__panel" role="dialog" aria-labelledby="library-repos-title" aria-modal="true">
+    <h2 class="library-modal__title" id="library-repos-title">Library repositories</h2>
+    <p class="settings-hint">Edit catalog entries shown in Library. Compose YAML is required for Docker installs.</p>
+    <div class="library-repos-toolbar">
+      <button type="button" class="btn secondary" id="library-repos-add-btn">Add app</button>
+      <span class="library-repos-status" id="library-repos-status" aria-live="polite"></span>
+    </div>
+    <div class="library-repos-list-wrap">
+      <table class="library-repos-table" id="library-repos-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Slug</th>
+            <th>Category</th>
+            <th>Port</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="library-repos-tbody"></tbody>
+      </table>
+    </div>
+    <form id="library-repos-form" class="library-repos-form" hidden>
+      <h3 class="settings-section-title" id="library-repos-form-title">Edit entry</h3>
+      <div class="form-group">
+        <label for="repos-slug">Slug</label>
+        <input type="text" id="repos-slug" name="slug" pattern="[a-z0-9][a-z0-9-]*" required>
+      </div>
+      <div class="form-group">
+        <label for="repos-name">Name</label>
+        <input type="text" id="repos-name" name="name" required>
+      </div>
+      <div class="form-group">
+        <label for="repos-category">Category</label>
+        <input type="text" id="repos-category" name="category" required>
+      </div>
+      <div class="form-group">
+        <label for="repos-tagline">Tagline</label>
+        <input type="text" id="repos-tagline" name="tagline">
+      </div>
+      <div class="form-group">
+        <label for="repos-description">Description</label>
+        <textarea id="repos-description" name="description" rows="3"></textarea>
+      </div>
+      <div class="form-group">
+        <label for="repos-repo">GitHub repo (owner/name)</label>
+        <input type="text" id="repos-repo" name="repo" placeholder="org/image">
+      </div>
+      <div class="form-group">
+        <label for="repos-icon">Icon URL</label>
+        <input type="url" id="repos-icon" name="icon">
+      </div>
+      <div class="form-group">
+        <label for="repos-default-port">Default host port</label>
+        <input type="number" id="repos-default-port" name="default_port" min="1" max="65535" value="8080">
+      </div>
+      <div class="form-group">
+        <label for="repos-path">URL path</label>
+        <input type="text" id="repos-path" name="path" value="/">
+      </div>
+      <div class="form-group">
+        <label for="repos-compose">Compose YAML</label>
+        <textarea id="repos-compose" name="compose" rows="8" class="library-repos-compose" placeholder="services:&#10;  app:&#10;    image: example:latest&#10;    ports:&#10;      - &quot;8080:80&quot;"></textarea>
+      </div>
+      <p class="settings-hint" id="library-repos-form-error" hidden></p>
+      <div class="library-modal__actions">
+        <button type="button" class="btn secondary" data-repos-cancel>Cancel</button>
+        <button type="submit" class="btn">Save entry</button>
+      </div>
+    </form>
+    <div class="library-modal__actions" id="library-repos-close-actions">
+      <button type="button" class="btn secondary" data-repos-close>Close</button>
     </div>
   </div>
-</section>
+</div>
 {% endblock %}
 {% block extra_js %}
 <script src="{% vstatic 'js/settings-tabs.js' %}" defer></script>
+<script src="{% vstatic 'js/help-tips.js' %}" defer></script>
+<script src="{% vstatic 'js/settings-users.js' %}" defer></script>
+<script src="{% vstatic 'js/settings-logs.js' %}" defer></script>
+{% if console_enabled %}
+<script src="{% vstatic 'vendor/xterm/xterm.js' %}" defer></script>
+<script src="{% vstatic 'vendor/xterm/addon-fit.js' %}" defer></script>
+<script src="{% vstatic 'js/settings-console.js' %}" defer></script>
+{% endif %}
+<script src="{% vstatic 'js/notes-editor.js' %}" defer></script>
+<script src="{% vstatic 'js/image-upload.js' %}" defer></script>
 <script src="{% vstatic 'js/tunnel.js' %}" defer></script>
+<script src="{% vstatic 'js/library-repos.js' %}" defer></script>
 {% endblock %}

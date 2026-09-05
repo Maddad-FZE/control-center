@@ -423,6 +423,12 @@ def create_dashboard_card(slug, entry, host_port):
         apply_preset_metrics(service, "pihole")
     elif widget_type == "speedtest":
         apply_preset_metrics(service, "speedtest")
+    try:
+        from dashboard.services import probe_service_health
+
+        probe_service_health(service)
+    except Exception:
+        logger.debug("Initial health probe failed for %s", slug)
     return service
 
 

@@ -51,26 +51,19 @@ def _apply_publish_urls(service, by_id=None, by_slug=None):
 
 
 def _filter_categories_for_request(request):
+    from core.access import visible_service_ids
+
     categories = ServiceCategory.objects.prefetch_related(
         "services", "services__metrics"
     ).all()
-    if _is_guest(request):
-        filtered = []
-        for cat in categories:
-            public_services = [
-                s for s in cat.services.all() if s.enabled and s.is_public
-            ]
-            if public_services:
-                cat.filtered_services = public_services
-                filtered.append(cat)
-        return filtered
-    result = []
+    allowed = visible_service_ids(request.user if request.user.is_authenticated else None)
+    filtered = []
     for cat in categories:
-        enabled = [s for s in cat.services.all() if s.enabled]
-        if enabled:
-            cat.filtered_services = enabled
-            result.append(cat)
-    return result
+        visible = [s for s in cat.services.all() if s.enabled and s.id in allowed]
+        if visible:
+            cat.filtered_services = visible
+            filtered.append(cat)
+    return filtered
 
 
 @login_not_required
@@ -133,6 +126,8 @@ def dashboard_view(request):
             if status.get(svc.id, {}).get("is_up") is False:
                 down_section_ids.add(bucket)
 
+    app_services.sort(key=lambda s: (s.sort_order, s.name.lower()))
+
     visible_status = [row for row in status.values() if row]
     context = {
         "tracked_services": tracked_services,
@@ -175,8 +170,11 @@ def dashboard_view(request):
 
 
 def _visible_service(request, service_id):
+    from core.access import can_open_service
+
     service = get_object_or_404(Service, pk=service_id, enabled=True)
-    if _is_guest(request) and not service.is_public:
+    user = request.user if request.user.is_authenticated else None
+    if not can_open_service(user, service):
         return None
     return service
 
@@ -388,6 +386,38 @@ def api_service_delete(request, service_id):
 
 
 @login_required
+@require_POST
+def api_apps_reorder(request):
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Forbidden"}, status=403)
+    try:
+        body = json.loads(request.body.decode() or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+    order = body.get("order")
+    if not isinstance(order, list) or not order:
+        return JsonResponse({"error": "order required"}, status=400)
+    ids = []
+    for raw in order:
+        try:
+            ids.append(int(raw))
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "invalid id"}, status=400)
+    services_qs = Service.objects.filter(
+        pk__in=ids,
+        enabled=True,
+        is_misc=False,
+        widget_type=Service.WidgetType.NONE,
+    )
+    if services_qs.count() != len(set(ids)):
+        return JsonResponse({"error": "invalid apps order"}, status=400)
+    for index, service_id in enumerate(ids):
+        Service.objects.filter(pk=service_id).update(sort_order=index)
+    log_audit("admin", request=request, user=request.user, message="Reordered Apps cards")
+    return JsonResponse({"ok": True})
+
+
+@login_required
 @require_GET
 def api_system(request):
     return JsonResponse(services.get_system_stats())
@@ -413,7 +443,7 @@ def api_system_reboot(request):
 @login_required
 @require_GET
 def api_system_usb(request):
-    return JsonResponse(hostops.list_usb_devices())
+    return JsonResponse(hostops.get_cached_usb())
 
 
 @login_required
@@ -481,6 +511,10 @@ def api_alerts(request):
 @login_required
 @require_POST
 def api_alerts_ack(request):
+    from core.access import can_ack_alerts
+
+    if not can_ack_alerts(request.user):
+        return JsonResponse({"error": "Forbidden"}, status=403)
     try:
         body = json.loads(request.body.decode() or "{}")
     except json.JSONDecodeError:
@@ -500,16 +534,23 @@ def api_alerts_ack(request):
 @login_required
 @require_GET
 def api_uptime(request):
+    from core.access import visible_service_ids
+
     payload = dict(services.get_cached_uptime_payload())
     payload["kuma_can_install"] = request.user.is_superuser
+    allowed = visible_service_ids(request.user)
+    uptime = payload.get("uptime") or {}
+    payload["uptime"] = {key: value for key, value in uptime.items() if int(key) in allowed}
     return JsonResponse(payload)
 
 
 @login_not_required
 @require_GET
 def api_widgets(request):
-    public_only = not request.user.is_authenticated
-    return JsonResponse({"widgets": services.fetch_all_widgets(public_only=public_only)})
+    from core.access import visible_service_ids
+
+    allowed = visible_service_ids(request.user if request.user.is_authenticated else None)
+    return JsonResponse({"widgets": services.fetch_all_widgets(service_ids=allowed)})
 
 
 @login_required

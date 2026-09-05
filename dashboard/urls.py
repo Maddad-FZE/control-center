@@ -22,6 +22,7 @@ urlpatterns = [
         views.api_service_delete,
         name="api_service_delete",
     ),
+    path("api/apps/reorder/", views.api_apps_reorder, name="api_apps_reorder"),
     path("api/system/", views.api_system, name="api_system"),
     path("api/system/reboot/", views.api_system_reboot, name="api_system_reboot"),
     path("api/system/usb/", views.api_system_usb, name="api_system_usb"),

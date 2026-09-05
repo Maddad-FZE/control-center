@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -83,7 +84,14 @@ class OverlayViewTests(TestCase):
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(resp.url, reverse("dashboard"))
 
-    def test_signed_in_can_open_private_overlay(self):
+    def test_signed_in_without_access_cannot_open_private_overlay(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse("service_view", args=[self.private.id]))
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, reverse("dashboard"))
+
+    def test_signed_in_with_access_can_open_private_overlay(self):
+        self.user.profile.allowed_services.add(self.private)
         self.client.force_login(self.user)
         resp = self.client.get(reverse("service_view", args=[self.private.id]))
         self.assertEqual(resp.status_code, 200)
@@ -93,6 +101,71 @@ class OverlayViewTests(TestCase):
         resp = self.client.get(reverse("dashboard"))
         self.assertContains(resp, reverse("service_view", args=[self.public.id]))
         self.assertContains(resp, "Open in overlay")
+
+    def test_card_menu_credentials_uses_section_vault(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse("dashboard"))
+        self.assertContains(resp, f"?section=vault&service={self.public.id}")
+        self.assertNotContains(resp, "?tab=vault")
+
+    def test_apps_cards_compact_layout(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse("dashboard"))
+        self.assertContains(resp, 'class="service-card__compact"')
+        self.assertContains(resp, 'data-apps-reorder="1"')
+        self.assertContains(resp, "apps-cards.js")
+
+    def test_empty_section_placeholders_match_card_size(self):
+        css = (Path(__file__).resolve().parents[1] / "static" / "css" / "dashboard.css").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(".service-grid--tracked .section-empty", css)
+        self.assertIn(".service-grid--apps .section-empty", css)
+        self.assertIn(".bookmarks .section-empty", css)
+        self.assertIn("min-height: 12.75rem", css)
+        self.assertIn("height: 10.5rem", css)
+        resp = self.client.get(reverse("dashboard"))
+        html = resp.content.decode()
+        tracked = html.split("service-grid--tracked", 1)[1].split("services-group--apps", 1)[0]
+        apps = html.split("service-grid--apps", 1)[1].split("services-group--misc", 1)[0]
+        misc = html.split('class="bookmarks"', 1)[1].split("services-group--stats", 1)[0]
+        self.assertIn("section-empty", tracked)
+        self.assertIn("section-empty", apps)
+        self.assertIn("section-empty", misc)
+        self.assertIn("Nothing tracked right now", tracked)
+        self.assertIn("No apps to show yet", apps)
+        self.assertIn("Nothing in Misc right now", misc)
+
+    def test_apps_reorder_api(self):
+        other = Service.objects.create(
+            category=self.cat,
+            name="Second App",
+            href="http://192.168.0.40:8097/",
+            enabled=True,
+            sort_order=5,
+        )
+        self.client.force_login(self.admin)
+        resp = self.client.post(
+            reverse("api_apps_reorder"),
+            data=json.dumps({"order": [other.id, self.public.id, self.private.id]}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.public.refresh_from_db()
+        self.private.refresh_from_db()
+        other.refresh_from_db()
+        self.assertEqual(other.sort_order, 0)
+        self.assertEqual(self.public.sort_order, 1)
+        self.assertEqual(self.private.sort_order, 2)
+
+    def test_apps_reorder_requires_admin(self):
+        self.client.force_login(self.user)
+        resp = self.client.post(
+            reverse("api_apps_reorder"),
+            data=json.dumps({"order": [self.public.id]}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 403)
 
     def test_always_new_tab_changes_card_href(self):
         prefs.set_open_in_new_tab(self.admin, self.public.id, True)
@@ -294,6 +367,7 @@ class KumaHealthTests(TestCase):
 
     @patch("dashboard.services._check_url")
     def test_health_pulls_kuma_not_http_ping(self, ping):
+        ping.return_value = (True, 0, "")
         self.fake.setup_needed = False
         self.fake.monitors = [
             {"id": 7, "monitorID": 7, "name": "Nextcloud", "url": self.cloud.href}
@@ -302,11 +376,47 @@ class KumaHealthTests(TestCase):
             7: [{"status": 1, "ping": 12.4, "msg": ""}],
         }
         Service.objects.filter(pk=self.cloud.pk).update(kuma_monitor_id=7)
+        Service.objects.filter(pk=self.kuma_card.pk).update(enabled=False)
         self.cloud.refresh_from_db()
         results = services.run_health_checks()
         ping.assert_not_called()
         self.assertTrue(ServiceCheck.objects.filter(service=self.cloud, is_up=True).exists())
         self.assertTrue(any(row["id"] == self.cloud.id and row["is_up"] for row in results))
+
+    @patch("dashboard.services._check_url")
+    def test_kuma_down_heartbeat_marks_service_down(self, ping):
+        ping.return_value = (True, 0, "")
+        self.fake.setup_needed = False
+        self.fake.monitors = [
+            {"id": 7, "monitorID": 7, "name": "Nextcloud", "url": self.cloud.href}
+        ]
+        self.fake.heartbeats = {
+            7: [{"status": 0, "ping": 0, "msg": "timeout", "time": "2026-09-05 19:00:00"}],
+        }
+        Service.objects.filter(pk=self.cloud.pk).update(kuma_monitor_id=7)
+        Service.objects.filter(pk=self.kuma_card.pk).update(enabled=False)
+        results = services.run_health_checks()
+        ping.assert_not_called()
+        self.assertTrue(ServiceCheck.objects.filter(service=self.cloud, is_up=False).exists())
+        self.assertTrue(
+            any(row["id"] == self.cloud.id and row["is_up"] is False for row in results)
+        )
+
+    @patch("dashboard.services._check_url")
+    def test_missing_kuma_heartbeat_keeps_last_status(self, ping):
+        ping.return_value = (False, 0, "unreachable")
+        ServiceCheck.objects.create(service=self.cloud, is_up=True, response_ms=9)
+        self.fake.setup_needed = False
+        self.fake.monitors = [
+            {"id": 7, "monitorID": 7, "name": "Nextcloud", "url": self.cloud.href}
+        ]
+        self.fake.heartbeats = {}
+        Service.objects.filter(pk=self.cloud.pk).update(kuma_monitor_id=7)
+        Service.objects.filter(pk=self.kuma_card.pk).update(enabled=False)
+        results = services.run_health_checks()
+        ping.assert_not_called()
+        self.assertTrue(any(row["id"] == self.cloud.id and row["is_up"] for row in results))
+        self.assertFalse(ServiceCheck.objects.filter(service=self.cloud, is_up=False).exists())
 
     def test_ensure_does_not_create_or_retag_card(self):
         InstalledService.objects.filter(slug="uptime-kuma").delete()
@@ -395,6 +505,17 @@ class KumaHealthTests(TestCase):
         self.assertTrue(payload["kuma_available"])
         self.assertTrue(payload["kuma_synced"])
         self.assertIn(str(self.cloud.id), payload["uptime"])
+        self.assertIn("is_up", payload["uptime"][str(self.cloud.id)])
+
+    @patch("dashboard.services.maybe_run_health_tick")
+    def test_uptime_payload_kicks_tick_when_checks_stale(self, tick):
+        cache.clear()
+        ServiceCheck.objects.create(service=self.cloud, is_up=True, response_ms=5)
+        ServiceCheck.objects.filter(service=self.cloud).update(
+            checked_at=timezone.now() - timezone.timedelta(days=2)
+        )
+        services.get_cached_uptime_payload()
+        tick.assert_called_once()
 
     @patch("dashboard.kuma.secrets.token_urlsafe", return_value="generated-token")
     def test_kuma_setup_generates_admin(self, _token):
@@ -426,8 +547,21 @@ class KumaHealthTests(TestCase):
         self.assertIn("Install Uptime Kuma to see the monitor.", text)
         self.assertIn("/library/?q=uptime-kuma", text)
         self.assertIn("Waiting for the first monitor check.", text)
+        self.assertIn("uptime-row--down", text)
+        self.assertIn("uptime-state--", text)
         self.assertNotIn("save that login under Settings", text)
         self.assertNotIn("No uptime data yet. Health checks populate history.", text)
+        self.assertIn("applyHostDown", text)
+        self.assertIn("Host unreachable", text)
+        self.assertNotIn("uptimeBox.innerHTML", text)
+
+    def test_service_worker_does_not_replay_stale_api(self):
+        source = Path(__file__).resolve().parents[1] / "static" / "js" / "sw.js"
+        text = source.read_text(encoding="utf-8")
+        self.assertIn("networkOnlyApi", text)
+        self.assertIn('JSON.stringify({ offline: true })', text)
+        self.assertNotIn("API_CACHE", text)
+        self.assertNotIn("networkFirst(request, API_CACHE)", text)
 
     def test_dashboard_renames_monitor_panel(self):
         admin = User.objects.create_user("admin", password="x", is_superuser=True)
@@ -448,8 +582,24 @@ class KumaHealthTests(TestCase):
         admin = User.objects.create_user("admin", password="x", is_superuser=True)
         self.client.force_login(admin)
         resp = self.client.get(reverse("settings") + "?section=site")
-        self.assertContains(resp, ">Monitor</h3>")
+        self.assertContains(resp, "1 — Categories")
+        self.assertContains(resp, "2 — Merlin")
+        self.assertContains(resp, "3 — Information")
+        self.assertContains(resp, "4 — Notes")
+        self.assertContains(resp, "5 — Site")
+        self.assertContains(resp, 'id="settings-merlin-dock"')
+        self.assertContains(resp, 'id="settings-notes-editor"')
+        self.assertNotContains(resp, "Save Merlin")
+        self.assertNotContains(resp, "SEC. 0")
+        self.assertContains(resp, '<div class="panel-head">Monitor</div>')
+        self.assertContains(resp, '<div class="panel-head">Display</div>')
+        self.assertContains(resp, "Call in the Wizard")
+        self.assertContains(resp, "Let the wizard notify me")
+        self.assertContains(resp, "CRT scanline effect")
+        self.assertContains(resp, "data-image-upload")
+        self.assertContains(resp, "image-upload__frame")
         self.assertContains(resp, "Generated for Uptime Kuma")
+        self.assertContains(resp, 'class="help-tip"')
         self.assertContains(resp, "data-secret-toggle")
         self.assertContains(resp, "data-secret-copy")
         self.assertContains(resp, ">Show</button>")
@@ -458,6 +608,8 @@ class KumaHealthTests(TestCase):
         js = tabs.read_text(encoding="utf-8")
         self.assertIn("navigator.clipboard.writeText", js)
         self.assertIn("data-secret-toggle", js)
+        tips = Path(__file__).resolve().parents[1] / "static" / "js" / "help-tips.js"
+        self.assertIn("closeHelpTips", tips.read_text(encoding="utf-8"))
 
 
 class WizardBubbleAvailabilityTests(TestCase):
@@ -471,14 +623,49 @@ class WizardBubbleAvailabilityTests(TestCase):
         self.assertIn("tip.target && resolveTarget(tip.target)", text)
         self.assertIn('id: "alerts"', text)
         self.assertIn('id: "update"', text)
+        self.assertIn('id: "help"', text)
+        self.assertIn('id: "mute"', text)
+        self.assertIn("matchHelpIntent", text)
+        self.assertIn("cc-wizard-muted", text)
         self.assertIn('const common = ["Blink", "Blink", "Pleased", "Wave"];', text)
         self.assertNotIn("setTimeout(done, 2400)", text)
         self.assertIn("function bumpAnim()", text)
         self.assertIn("innerWidth + 24", text)
         self.assertIn('pick(["Show", "GetAttention", "Surprised", "Congratulate"])', text)
+        self.assertIn("cc-wizard--docked", text)
+        self.assertIn("profile_account", text)
+        self.assertIn("profile_security", text)
+        self.assertIn("profile_vault", text)
+        self.assertIn("exitAnimation", text)
         self.assertIn("if (!greeted)", text)
         self.assertIn("cc-wizard--teleport", text)
         self.assertIn('agent._el.style.visibility = "hidden"', text)
+
+
+class MerlinHelpIntentTests(TestCase):
+    def test_help_catalog_covers_frequent_asks(self):
+        from pathlib import Path
+
+        source = Path(__file__).resolve().parents[1] / "static" / "js" / "wizard-help.js"
+        text = source.read_text(encoding="utf-8")
+        self.assertIn("export function matchHelpIntent", text)
+        self.assertIn("normal setting", text)
+        self.assertIn("/settings/?section=site", text)
+        self.assertIn('action: "reboot"', text)
+        self.assertIn('action: "restart-container"', text)
+        self.assertIn('action: "ack"', text)
+        self.assertIn('action: "mute"', text)
+
+
+class DashboardAlertsMenuTests(TestCase):
+    def test_dashboard_uses_topbar_bell(self):
+        admin = User.objects.create_user("admin", password="x", is_superuser=True)
+        self.client.force_login(admin)
+        resp = self.client.get(reverse("dashboard"))
+        self.assertContains(resp, 'id="alerts-bell"')
+        self.assertContains(resp, 'id="alerts-dropdown"')
+        self.assertNotContains(resp, 'data-panel-id="alerts"')
+        self.assertNotContains(resp, 'id="stat-alerts"')
 
 
 class HostOpsTests(TestCase):
@@ -489,14 +676,18 @@ class HostOpsTests(TestCase):
     def test_admin_dashboard_has_reboot_and_usb(self):
         self.client.force_login(self.admin)
         resp = self.client.get(reverse("dashboard"))
-        self.assertContains(resp, "Restart Pi")
+        self.assertContains(resp, "Restart Server")
+        self.assertContains(resp, "4 — Stats")
+        self.assertContains(resp, 'class="ops-footer"')
+        self.assertContains(resp, "login-chip")
         self.assertContains(resp, 'data-panel-id="usb"')
         self.assertContains(resp, 'data-admin="1"')
 
     def test_member_dashboard_hides_reboot(self):
         self.client.force_login(self.member)
         resp = self.client.get(reverse("dashboard"))
-        self.assertNotContains(resp, "Restart Pi")
+        self.assertContains(resp, "4 — Stats")
+        self.assertNotContains(resp, "Restart Server")
         self.assertContains(resp, 'data-panel-id="usb"')
         self.assertNotContains(resp, 'data-admin="1"')
 

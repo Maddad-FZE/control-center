@@ -1,15 +1,56 @@
 {% extends "core/base.html" %}
+{% load static assets %}
 {% block title %}Profile — {{ site_title }}{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{% vstatic 'css/settings.css' %}">
+<link rel="stylesheet" href="{% vstatic 'css/profile.css' %}">
+{% endblock %}
 {% block content %}
-<section class="panel panel-wide settings-panel">
-  <div class="panel-head">Profile</div>
-  <div class="panel-body">
-    <div class="settings-grid">
-      <div class="settings-section">
-        <h2 class="settings-section-title">Account</h2>
+<div class="settings-board">
+  <div class="settings-rail">
+    <section class="settings-group settings-group--nav">
+      <h2 class="group-title">1 — Categories</h2>
+      <nav class="settings-nav" aria-label="Profile sections">
+        <a href="?section=account" class="settings-nav__item{% if active_section == 'account' %} is-active{% endif %}" data-section="account" data-label="Account">Account</a>
+        <a href="?section=security" class="settings-nav__item{% if active_section == 'security' %} is-active{% endif %}" data-section="security" data-label="Security">Security</a>
+        <a href="?section=vault" class="settings-nav__item{% if active_section == 'vault' %} is-active{% endif %}" data-section="vault" data-label="Vault">Vault</a>
+      </nav>
+    </section>
+
+    {% include "core/_merlin_dock.html" %}
+  </div>
+
+  <section class="settings-group settings-group--info">
+    <h2 class="group-title">3 — Information</h2>
+    <div class="panel">
+      <div class="panel-body">
+        <div class="settings-briefing{% if active_section == 'account' %} is-active{% endif %}" data-section="account">
+          <p>Your name and email on this Control Center. Username and role are set by an admin.</p>
+          <p>Theme lives under Settings → Appearance. Password and 2FA are under Security.</p>
+        </div>
+        <div class="settings-briefing{% if active_section == 'security' %} is-active{% endif %}" data-section="security">
+          <p>Change your password here. An authenticator app adds a six-digit code after sign-in.</p>
+          <p>Recovery codes work once each if you lose the phone. Save them when you turn 2FA on.</p>
+        </div>
+        <div class="settings-briefing{% if active_section == 'vault' %} is-active{% endif %}" data-section="vault">
+          <p>Passwords and tokens for other services, stored encrypted for your account only.</p>
+          <p>Reveal asks for your Control Center password. Admins cannot read this vault.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="settings-group settings-group--identity">
+    <h2 class="group-title">4 — Identity</h2>
+    <div class="panel">
+      <div class="panel-body">
         <div class="stat-row">
           <span class="stat-label">Username</span>
           <span class="stat-value">{{ user_obj.username }}</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Role</span>
+          <span class="stat-value">{{ user_role|default:"member"|title }}</span>
         </div>
         <div class="stat-row">
           <span class="stat-label">Joined</span>
@@ -19,28 +60,230 @@
           <span class="stat-label">Last login</span>
           <span class="stat-value">{{ user_obj.last_login|date:"Y-m-d H:i"|default:"—" }}</span>
         </div>
-        <p class="settings-hint">
-          <a href="{% url 'password_change' %}">Change password</a>
-        </p>
-      </div>
-      <div class="settings-section">
-        <h2 class="settings-section-title">Details</h2>
-        <form method="post">
-          {% csrf_token %}
-          <input type="hidden" name="form" value="profile">
-          {% for field in profile_form %}
-          <div class="form-group">
-            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-            {{ field }}
-            {% if field.errors %}
-              <p class="alert-item error">{{ field.errors|join:", " }}</p>
-            {% endif %}
-          </div>
-          {% endfor %}
-          <button type="submit" class="btn">Save profile</button>
-        </form>
       </div>
     </div>
-  </div>
-</section>
+  </section>
+
+  <section class="settings-group settings-group--selected">
+    <h2 class="group-title" id="settings-selected-title">5 — {% if active_section == 'security' %}Security{% elif active_section == 'vault' %}Vault{% else %}Account{% endif %}</h2>
+    <div class="settings-content">
+
+    <section class="settings-pane{% if active_section == 'account' %} is-active{% endif %}" id="profile-account" data-section="account">
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="form" value="profile">
+        <input type="hidden" name="section" value="account">
+        <div class="settings-mosaic">
+          <div class="panel settings-mosaic__full">
+            <div class="panel-head">Details</div>
+            <div class="panel-body">
+              <div class="form-group">
+                <div class="field-head">
+                  <label for="{{ profile_form.email.id_for_label }}">Email{% include "core/_help_tip.html" with tip_id="tip-profile-email" tip_text="Used if an admin needs to reach you. Not shown to guests." %}</label>
+                </div>
+                {{ profile_form.email }}
+                {% if profile_form.email.errors %}
+                  <p class="alert-item error">{{ profile_form.email.errors|join:", " }}</p>
+                {% endif %}
+              </div>
+              <div class="form-group">
+                <div class="field-head">
+                  <label for="{{ profile_form.first_name.id_for_label }}">First name</label>
+                </div>
+                {{ profile_form.first_name }}
+              </div>
+              <div class="form-group">
+                <div class="field-head">
+                  <label for="{{ profile_form.last_name.id_for_label }}">Last name</label>
+                </div>
+                {{ profile_form.last_name }}
+              </div>
+              <div class="settings-save">
+                <button type="submit" class="btn">Save profile</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <section class="settings-pane{% if active_section == 'security' %} is-active{% endif %}" id="profile-security" data-section="security" data-enabled="{% if twofa_enabled %}1{% else %}0{% endif %}">
+      <div class="settings-mosaic">
+        <div class="panel">
+          <div class="panel-head">Password</div>
+          <div class="panel-body">
+            {% if must_change_password %}
+            <p class="alert-item error">An admin asked you to set a new password before continuing.</p>
+            {% endif %}
+            <form method="post">
+              {% csrf_token %}
+              <input type="hidden" name="form" value="password">
+              <input type="hidden" name="section" value="security">
+              {% if password_form.non_field_errors %}
+                {% for error in password_form.non_field_errors %}
+                <p class="alert-item error">{{ error }}</p>
+                {% endfor %}
+              {% endif %}
+              <div class="form-group">
+                <div class="field-head">
+                  <label for="{{ password_form.old_password.id_for_label }}">Current password{% include "core/_help_tip.html" with tip_id="tip-profile-old-password" tip_text="Your existing Control Center password." %}</label>
+                </div>
+                {{ password_form.old_password }}
+                {% if password_form.old_password.errors %}
+                  <p class="alert-item error">{{ password_form.old_password.errors|join:", " }}</p>
+                {% endif %}
+              </div>
+              <div class="form-group">
+                <div class="field-head">
+                  <label for="{{ password_form.new_password1.id_for_label }}">New password{% include "core/_help_tip.html" with tip_id="tip-profile-new-password" tip_text="Pick a password you do not use on other services." %}</label>
+                </div>
+                {{ password_form.new_password1 }}
+                {% if password_form.new_password1.errors %}
+                  <p class="alert-item error">{{ password_form.new_password1.errors|join:", " }}</p>
+                {% endif %}
+              </div>
+              <div class="form-group">
+                <div class="field-head">
+                  <label for="{{ password_form.new_password2.id_for_label }}">Confirm new password</label>
+                </div>
+                {{ password_form.new_password2 }}
+                {% if password_form.new_password2.errors %}
+                  <p class="alert-item error">{{ password_form.new_password2.errors|join:", " }}</p>
+                {% endif %}
+              </div>
+              <div class="settings-save">
+                <button type="submit" class="btn">Update password</button>
+              </div>
+            </form>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">Two-factor</div>
+          <div class="panel-body">
+            <p class="settings-status" id="twofa-status">{% if twofa_enabled %}2FA is on.{% else %}2FA is off.{% endif %}</p>
+            <div id="twofa-setup" {% if twofa_enabled %}hidden{% endif %}>
+              <div class="field-head">
+                <button type="button" class="btn" id="twofa-start-btn">Set up 2FA</button>
+                {% include "core/_help_tip.html" with tip_id="tip-profile-2fa" tip_text="Scan the QR with an authenticator app, then type the six-digit code to confirm." %}
+              </div>
+              <div id="twofa-enroll" hidden>
+                <p class="settings-hint">Scan this QR code, or type the secret into your authenticator.</p>
+                <img id="twofa-qr" alt="Authenticator QR code" width="160" height="160">
+                <p class="settings-status"><code id="twofa-secret"></code></p>
+                <div class="form-group">
+                  <label for="twofa-confirm-code">Authenticator code</label>
+                  <input type="text" id="twofa-confirm-code" inputmode="numeric" autocomplete="one-time-code" maxlength="8">
+                </div>
+                <button type="button" class="btn" id="twofa-confirm-btn">Confirm</button>
+              </div>
+              <div id="twofa-recovery" hidden>
+                <p class="settings-hint">Save these recovery codes now. They will not be shown again.</p>
+                <pre class="update-log" id="twofa-recovery-list"></pre>
+              </div>
+            </div>
+            <div id="twofa-disable-wrap" {% if not twofa_enabled %}hidden{% endif %}>
+              <div class="form-group">
+                <label for="twofa-disable-password">Current password</label>
+                <input type="password" id="twofa-disable-password" autocomplete="current-password">
+              </div>
+              <div class="form-group">
+                <label for="twofa-disable-code">Authenticator or recovery code</label>
+                <input type="text" id="twofa-disable-code" autocomplete="one-time-code">
+              </div>
+              <button type="button" class="btn danger" id="twofa-disable-btn">Disable 2FA</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-pane{% if active_section == 'vault' %} is-active{% endif %}" id="profile-vault" data-section="vault" data-service="{{ request.GET.service|default:'' }}">
+      <div class="settings-mosaic">
+        <div class="panel settings-mosaic__full settings-logs-panel">
+          <div class="panel-body settings-logs-body">
+            <div class="settings-logs-toolbar" role="toolbar" aria-label="Vault actions">
+              <button type="button" class="btn secondary" id="vault-add-btn">Add entry</button>
+              {% include "core/_help_tip.html" with tip_id="tip-profile-vault" tip_text="Store a username and secret for a dashboard service. Reveal later by confirming your password." %}
+              <span class="settings-logs-status" id="vault-status" aria-live="polite"></span>
+            </div>
+            <div class="library-repos-list-wrap" id="vault-list-wrap">
+              <table class="library-repos-table" id="vault-table">
+                <thead>
+                  <tr>
+                    <th>Label</th>
+                    <th>Username</th>
+                    <th>Kind</th>
+                    <th>Service</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="vault-tbody"></tbody>
+              </table>
+            </div>
+            <form id="vault-form" hidden>
+              <input type="hidden" id="vault-id">
+              <div class="form-group">
+                <label for="vault-label">Label</label>
+                <input type="text" id="vault-label" required>
+              </div>
+              <div class="form-group">
+                <label for="vault-username">Username</label>
+                <input type="text" id="vault-username" autocomplete="off">
+              </div>
+              <div class="form-group">
+                <label for="vault-secret">Secret</label>
+                <input type="password" id="vault-secret" autocomplete="new-password">
+              </div>
+              <div class="form-group">
+                <label for="vault-kind">Kind</label>
+                <select id="vault-kind">
+                  <option value="password">Password</option>
+                  <option value="token">Token</option>
+                  <option value="note">Note</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="vault-service">Service</label>
+                <select id="vault-service">
+                  <option value="">None</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="vault-notes">Notes</label>
+                <textarea id="vault-notes" rows="3"></textarea>
+              </div>
+              <div class="library-modal__actions">
+                <button type="button" class="btn secondary" id="vault-cancel-btn">Cancel</button>
+                <button type="submit" class="btn">Save</button>
+              </div>
+            </form>
+            <div id="vault-reveal" hidden>
+              <div class="field-head">
+                <p class="settings-hint">Confirm your password to show the secret.</p>
+                {% include "core/_help_tip.html" with tip_id="tip-profile-reveal" tip_text="This step lasts a few minutes so you can copy more than one secret without typing the password each time." %}
+              </div>
+              <div class="form-group">
+                <label for="vault-reveal-password">Password</label>
+                <input type="password" id="vault-reveal-password" autocomplete="current-password">
+              </div>
+              <pre class="update-log" id="vault-reveal-out" hidden></pre>
+              <div class="library-modal__actions">
+                <button type="button" class="btn secondary" id="vault-reveal-cancel">Close</button>
+                <button type="button" class="btn" id="vault-reveal-btn">Reveal</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    </div>
+  </section>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script src="{% vstatic 'js/settings-tabs.js' %}" defer></script>
+<script src="{% vstatic 'js/help-tips.js' %}" defer></script>
+<script src="{% vstatic 'js/profile-security.js' %}" defer></script>
+<script src="{% vstatic 'js/profile-vault.js' %}" defer></script>
 {% endblock %}

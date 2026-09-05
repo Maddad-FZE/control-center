@@ -568,22 +568,31 @@ SERVICES = [
 
 
 def get_service_by_slug(slug):
-    for entry in SERVICES:
-        if entry["slug"] == slug:
-            return entry
-    return None
+    from .catalog_store import get_item
+
+    return get_item(slug)
+
+
+def all_services():
+    from .catalog_store import all_services as list_services
+
+    return list_services()
 
 
 def services_by_category():
+    from .catalog_store import all_services
+
     grouped = {}
-    for entry in SERVICES:
+    for entry in all_services():
         grouped.setdefault(entry["category"], []).append(entry)
     return grouped
 
 
 def service_categories():
+    from .catalog_store import all_services
+
     seen = []
-    for entry in SERVICES:
+    for entry in all_services():
         if entry["category"] not in seen:
             seen.append(entry["category"])
     return seen
@@ -603,11 +612,12 @@ def get_docker_spec(entry):
             break
 
     host_port_hint = entry.get("default_port", 8080)
-    container_port = host_port_hint
+    container_port = int(entry.get("container_port") or 0) or host_port_hint
     port_match = re.search(r'-\s*"(\d+):(\d+)"', compose)
     if port_match:
         host_port_hint = int(port_match.group(1))
-        container_port = int(port_match.group(2))
+        if not entry.get("container_port"):
+            container_port = int(port_match.group(2))
 
     volumes = []
     env = {}
@@ -644,13 +654,17 @@ def get_docker_spec(entry):
 
 
 def all_categories():
+    from .catalog_store import ensure_catalog_seeded
+    from .models import CatalogItem
+
     categories = []
     for entry in ADDONS:
         if entry["category"] not in categories:
             categories.append(entry["category"])
-    for entry in SERVICES:
-        if entry["category"] not in categories:
-            categories.append(entry["category"])
+    ensure_catalog_seeded()
+    for item in CatalogItem.objects.all():
+        if item.category not in categories:
+            categories.append(item.category)
     return categories
 
 
@@ -662,7 +676,11 @@ def build_catalog_items(
     service_cards=None,
 ):
     """Normalized catalog rows for the unified library grid."""
+    from .catalog_store import ensure_catalog_seeded
     from .icons import icon_url_for_entry
+    from .models import CatalogItem
+
+    ensure_catalog_seeded()
 
     if service_cards is None:
         from dashboard.models import Service
@@ -693,7 +711,8 @@ def build_catalog_items(
                 "service_id": None,
             }
         )
-    for entry in SERVICES:
+    for item in CatalogItem.objects.all():
+        entry = item.to_entry()
         inst = installed_map.get(entry["slug"])
         installed = inst is not None and inst.status in (
             "running",
@@ -702,6 +721,7 @@ def build_catalog_items(
         )
         status = inst.status if inst else "none"
         service_id = service_cards.get(entry["slug"])
+        repo = entry.get("repo", "")
         items.append(
             {
                 "type": "service",
@@ -711,15 +731,15 @@ def build_catalog_items(
                 "icon_url": icon_url_for_entry(
                     entry["slug"], entry.get("icon", ""), name=entry.get("name", "")
                 ),
-                "description": LIBRARY_DESCRIPTIONS.get(entry["slug"], entry.get("tagline", "")),
+                "description": item.description or entry.get("tagline", ""),
                 "category": entry["category"],
                 "installed": installed and inst.status != "installing",
                 "status": status,
                 "managed": inst.managed if inst else True,
                 "host_port": inst.host_port if inst else 0,
                 "container_name": inst.container_name if inst else "",
-                "repo_url": f"https://github.com/{entry['repo']}",
-                "version": release_map.get(entry["repo"], ""),
+                "repo_url": f"https://github.com/{repo}" if repo else "",
+                "version": release_map.get(repo, ""),
                 "url_name": "",
                 "service_id": service_id,
                 "needs_credentials": entry.get("install_options") == "admin-credentials",

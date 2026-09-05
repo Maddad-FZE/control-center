@@ -2,8 +2,7 @@
 const ASSET_VERSION = "__ASSET_VERSION__";
 const SHELL_CACHE = `cc-shell-${ASSET_VERSION}`;
 const STATIC_CACHE = `cc-static-${ASSET_VERSION}`;
-const API_CACHE = `cc-api-${ASSET_VERSION}`;
-const LIVE_CACHES = [SHELL_CACHE, STATIC_CACHE, API_CACHE];
+const LIVE_CACHES = [SHELL_CACHE, STATIC_CACHE];
 
 const PRECACHE_STATIC = [
   `/static/css/fonts.css?v=${ASSET_VERSION}`,
@@ -14,6 +13,7 @@ const PRECACHE_STATIC = [
   `/static/js/dashboard.js?v=${ASSET_VERSION}`,
   `/static/js/clock.js?v=${ASSET_VERSION}`,
   `/static/js/user-menu.js?v=${ASSET_VERSION}`,
+  `/static/js/alerts-menu.js?v=${ASSET_VERSION}`,
   "/static/img/favicon.svg",
   "/static/img/service-default.svg",
 ];
@@ -65,6 +65,17 @@ async function cachePut(cacheName, request, response) {
   await cache.put(request, response);
 }
 
+async function networkOnlyApi(request) {
+  try {
+    return await fetch(request, { cache: "no-store" });
+  } catch {
+    return new Response(JSON.stringify({ offline: true }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+}
+
 async function networkFirst(request, cacheName) {
   try {
     const response = await fetch(request, { cache: "no-cache" });
@@ -111,15 +122,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (isApiRequest(url)) {
-    event.respondWith(
-      networkFirst(request, API_CACHE).catch(
-        () =>
-          new Response(JSON.stringify({ offline: true }), {
-            status: 503,
-            headers: { "Content-Type": "application/json" },
-          })
-      )
-    );
+    event.respondWith(networkOnlyApi(request));
     return;
   }
 

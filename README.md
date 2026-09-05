@@ -4,7 +4,23 @@ Django platform for the Zaidan homelab: dashboard, shared auth, retro theme, and
 
 **Workspace:** `/home/dzaidan/control-center`  
 **Dev URL:** http://127.0.0.1:8000/  
-**Pi URL (when deployed):** http://192.168.0.40:8099/
+**Server URL (when deployed):** http://192.168.0.40:8099/
+
+## Install on a server (Debian / Ubuntu)
+
+SSH into the machine, then:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Maddad-FZE/control-center/main/scripts/install.sh | sudo bash
+```
+
+That installs Docker if needed, clones to `/opt/control-center`, writes `.env` from the LAN IP, and starts Compose. Open `http://<lan-ip>:8099/` and create the first admin. Existing `.env` and `data/` are left alone; other containers are not touched.
+
+Already cloned:
+
+```bash
+sudo ./scripts/install.sh
+```
 
 ## Quick start (WSL)
 
@@ -68,6 +84,6 @@ See [deploy.md](deploy.md) for the release process, Docker vs in-app updates, an
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for auth boundaries and adding new apps.
 
-## Pi deploy
+## Server deploy
 
 See [deploy.md](deploy.md).

@@ -11,6 +11,14 @@
       const active = pane.dataset.section === section;
       pane.classList.toggle("is-active", active);
     });
+    document.querySelectorAll(".settings-briefing[data-section]").forEach((block) => {
+      block.classList.toggle("is-active", block.dataset.section === section);
+    });
+    const activeNav = document.querySelector(`.settings-nav__item[data-section="${section}"]`);
+    const title = document.getElementById("settings-selected-title");
+    if (title && activeNav) {
+      title.textContent = `5 — ${activeNav.dataset.label || activeNav.textContent.trim()}`;
+    }
   }
 
   navItems.forEach((item) => {

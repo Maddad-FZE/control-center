@@ -1,5 +1,10 @@
+import { matchHelpIntent } from "./wizard-help.js";
+
 const GREETED_KEY = "cc-wizard-greeted";
 const POS_KEY = "cc-wizard-pos";
+const MUTE_KEY = "cc-wizard-muted";
+
+window.ccWizardMuted = localStorage.getItem(MUTE_KEY) === "1";
 
 const TIPS = {
   dashboard: [
@@ -7,19 +12,20 @@ const TIPS = {
     { text: "The sync chip shows whether checks are live, syncing, or paused, and when the last check ran.", target: "#refresh-indicator" },
     { text: "Click the up count to show only services that are responding. Click again to clear.", target: "#stat-up" },
     { text: "Click the down count to show only services that are not responding. Click again to clear.", target: "#stat-down" },
-    { text: "This opens the alerts list on the right. Unacknowledged alerts also show a badge there.", target: "#stat-alerts" },
+    { text: "The bell next to your name holds alerts. Unacknowledged ones show a badge.", target: "#alerts-bell" },
     { text: "24H is recent uptime for your cards, not the host itself.", target: "#stat-uptime-24h" },
     { text: "Host uptime is how long this machine has been running.", target: "#stat-host-uptime" },
     { text: "Type here to filter cards by name. Empty sections still stay on the page.", target: "#service-filter" },
     { text: "Add card creates a new dashboard tile. Admins only.", target: ".status-strip__add" },
     { text: "Tracked is for the services you watch most closely. Those cards are larger.", target: ".service-grid--tracked, .services-group .group-title" },
-    { text: "Apps is the main catalog of everyday services.", target: ".service-grid--apps" },
+    { text: "Apps cards are compact. Hover for details. Admins press and hold for 2 seconds to reorder.", target: ".service-grid--apps" },
     { text: "Misc is for leftovers and simple links that do not need a full card.", target: ".services-group--misc .group-title" },
+    { text: "Stats is host load, USB, containers, and Monitor.", target: ".services-group--stats .group-title" },
     { text: "Open a card to go to that service.", target: ".service-card, .bookmark--service" },
     { text: "The menu on a card lets you edit it, change who can see it, or delete it.", target: ".service-card-menu" },
-    { text: "System shows CPU, memory, and disk for this host. Restart Pi reboots the machine.", target: '[data-panel-id="system"]' },
+    { text: "System shows CPU, memory, and disk for this host. Restart Server reboots the machine.", target: '[data-panel-id="system"]' },
     { text: "USB lists devices plugged into this host. Storage sticks can be unmounted from here.", target: '[data-panel-id="usb"]' },
-    { text: "Alerts lists recent problems. ACK ALL marks them as seen.", target: "#alerts-panel-section" },
+    { text: "Alerts are in the bell next to your name. ACK ALL marks them as seen.", target: "#alerts-bell" },
     { text: "Use ACK ALL when you have read the current alerts.", target: "#ack-all-btn" },
     { text: "Containers lists Docker services. Restart a container from the row if you are an admin.", target: '[data-panel-id="containers"]' },
     { text: "Monitor is a short history of which cards stayed up.", target: '[data-panel-id="uptime"]' },
@@ -41,24 +47,38 @@ const TIPS = {
     { text: "These buttons format the notes: bold, lists, headings.", target: ".library-notes-toolbar" },
   ],
   settings: [
-    { text: "Appearance only changes your account. Site settings apply to everyone.", target: '[data-section="appearance"]' },
-    { text: "I am turned on under Site. Uncheck Call in the Wizard to hide me.", target: '[data-section="site"]' },
-    { text: "If you turn on wizard notifications, I will read site messages instead of the toast popups.", target: "#id_wizard_notify, [data-section=\"site\"]" },
+    { text: "Categories on the left pick which settings you are editing.", target: ".settings-group--nav" },
+    { text: "Information explains the category you selected.", target: ".settings-group--info" },
+    { text: "Section 4 Notes save as you type.", target: "#settings-notes-editor" },
+    { text: "Merlin lives in section 2 under Categories. He cannot be dragged there.", target: "#settings-merlin-dock" },
   ],
   settings_updates: [
     { text: "This page checks GitHub for new versions, including prereleases.", target: "#update-latest" },
     { text: "Check now looks for a newer release. Install downloads it from GitHub — no git checkout needed.", target: "#update-check-btn" },
   ],
   settings_site: [
-    { text: "Title, tagline, logo, and weather are set here. So is the wizard.", target: "#id_title" },
+    { text: "Title, tagline, logo, and weather are set here.", target: "#id_title" },
     { text: "Services host should be the LAN address you use in the browser, not a Docker bridge IP.", target: "#id_services_host" },
     { text: "Monitor login is generated for Uptime Kuma. Show or copy it here if you already created your own admin.", target: "#id_kuma_username" },
-    { text: "Call in the Wizard is this checkbox. The one under it controls notifications.", target: "#id_wizard_enabled" },
+    { text: "CRT scanlines are this checkbox. They apply to everyone.", target: "#id_crt_enabled" },
+    { text: "Call in the Wizard turns me on for signed-in pages. The nested box is notifications.", target: "#id_wizard_enabled" },
+  ],
+  settings_users: [
+    { text: "Add user creates an account. Members only see the cards you tick under Allowed services.", target: "#users-add-btn" },
+    { text: "Admin, Member, and Viewer are the three roles. Viewer cannot acknowledge alerts.", target: "#settings-users" },
   ],
   settings_tunnel: [
     { text: "Cloudflare Tunnel is a Library install. If it is missing, use the button to go install it.", target: "#tunnel-install-cta" },
     { text: "Tunnel links Cloudflare with an API token. Create one from the button, paste it, click Connect, then Link account. Nothing goes online until you publish a service.", target: "#tunnel-installed-settings" },
     { text: "Control Center cannot be published. It stays on the LAN.", target: "#settings-tunnel" },
+  ],
+  settings_logs: [
+    { text: "Pick a log source, filter by keyword, and turn on Live to tail new lines.", target: "#settings-logs" },
+    { text: "Download saves the current tail as a text file.", target: "#logs-download-btn" },
+  ],
+  settings_console: [
+    { text: "App opens a shell inside Control Center. Host opens on the machine running it.", target: "#settings-console" },
+    { text: "You must confirm your password before a session starts.", target: "#console-connect-btn" },
   ],
   service_create: [
     { text: "Fill in the details on the left, pick icons in the middle, and check the preview on the right.", target: ".card-form-opens" },
@@ -70,7 +90,21 @@ const TIPS = {
     { text: "Use the search box on the left to link a service.", target: "#service-combo" },
   ],
   profile: [
-    { text: "This page is for your name, email, and password. Theme is under Settings, Appearance.", target: ".settings-panel, #id_email" },
+    { text: "Categories on the left pick Account, Security, or Vault.", target: ".settings-group--nav" },
+    { text: "Information explains the category you selected.", target: ".settings-group--info" },
+    { text: "Identity is your username, role, and last login.", target: ".settings-group--identity" },
+    { text: "Merlin lives in section 2 under Categories. He cannot be dragged there.", target: "#settings-merlin-dock" },
+  ],
+  profile_account: [
+    { text: "Save your email and name here. Username is set by an admin.", target: "#profile-account" },
+  ],
+  profile_security: [
+    { text: "Change your password in this panel. An admin can require a new password on next login.", target: "#profile-security" },
+    { text: "Two-factor adds a six-digit code after sign-in. Save recovery codes when you turn it on.", target: "#twofa-start-btn, #twofa-disable-btn" },
+  ],
+  profile_vault: [
+    { text: "Store passwords for other services here. They are encrypted for your account only.", target: "#vault-add-btn" },
+    { text: "Reveal asks for your Control Center password before showing a secret.", target: "#vault-table, #vault-reveal" },
   ],
   default: [
     { text: "Click me once for my menu. Double-click me if you want a tip about this page." },
@@ -81,8 +115,8 @@ const TIPS = {
 function pageKey() {
   const page = document.body.dataset.wizardPage || "";
   const section = new URL(window.location.href).searchParams.get("section") || "";
-  if (page === "settings" && section) {
-    const specific = `settings_${section}`;
+  if ((page === "settings" || page === "profile") && section) {
+    const specific = `${page}_${section}`;
     if (TIPS[specific]) return specific;
   }
   if (TIPS[page]) return page;
@@ -92,7 +126,12 @@ function pageKey() {
 function tipsForPage() {
   const key = pageKey();
   const extra = key === "default" ? [] : TIPS.default;
-  return [...TIPS[key], ...extra].filter((tip) => !tip.target || resolveTarget(tip.target));
+  const tips = [...TIPS[key], ...extra].filter((tip) => !tip.target || resolveTarget(tip.target));
+  const wizardPage = document.body.dataset.wizardPage;
+  if (wizardPage === "settings" || wizardPage === "profile") {
+    return tips.filter((tip) => !/drag me/i.test(tip.text || ""));
+  }
+  return tips;
 }
 
 function homePos() {
@@ -179,34 +218,45 @@ function stopIdle(agent) {
 function playAnim(agent, name) {
   const gen = bumpAnim();
   return new Promise((resolve) => {
-    const finish = () => {
-      if (gen !== animGen) {
-        resolve();
-        return;
-      }
-      restPose(agent);
+    let settled = false;
+    const settle = (pose) => {
+      if (settled) return;
+      settled = true;
+      if (gen === animGen && pose) restPose(agent);
       resolve();
     };
     if (!name || !SAFE_ANIMS.has(name) || !agent.hasAnimation(name)) {
-      if (gen === animGen) restPose(agent);
-      resolve();
+      settle(gen === animGen);
       return;
     }
     stopIdle(agent);
     const started = agent._animator.showAnimation(name, (_anim, state) => {
-      if (state === 1 || state === 0) finish();
+      if (gen !== animGen) {
+        settle(false);
+        return;
+      }
+      if (state === 0) {
+        settle(true);
+        return;
+      }
+      if (state === 1) agent._animator.exitAnimation();
     });
     if (!started) {
-      finish();
+      settle(true);
       return;
     }
     window.setTimeout(() => {
+      if (settled) return;
       if (gen !== animGen) {
-        resolve();
+        settle(false);
         return;
       }
-      if (agent._animator?.currentAnimationName === name) finish();
-      else resolve();
+      if (agent._animator?.currentAnimationName === name) {
+        agent._animator.exitAnimation();
+        window.setTimeout(() => settle(true), 2500);
+        return;
+      }
+      settle(false);
     }, 20000);
   });
 }
@@ -244,6 +294,7 @@ function standBeside(node) {
 
 function walkTo(agent, x, y, duration) {
   const el = agent._el;
+  if (!el || el.classList.contains("cc-wizard--docked")) return Promise.resolve();
   const dest = agent._clampXY(x, y);
   const here = el.getBoundingClientRect();
   const fromX = here.left;
@@ -257,14 +308,48 @@ function walkTo(agent, x, y, duration) {
   bumpAnim();
   stopIdle(agent);
   const anim = `Move${agent._getDirection(dest.x, dest.y)}`;
-  if (agent.hasAnimation(anim)) agent._animator.showAnimation(anim, () => {});
-
   const token = ++walkToken;
+  const replayMove = () => {
+    if (token !== walkToken || !agent.hasAnimation(anim)) return;
+    agent._animator.showAnimation(anim, (_name, state) => {
+      if (token !== walkToken) return;
+      if (state === 1 && merlinMoving) replayMove();
+    });
+  };
+  replayMove();
+
   const dist = Math.hypot(dx, dy);
   const ms = duration ?? Math.max(1100, Math.min(2600, dist * 3.6));
   const started = performance.now();
   const swing = (progress) => 0.5 - Math.cos(progress * Math.PI) / 2;
   return new Promise((resolve) => {
+    const finishWalk = () => {
+      if (token === walkToken) merlinMoving = false;
+      const animator = agent._animator;
+      const waitExit = new Promise((done) => {
+        if (token !== walkToken || !animator || animator.currentAnimationName !== anim) {
+          done();
+          return;
+        }
+        let ended = false;
+        const end = () => {
+          if (ended) return;
+          ended = true;
+          done();
+        };
+        animator._endCallback = (_name, state) => {
+          if (state === 1) animator.exitAnimation();
+          if (state === 0) end();
+        };
+        animator.exitAnimation();
+        window.setTimeout(end, 2500);
+      });
+      waitExit.then(() => {
+        if (token === walkToken) restPose(agent);
+        agent.reposition();
+        resolve();
+      });
+    };
     const step = (now) => {
       if (token !== walkToken) {
         resolve();
@@ -279,10 +364,7 @@ function walkTo(agent, x, y, duration) {
         requestAnimationFrame(step);
         return;
       }
-      if (token === walkToken) merlinMoving = false;
-      restPose(agent);
-      agent.reposition();
-      resolve();
+      finishWalk();
     };
     requestAnimationFrame(step);
   });
@@ -362,10 +444,42 @@ async function boot() {
   agent.show(true);
   stopIdle(agent);
 
+  const settingsDock = document.getElementById("settings-merlin-dock");
+  const docked = Boolean(settingsDock);
+  const MERLIN_FRAME = 128;
+  const scaleDockedMerlin = () => {
+    if (!settingsDock || !agent._el) return;
+    const box = settingsDock.getBoundingClientRect();
+    const pad = 12;
+    const scale = Math.min(
+      (box.width - pad) / MERLIN_FRAME,
+      (box.height - pad) / MERLIN_FRAME,
+      2.75,
+    );
+    agent._el.style.setProperty("--cc-wizard-dock-scale", String(Math.max(scale, 0.5)));
+  };
+  if (docked) {
+    settingsDock.querySelector(".settings-merlin-empty")?.remove();
+    settingsDock.appendChild(agent._el);
+    agent._el.classList.add("cc-wizard--docked");
+    agent._el.style.position = "relative";
+    agent._el.style.left = "";
+    agent._el.style.top = "";
+    agent._el.style.visibility = "visible";
+    scaleDockedMerlin();
+    new ResizeObserver(scaleDockedMerlin).observe(settingsDock);
+  }
+
   let tipIndex = 0;
   let tipToken = 0;
   let idleTimer = null;
   let idleGen = 0;
+  let helpPanel = null;
+  let orbWrap = null;
+  let helpMuteBtn = null;
+  let muteOrbBtn = null;
+  let helpLog = null;
+  let helpInput = null;
 
   const pauseIdle = () => {
     idleGen += 1;
@@ -376,7 +490,7 @@ async function boot() {
   const idlePool = () => {
     const page = pageKey();
     const common = ["Blink", "Blink", "Pleased", "Wave"];
-    if (page.startsWith("settings") || page === "profile") {
+    if (page.startsWith("settings") || page.startsWith("profile")) {
       return [...common, "Uncertain", "Explain"];
     }
     if (page === "library") {
@@ -392,7 +506,7 @@ async function boot() {
     const gen = ++idleGen;
     window.clearTimeout(idleTimer);
     idleTimer = window.setTimeout(async () => {
-      if (gen !== idleGen || merlinMoving || orbWrap || press) {
+      if (gen !== idleGen || merlinMoving || orbWrap || press || helpPanel) {
         if (gen === idleGen) resumeIdle();
         return;
       }
@@ -415,7 +529,7 @@ async function boot() {
     balloon.speak(() => {}, text);
     requestAnimationFrame(() => clampBalloon(balloon));
     playAnim(agent, animation).then(() => {
-      if (!merlinMoving && !orbWrap) resumeIdle();
+      if (!merlinMoving && !orbWrap && !helpPanel) resumeIdle();
     });
   };
 
@@ -432,11 +546,13 @@ async function boot() {
       target.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
       await new Promise((resolve) => window.setTimeout(resolve, 80));
       if (myTip !== tipToken) return;
-      const dest = standBeside(target);
-      await walkTo(agent, dest.x, dest.y);
-      if (myTip !== tipToken) return;
-      await playAnim(agent, gestureName(agent, dest.pointX, dest.pointY));
-      if (myTip !== tipToken) return;
+      if (!docked) {
+        const dest = standBeside(target);
+        await walkTo(agent, dest.x, dest.y);
+        if (myTip !== tipToken) return;
+        await playAnim(agent, gestureName(agent, dest.pointX, dest.pointY));
+        if (myTip !== tipToken) return;
+      }
     }
     speak(tip.text, pick(["Explain", "Suggest", "Acknowledge", "Announce", "Pleased"]));
   };
@@ -451,13 +567,233 @@ async function boot() {
     return true;
   };
 
+  const isAdmin = document.body.dataset.admin === "1";
+
+  const isMuted = () => localStorage.getItem(MUTE_KEY) === "1";
+
+  const setMuted = (value) => {
+    localStorage.setItem(MUTE_KEY, value ? "1" : "0");
+    window.ccWizardMuted = value;
+    if (muteOrbBtn) muteOrbBtn.textContent = value ? "Unmute" : "Mute";
+    if (helpMuteBtn) {
+      helpMuteBtn.textContent = value ? "Unmute" : "Mute";
+      helpMuteBtn.setAttribute("aria-pressed", value ? "true" : "false");
+    }
+  };
+
+  const csrfToken = () => document.querySelector('meta[name="csrf-token"]')?.content || "";
+
+  const postJson = async (url, body) => {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": csrfToken(),
+      },
+      body: JSON.stringify(body || {}),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || "Request failed");
+    return data;
+  };
+
+  const runningContainers = async () => {
+    try {
+      const resp = await fetch("/api/docker/");
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      return (data.containers || [])
+        .filter((row) => (row.state || row.status) === "running")
+        .map((row) => row.name);
+    } catch {
+      return [];
+    }
+  };
+
+  const hideHelp = () => {
+    helpPanel?.remove();
+    helpPanel = null;
+    helpMuteBtn = null;
+    helpLog = null;
+    helpInput = null;
+  };
+
+  const placeHelp = () => {
+    if (!helpPanel) return;
+    const box = agent._el.getBoundingClientRect();
+    const width = Math.min(320, window.innerWidth - 16);
+    let left = box.left - width - 8;
+    if (left < 8) left = Math.min(window.innerWidth - width - 8, box.right + 8);
+    let top = box.top - 24;
+    if (top < 72) top = 72;
+    if (top + 280 > window.innerHeight) top = Math.max(72, window.innerHeight - 288);
+    helpPanel.style.left = `${left}px`;
+    helpPanel.style.top = `${top}px`;
+    helpPanel.style.width = `${width}px`;
+  };
+
+  const appendHelpLine = (who, text) => {
+    if (!helpLog) return;
+    const line = document.createElement("p");
+    line.className = `cc-wizard-help__line cc-wizard-help__line--${who}`;
+    line.textContent = text;
+    helpLog.appendChild(line);
+    helpLog.scrollTop = helpLog.scrollHeight;
+  };
+
+  const appendHelpButtons = (buttons) => {
+    if (!helpLog || !buttons?.length) return;
+    const row = document.createElement("div");
+    row.className = "cc-wizard-help__actions";
+    buttons.forEach((item) => {
+      const btn = document.createElement(item.href ? "a" : "button");
+      if (item.href) {
+        btn.href = item.href;
+        btn.className = "cc-wizard-help__btn";
+      } else {
+        btn.type = "button";
+        btn.className = "cc-wizard-help__btn";
+      }
+      btn.textContent = item.label;
+      btn.addEventListener("click", (event) => {
+        if (item.href) return;
+        event.preventDefault();
+        runHelpButton(item);
+      });
+      row.appendChild(btn);
+    });
+    helpLog.appendChild(row);
+    helpLog.scrollTop = helpLog.scrollHeight;
+  };
+
+  const runHelpButton = async (item) => {
+    if (item.suggest) {
+      if (helpInput) helpInput.value = item.suggest;
+      submitHelp(item.suggest);
+      return;
+    }
+    if (item.action === "mute") {
+      setMuted(true);
+      appendHelpLine("merlin", "Muted.");
+      return;
+    }
+    if (item.action === "unmute") {
+      setMuted(false);
+      appendHelpLine("merlin", "Sound is back.");
+      return;
+    }
+    if (item.action === "alerts") {
+      document.getElementById("alerts-bell")?.click();
+      return;
+    }
+    if (item.action === "usb") {
+      document.querySelector('[data-panel-id="usb"]')?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      return;
+    }
+    if (item.action === "containers") {
+      document.querySelector('[data-panel-id="containers"]')?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      return;
+    }
+    if (item.action === "reboot") {
+      hideHelp();
+      const openBtn = document.getElementById("host-reboot-btn");
+      if (openBtn) {
+        openBtn.click();
+        return;
+      }
+      appendHelpLine("merlin", "Open the dashboard to restart the host.");
+      return;
+    }
+    if (item.action === "ack") {
+      try {
+        await postJson("/api/alerts/ack/", {});
+        appendHelpLine("merlin", "Alerts acknowledged.");
+        window.dispatchEvent(new Event("cc-alerts-refresh"));
+      } catch (err) {
+        appendHelpLine("merlin", err.message || "Could not acknowledge alerts.");
+      }
+      return;
+    }
+    if (item.action === "restart-container") {
+      const name = item.name;
+      if (!name) return;
+      if (!window.confirm(`Restart ${name}? It will be briefly offline.`)) return;
+      try {
+        await postJson("/api/docker/restart/", { name });
+        appendHelpLine("merlin", `Restarted ${name}.`);
+      } catch (err) {
+        appendHelpLine("merlin", err.message || `Could not restart ${name}.`);
+      }
+    }
+  };
+
+  const submitHelp = async (raw) => {
+    const text = String(raw || helpInput?.value || "").trim();
+    if (!text) return;
+    if (helpInput) helpInput.value = "";
+    appendHelpLine("user", text);
+    const reply = matchHelpIntent(text, {
+      isAdmin,
+      muted: isMuted(),
+      containers: text.toLowerCase().includes("restart") ? await runningContainers() : [],
+    });
+    appendHelpLine("merlin", reply.text);
+    appendHelpButtons(reply.buttons);
+    speak(reply.text, reply.animation || "Explain");
+  };
+
+  const showHelp = () => {
+    hideOrbs();
+    hideHelp();
+    pauseIdle();
+    playAnim(agent, pick(["Explain", "Suggest", "Wave"]));
+    helpPanel = document.createElement("div");
+    helpPanel.className = "cc-wizard-help";
+    helpPanel.innerHTML = `
+      <div class="cc-wizard-help__head">
+        <span>Merlin Help</span>
+        <div class="cc-wizard-help__head-actions">
+          <button type="button" class="cc-wizard-help__icon" id="cc-help-mute" aria-pressed="${isMuted() ? "true" : "false"}">${isMuted() ? "Unmute" : "Mute"}</button>
+          <button type="button" class="cc-wizard-help__icon" id="cc-help-close" aria-label="Close help">Close</button>
+        </div>
+      </div>
+      <div class="cc-wizard-help__log" id="cc-help-log"></div>
+      <form class="cc-wizard-help__form" id="cc-help-form">
+        <input type="text" id="cc-help-input" class="cc-wizard-help__input" placeholder="Ask for help" autocomplete="off" spellcheck="false">
+        <button type="submit" class="cc-wizard-help__send">Send</button>
+      </form>
+    `;
+    document.body.appendChild(helpPanel);
+    helpLog = helpPanel.querySelector("#cc-help-log");
+    helpInput = helpPanel.querySelector("#cc-help-input");
+    helpMuteBtn = helpPanel.querySelector("#cc-help-mute");
+    helpPanel.querySelector("#cc-help-close").addEventListener("click", () => {
+      hideHelp();
+      resumeIdle();
+    });
+    helpMuteBtn.addEventListener("click", () => {
+      const next = !isMuted();
+      setMuted(next);
+      appendHelpLine("merlin", next ? "Muted." : "Sound is back.");
+    });
+    helpPanel.querySelector("#cc-help-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      submitHelp();
+    });
+    const intro = matchHelpIntent("help", { isAdmin, muted: isMuted(), containers: [] });
+    appendHelpLine("merlin", "Ask me about settings, alerts, USB, or restarts.");
+    appendHelpButtons(intro.buttons);
+    placeHelp();
+    helpInput?.focus();
+  };
+
   const availableActions = () => {
     const actions = [];
     const targeted = tipsForPage().filter((tip) => tip.target && resolveTarget(tip.target));
     if (targeted.length) {
       actions.push({ id: "tips", label: "Tips", run: () => offerTip() });
     }
-    const alerts = document.querySelector("#stat-alerts, #alerts-badge");
+    const alerts = document.querySelector("#alerts-bell");
     if (isVisible(alerts)) {
       actions.push({
         id: "alerts",
@@ -465,7 +801,7 @@ async function boot() {
         run: async () => {
           pauseIdle();
           await playAnim(agent, pick(["Alert", "GetAttention", "Surprised"]));
-          document.getElementById("stat-alerts")?.click();
+          alerts.click();
           resumeIdle();
         },
       });
@@ -485,17 +821,32 @@ async function boot() {
         },
       });
     }
+    actions.push({
+      id: "help",
+      label: "Help",
+      run: () => showHelp(),
+    });
+    actions.push({
+      id: "mute",
+      label: isMuted() ? "Unmute" : "Mute",
+      run: () => {
+        const next = !isMuted();
+        setMuted(next);
+        speak(next ? "I will keep quiet." : "Sound is back.", next ? "Acknowledge" : "Wave");
+      },
+    });
     return actions;
   };
-
-  let orbWrap = null;
 
   const hideOrbs = () => {
     orbWrap?.remove();
     orbWrap = null;
   };
 
-  merlinMoveHook = hideOrbs;
+  merlinMoveHook = () => {
+    hideOrbs();
+    placeHelp();
+  };
 
   const showOrbs = () => {
     if (merlinMoving) return;
@@ -512,16 +863,17 @@ async function boot() {
     const cy = box.top + box.height / 3;
     orbWrap = document.createElement("div");
     orbWrap.className = "cc-wizard-orbs";
-    const start = Math.PI * 1.12;
-    const end = Math.PI * 1.88;
+    const start = Math.PI * 1.08;
+    const end = Math.PI * 1.92;
+    const radius = actions.length > 3 ? 96 : 86;
     actions.forEach((item, index) => {
       const t = actions.length === 1 ? 0.5 : index / (actions.length - 1);
       const angle = start + (end - start) * t;
-      const radius = 86;
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = `cc-wizard-orb cc-wizard-orb--${item.id}`;
       btn.textContent = item.label;
+      if (item.id === "mute") muteOrbBtn = btn;
       btn.style.left = `${cx + Math.cos(angle) * radius - 32}px`;
       btn.style.top = `${cy + Math.sin(angle) * radius - 14}px`;
       btn.addEventListener("click", (event) => {
@@ -540,10 +892,28 @@ async function boot() {
     notify,
     offerTip,
     availableActions,
+    showHelp,
+    setMuted,
+    isMuted,
   };
 
   const notices = noticeTexts();
   const greeted = sessionStorage.getItem(GREETED_KEY) === "1";
+
+  const finishDocked = async () => {
+    agent._el.style.visibility = "visible";
+    if (notices.length) {
+      notices.forEach((text, index) => notify(text, noticeLevel(index)));
+      sessionStorage.setItem(GREETED_KEY, "1");
+    } else if (!greeted) {
+      sessionStorage.setItem(GREETED_KEY, "1");
+      await playAnim(agent, "Greet");
+      speak("Hi, I am Merlin. I stay in this section on Settings. Click me for Tips or Help.", "Wave");
+    } else {
+      await playAnim(agent, pick(["Acknowledge", "Blink", "Pleased"]));
+      resumeIdle();
+    }
+  };
 
   const finishEntrance = async () => {
     await walkTo(agent, savedPos().x, savedPos().y, 1400);
@@ -553,20 +923,23 @@ async function boot() {
     } else if (!greeted) {
       sessionStorage.setItem(GREETED_KEY, "1");
       await playAnim(agent, "Greet");
-      speak("Hi, I am Merlin. Click me for my menu, or double-click for a tip.", "Wave");
+      speak("Hi, I am Merlin. Click me for Tips, Help, or Mute. Double-click for a tip.", "Wave");
     } else {
       await playAnim(agent, pick(["Acknowledge", "Blink", "Pleased"]));
       resumeIdle();
     }
   };
 
-  const dest = savedPos();
-  if (!greeted) {
+  if (docked) {
+    finishDocked();
+  } else if (!greeted) {
+    const dest = savedPos();
     agent._el.style.left = `${window.innerWidth + 24}px`;
     agent._el.style.top = `${dest.y}px`;
     agent._el.style.visibility = "visible";
     finishEntrance();
   } else {
+    const dest = savedPos();
     agent._el.style.left = `${dest.x}px`;
     agent._el.style.top = `${dest.y}px`;
     const finishReturn = async () => {
@@ -601,7 +974,7 @@ async function boot() {
       dragged: false,
     };
     const onMove = (moveEvent) => {
-      if (!press) return;
+      if (!press || docked) return;
       const dx = moveEvent.clientX - press.x;
       const dy = moveEvent.clientY - press.y;
       if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
@@ -616,9 +989,9 @@ async function boot() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       if (!press) return;
-      const wasDrag = press.dragged;
+      const wasDrag = !docked && press.dragged;
       press = null;
-      savePos(agent);
+      if (!docked) savePos(agent);
       if (wasDrag) {
         playAnim(agent, pick(["Pleased", "Acknowledge", "RestPose"])).then(resumeIdle);
         return;
@@ -628,6 +1001,7 @@ async function boot() {
         window.clearTimeout(clickTimer);
         clickTimer = null;
         hideOrbs();
+        hideHelp();
         offerTip();
         return;
       }
@@ -646,15 +1020,32 @@ async function boot() {
   });
 
   document.addEventListener("mousedown", (event) => {
+    if (helpPanel && !helpPanel.contains(event.target) && !agent._el.contains(event.target)) {
+      hideHelp();
+      resumeIdle();
+    }
     if (!orbWrap) return;
     if (agent._el.contains(event.target) || orbWrap.contains(event.target)) return;
+    if (helpPanel?.contains(event.target)) return;
     hideOrbs();
-    playAnim(agent, "Blink").then(resumeIdle);
+    if (!helpPanel) playAnim(agent, "Blink").then(resumeIdle);
   });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    if (orbWrap) hideOrbs();
+    if (helpPanel) {
+      hideHelp();
+      resumeIdle();
+    }
+  });
+
+  window.addEventListener("resize", placeHelp);
 
   window.addEventListener("cc-wizard-section", () => {
     tipIndex = 0;
     hideOrbs();
+    hideHelp();
     pauseIdle();
     playAnim(agent, pick(["Blink", "Confused"])).then(resumeIdle);
   });

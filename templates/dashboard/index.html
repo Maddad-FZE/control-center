@@ -7,7 +7,7 @@
 {% block content %}
 {% if not is_guest %}<meta name="csrf-token" content="{{ csrf_token }}">{% endif %}
 <div id="offline-banner" class="offline-banner" hidden role="status" aria-live="polite">
-  Server unreachable — showing cached data. Retrying…
+Host unreachable — layout is cached, metrics are not live
 </div>
 <div class="status-strip" id="status-strip" role="status" aria-live="polite">
   <div class="status-strip__metrics">
@@ -20,8 +20,6 @@
     <button type="button" class="status-chip status-chip--down status-chip--clickable" id="stat-down" aria-pressed="false">{{ services_down|default:0 }} down</button>
     {% if services_unknown %}<span class="status-chip status-chip--unknown" id="stat-unknown">{{ services_unknown }} unknown</span>{% endif %}
     {% if not is_guest %}
-    <span class="status-divider" aria-hidden="true">·</span>
-    <button type="button" class="status-chip status-chip--clickable" id="stat-alerts">{{ unack_alerts }} alert{% if unack_alerts != 1 %}s{% endif %}</button>
     <span class="status-divider" aria-hidden="true">·</span>
     <span class="status-chip" id="stat-uptime-24h">24H —</span>
     <span class="status-divider" aria-hidden="true">·</span>
@@ -40,35 +38,35 @@
 <div class="dashboard-page{% if is_guest %} dashboard-page--guest{% endif %}">
   <div class="dashboard-main">
     <div class="services-board">
-      <section class="services-group">
-        <h2 class="group-title{% if 'tracked' in down_section_ids %} group-title--alert{% endif %}">1 - Tracked</h2>
+      <section class="services-group services-group--tracked">
+        <h2 class="group-title{% if 'tracked' in down_section_ids %} group-title--alert{% endif %}">1 — Tracked</h2>
         <div class="service-grid service-grid--tracked">
           {% for service in tracked_services %}
             {% include "dashboard/_service_card.html" with service=service variant="tracked" %}
           {% endfor %}
+          <p class="section-empty" data-empty="Nothing tracked right now. Check back later."{% if tracked_services %} hidden{% endif %}>Nothing tracked right now. Check back later.</p>
         </div>
-        <p class="section-empty" data-empty="Nothing tracked right now. Check back later."{% if tracked_services %} hidden{% endif %}>Nothing tracked right now. Check back later.</p>
       </section>
 
-      <section class="services-group">
-        <h2 class="group-title{% if 'apps' in down_section_ids %} group-title--alert{% endif %}">2 - Apps</h2>
-        <div class="service-grid service-grid--apps">
+      <section class="services-group services-group--apps">
+        <h2 class="group-title{% if 'apps' in down_section_ids %} group-title--alert{% endif %}">2 — Apps</h2>
+        <div class="service-grid service-grid--apps"{% if is_admin %} data-apps-reorder="1"{% endif %}>
           {% for service in app_services %}
             {% include "dashboard/_service_card.html" with service=service variant="app" %}
           {% endfor %}
+          <p class="section-empty" data-empty="No apps to show yet. Check back later."{% if app_services %} hidden{% endif %}>No apps to show yet. Check back later.</p>
         </div>
-        <p class="section-empty" data-empty="No apps to show yet. Check back later."{% if app_services %} hidden{% endif %}>No apps to show yet. Check back later.</p>
       </section>
 
       <section class="services-group services-group--misc">
-        <h2 class="group-title{% if 'misc' in down_section_ids %} group-title--alert{% endif %}">3 - Misc</h2>
+        <h2 class="group-title{% if 'misc' in down_section_ids %} group-title--alert{% endif %}">3 — Misc</h2>
         <div class="bookmarks">
           {% for service in misc_services %}
             {% with s=status|get_item:service.id %}
             <div class="service-card-wrap service-card-wrap--misc service-card-wrap--has-menu">
               {% include "dashboard/_card_menu.html" %}
               <a
-                class="bookmark bookmark--service{% if s and not s.is_up %} bookmark--down{% endif %}"
+                class="bookmark bookmark--service{% if s|service_is_down %} bookmark--down{% endif %}"
                 href="{% if service.id in open_in_new_tab_ids %}{{ service.open_href }}{% else %}{% url 'service_view' service.id %}{% endif %}"
                 {% if service.id in open_in_new_tab_ids %}target="_blank" rel="noopener"{% endif %}
                 data-external-href="{{ service.open_href }}"
@@ -76,8 +74,8 @@
                 data-service-id="{{ service.id }}"
                 data-service-name="{{ service.name|lower }}"
                 data-service-desc="{{ service.description|lower }}"
-                data-service-down="{% if s and not s.is_up %}1{% else %}0{% endif %}"
-                data-service-up="{% if s and s.is_up %}1{% else %}0{% endif %}"
+                data-service-down="{% if s|service_is_down %}1{% else %}0{% endif %}"
+                data-service-up="{% if s and s.is_up is True %}1{% else %}0{% endif %}"
               >
                 <img
                   src="{{ service.display_icon }}"
@@ -89,15 +87,18 @@
             </div>
             {% endwith %}
           {% endfor %}
+          <p class="section-empty" data-empty="Nothing in Misc right now. Check back later."{% if misc_services %} hidden{% endif %}>Nothing in Misc right now. Check back later.</p>
         </div>
-        <p class="section-empty" data-empty="Nothing in Misc right now. Check back later."{% if misc_services %} hidden{% endif %}>Nothing in Misc right now. Check back later.</p>
       </section>
     </div>
   </div>
 
   {% if not is_guest %}
   <aside class="ops-stack"{% if is_admin %} data-admin="1"{% endif %}>
-    <section class="panel" data-panel-id="system">
+    <section class="services-group services-group--stats">
+      <h2 class="group-title">4 — Stats</h2>
+      <div class="stats-group__body">
+      <section class="panel" data-panel-id="system">
       <button type="button" class="panel-head panel-toggle" aria-expanded="true" aria-controls="panel-system">
         <span class="panel-toggle__label">System</span>
         <span class="panel-chevron" aria-hidden="true">▾</span>
@@ -110,7 +111,7 @@
         </div>
         {% if is_admin %}
         <div class="ops-actions">
-          <button type="button" class="btn danger" id="host-reboot-btn">Restart Pi</button>
+          <button type="button" class="btn danger" id="host-reboot-btn">Restart Server</button>
         </div>
         {% endif %}
       </div>
@@ -127,30 +128,6 @@
       <div class="panel-body" id="panel-usb">
         <div id="usb-stats">
           <div class="skeleton-row"></div>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel" data-panel-id="alerts" id="alerts-panel-section">
-      <div class="panel-head panel-head--alerts">
-        <button type="button" class="panel-toggle panel-toggle--inline" aria-expanded="true" aria-controls="panel-alerts">
-          <span class="panel-toggle__label">Alerts</span>
-          <span class="panel-badge" id="alerts-badge"{% if not unack_alerts %} hidden{% endif %}>{{ unack_alerts }}</span>
-          <span class="panel-chevron" aria-hidden="true">▾</span>
-        </button>
-        <button type="button" class="btn secondary btn-ack" id="ack-all-btn">ACK ALL</button>
-      </div>
-      <div class="panel-body panel-body--alerts" id="panel-alerts">
-        <div id="alerts-panel">
-          {% for alert in alerts %}
-            <div class="alert-item {{ alert.level }}{% if alert.acknowledged %} acknowledged{% endif %}">
-              <span class="alert-icon" aria-hidden="true">{% if alert.level == 'error' %}!{% elif alert.level == 'success' %}✓{% else %}·{% endif %}</span>
-              <span class="alert-text">{{ alert.title }}</span>
-              <span class="alert-time">{{ alert.created_at|timesince }} ago</span>
-            </div>
-          {% empty %}
-            <div class="stat-label">No recent alerts.</div>
-          {% endfor %}
         </div>
       </div>
     </section>
@@ -181,14 +158,15 @@
         </div>
       </div>
     </section>
-
-    <div class="ops-footer">
-      {% for ev in recent_logins %}
-        <span class="login-chip">{{ ev.username|default:"?" }} · {{ ev.created_at|date:"M d H:i" }}</span>
-      {% empty %}
-        <span class="login-chip">No login events yet.</span>
-      {% endfor %}
-    </div>
+      </div>
+      <div class="ops-footer">
+        {% for ev in recent_logins %}
+          <span class="login-chip">{{ ev.username|default:"?" }} · {{ ev.created_at|date:"M d H:i" }}</span>
+        {% empty %}
+          <span class="login-chip">No login events yet.</span>
+        {% endfor %}
+      </div>
+    </section>
   </aside>
   {% endif %}
 </div>
@@ -197,11 +175,11 @@
 <div class="library-modal" id="host-reboot-modal" hidden>
   <div class="library-modal__backdrop" data-reboot-close></div>
   <div class="library-modal__panel" role="dialog" aria-modal="true" aria-labelledby="host-reboot-title">
-    <h2 class="library-modal__title" id="host-reboot-title">Restart Pi</h2>
+    <h2 class="library-modal__title" id="host-reboot-title">Restart Server</h2>
     <p class="settings-hint">This reboots the whole machine. Every service will go offline until it comes back.</p>
     <div class="library-modal__actions">
       <button type="button" class="btn secondary" data-reboot-close>Cancel</button>
-      <button type="button" class="btn danger" id="host-reboot-confirm">Restart Pi</button>
+      <button type="button" class="btn danger" id="host-reboot-confirm">Restart Server</button>
     </div>
   </div>
 </div>
@@ -211,6 +189,7 @@
 {% block extra_js %}
 <script src="{% vstatic 'js/dashboard-cache.js' %}"></script>
 <script src="{% vstatic 'js/dashboard.js' %}"></script>
+<script src="{% vstatic 'js/apps-cards.js' %}" defer></script>
 <script src="{% vstatic 'js/service-open.js' %}"></script>
 <script src="{% vstatic 'js/card-menu.js' %}"></script>
 <script src="{% vstatic 'js/tunnel.js' %}"></script>

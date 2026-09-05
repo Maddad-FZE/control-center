@@ -24,7 +24,7 @@
   {{ form.non_field_errors }}
 
   <article class="panel card-form-opens">
-    <div class="panel-head">{% if is_new %}1 - Add card{% else %}1 - Edit card{% endif %}</div>
+    <div class="panel-head">{% if is_new %}1 — Add card{% else %}1 — Edit card{% endif %}</div>
     <div class="panel-body">
       {% if catalog_entry %}
       <p class="settings-hint">Linked from the library: <strong>{{ catalog_entry.name }}</strong>.</p>
@@ -48,7 +48,7 @@
   </article>
 
   <article class="panel card-form-card">
-    <div class="panel-head">2 - Card</div>
+    <div class="panel-head">2 — Card</div>
     <div class="panel-body">
       <div class="form-group">
         <label for="{{ form.name.id_for_label }}">Name</label>
@@ -69,7 +69,7 @@
 
   <article class="panel card-form-icons">
     <div class="panel-head">
-      <span>4 - Icons <span class="icon-picker__count" id="icon-count"></span></span>
+      <span>4 — Icons <span class="icon-picker__count" id="icon-count"></span></span>
       <span class="icon-picker__preview" id="icon-preview-wrap">
         <img id="icon-preview" src="{% if form.icon.value %}{{ form.icon.value }}{% else %}{% static 'img/service-default.svg' %}{% endif %}" alt="">
         <span id="icon-preview-label">{% if form.icon_slug.value %}{{ form.icon_slug.value }}{% else %}Default{% endif %}</span>
@@ -81,15 +81,12 @@
       <div class="form-group icon-picker__upload">
         <label for="{{ form.logo.id_for_label }}">{{ form.logo.label }}</label>
         {{ form.logo }}
-        {% if service and service.logo %}
-        <p class="settings-hint">Current upload: <a href="{{ service.logo.url }}" target="_blank" rel="noopener">view</a></p>
-        {% endif %}
       </div>
     </div>
   </article>
 
   <article class="panel card-form-side">
-    <div class="panel-head">3 - Visibility</div>
+    <div class="panel-head">3 — Visibility</div>
     <div class="panel-body">
       <div class="service-form-toggles">
         <label class="switch">
@@ -112,7 +109,7 @@
   </article>
 
   <article class="panel card-form-stats">
-    <div class="panel-head">5 - Live stats</div>
+    <div class="panel-head">5 — Live stats</div>
     <div class="panel-body card-form-stats-body">
       <p class="settings-hint">Optional widgets on Tracked cards. Pi-hole needs an app password from its API settings.</p>
       <div class="form-group">
@@ -165,5 +162,6 @@
 </div>
 {% endblock %}
 {% block extra_js %}
+<script src="{% vstatic 'js/image-upload.js' %}" defer></script>
 <script src="{% vstatic 'js/service-form.js' %}" defer></script>
 {% endblock %}

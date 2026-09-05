@@ -4,6 +4,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 
 from .models import SiteSettings, UserProfile
+from .widgets import ImageUploadWidget
 
 
 class ProfileForm(forms.ModelForm):
@@ -47,6 +48,8 @@ class SiteSettingsForm(forms.ModelForm):
             "services_host",
             "kuma_username",
             "kuma_password",
+            "require_2fa_for_admins",
+            "require_2fa_for_all",
         )
         widgets = {
             "title": forms.TextInput(attrs={"placeholder": "Home Server Command Center"}),
@@ -58,9 +61,13 @@ class SiteSettingsForm(forms.ModelForm):
                 attrs={"placeholder": "e.g. 192.168.0.40"}
             ),
             "kuma_username": forms.TextInput(attrs={"placeholder": "cc-monitor"}),
+            "logo": ImageUploadWidget(),
+            "favicon": ImageUploadWidget(attrs={"accept": "image/*,.ico,image/x-icon"}),
             "crt_enabled": forms.CheckboxInput(),
             "wizard_enabled": forms.CheckboxInput(attrs={"data-wizard-master": "1"}),
             "wizard_notify": forms.CheckboxInput(attrs={"data-wizard-notify": "1"}),
+            "require_2fa_for_admins": forms.CheckboxInput(),
+            "require_2fa_for_all": forms.CheckboxInput(),
         }
 
     def clean(self):

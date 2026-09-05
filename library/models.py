@@ -93,3 +93,53 @@ class LibraryNote(models.Model):
 
     def __str__(self):
         return "Library notes"
+
+
+class CatalogItem(models.Model):
+    slug = models.SlugField(max_length=64, unique=True)
+    name = models.CharField(max_length=100)
+    tagline = models.CharField(max_length=255, blank=True)
+    description = models.TextField(blank=True)
+    category = models.CharField(max_length=64)
+    repo = models.CharField(max_length=128, blank=True)
+    website = models.URLField(blank=True)
+    icon = models.URLField(blank=True)
+    default_port = models.PositiveIntegerField(default=8080)
+    container_port = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="0 = parse from compose",
+    )
+    path = models.CharField(max_length=255, default="/")
+    widget_type = models.CharField(max_length=32, default="none")
+    compose = models.TextField(blank=True)
+    install_options = models.CharField(max_length=32, blank=True)
+    is_builtin = models.BooleanField(default=False)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+        verbose_name = "Catalog item"
+        verbose_name_plural = "Catalog items"
+
+    def __str__(self):
+        return self.name
+
+    def to_entry(self):
+        entry = {
+            "slug": self.slug,
+            "name": self.name,
+            "tagline": self.tagline,
+            "category": self.category,
+            "repo": self.repo,
+            "website": self.website,
+            "icon": self.icon,
+            "default_port": self.default_port,
+            "path": self.path or "/",
+            "widget_type": self.widget_type or "none",
+            "compose": self.compose,
+        }
+        if self.install_options:
+            entry["install_options"] = self.install_options
+        if self.container_port:
+            entry["container_port"] = self.container_port
+        return entry

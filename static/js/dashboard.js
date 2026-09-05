@@ -68,21 +68,6 @@ function gaugeRow(label, percent, detail) {
     </div>`;
 }
 
-function groupAlerts(alerts) {
-  const grouped = [];
-  alerts.forEach((a) => {
-    const last = grouped[grouped.length - 1];
-    if (last && last.title === a.title && last.level === a.level) {
-      last.count += 1;
-      last.created_at = a.created_at;
-      last.acknowledged = last.acknowledged && a.acknowledged;
-    } else {
-      grouped.push({ ...a, count: 1 });
-    }
-  });
-  return grouped;
-}
-
 function applyServiceFilter() {
   const input = el("service-filter");
   if (!input) return;
@@ -232,19 +217,23 @@ function renderDocker(data) {
       const name = escapeHtml(c.name);
       const image = escapeHtml(c.image);
       const status = escapeHtml(c.status);
-      const actions = IS_ADMIN
-        ? `<div class="container-row__actions">
-            <button type="button" class="btn secondary btn-compact" data-docker-restart="${name}">Restart</button>
-          </div>`
+      const restartBtn = IS_ADMIN
+        ? `<button type="button" class="container-restart-btn" data-docker-restart="${name}" aria-label="Restart ${name}" title="Restart">
+            <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+              <path fill="currentColor" d="M13.65 4.35A7.5 7.5 0 1 0 15 8h-2a5.5 5.5 0 1 1-1.2-3.4L10 7h5V2l-1.35 2.35z"/>
+            </svg>
+          </button>`
         : "";
       return `
         <div class="container-row ${stateClass}">
-          <div class="stat-row">
+          <div class="stat-row container-row__head">
             <span class="stat-label">${name}</span>
-            <span class="stat-value">${status}</span>
+            <span class="container-row__status">
+              <span class="stat-value">${status}</span>
+              ${restartBtn}
+            </span>
           </div>
           <span class="container-image" title="${image}">${image}</span>
-          ${actions}
         </div>`;
     })
     .join("");
@@ -298,28 +287,35 @@ function renderHealth(data) {
 
     document.querySelectorAll(`.status-dot[data-service-id="${s.id}"]`).forEach((node) => {
       node.classList.remove("up", "down", "is-checking");
-      node.classList.add(s.is_up ? "up" : "down");
-      node.setAttribute("aria-label", `${s.name}: ${s.is_up ? "up" : "down"}`);
+      if (s.is_up === true) {
+        node.classList.add("up");
+        node.setAttribute("aria-label", `${s.name}: up`);
+      } else if (s.is_up === false) {
+        node.classList.add("down");
+        node.setAttribute("aria-label", `${s.name}: down`);
+      } else {
+        node.setAttribute("aria-label", `${s.name}: unknown`);
+      }
     });
     if (card) {
-      card.classList.toggle("service-card--down", !s.is_up);
-      card.dataset.serviceDown = s.is_up ? "0" : "1";
-      card.dataset.serviceUp = s.is_up ? "1" : "0";
+      card.classList.toggle("service-card--down", s.is_up === false);
+      card.dataset.serviceDown = s.is_up === false ? "1" : "0";
+      card.dataset.serviceUp = s.is_up === true ? "1" : "0";
       const latencyText = s.response_ms != null ? ` · ${s.response_ms}ms` : "";
       card.title = `${s.name}${latencyText}`;
     }
     const bookmark = document.querySelector(`.bookmark[data-service-id="${s.id}"]`);
     if (bookmark) {
-      bookmark.classList.toggle("bookmark--down", !s.is_up);
-      bookmark.dataset.serviceDown = s.is_up ? "0" : "1";
-      bookmark.dataset.serviceUp = s.is_up ? "1" : "0";
+      bookmark.classList.toggle("bookmark--down", s.is_up === false);
+      bookmark.dataset.serviceDown = s.is_up === false ? "1" : "0";
+      bookmark.dataset.serviceUp = s.is_up === true ? "1" : "0";
     }
     if (latency && s.response_ms != null) {
       latency.textContent = `${s.response_ms}ms`;
     }
 
-    if (s.is_up) up += 1;
-    else down += 1;
+    if (s.is_up === true) up += 1;
+    else if (s.is_up === false) down += 1;
   });
 
   document.querySelectorAll(".service-card .status-dot").forEach((dot) => {
@@ -372,11 +368,17 @@ function renderUptime(data) {
         })
         .join("");
       const pct = entry.percent != null ? `${entry.percent}%` : "—";
+      const state =
+        entry.is_up === true ? "up" : entry.is_up === false ? "down" : "unknown";
+      const stateLabel = state === "up" ? "Up" : state === "down" ? "Down" : "—";
       return `
-        <div class="uptime-row">
+        <div class="uptime-row${state === "down" ? " uptime-row--down" : ""}">
           <div class="uptime-header">
-            <span class="uptime-name">${entry.name || "Service #" + id}</span>
-            <span class="uptime-pct">${pct}</span>
+            <span class="uptime-name">${escapeHtml(entry.name || "Service #" + id)}</span>
+            <span class="uptime-pct">
+              <span class="uptime-state uptime-state--${state}">${stateLabel}</span>
+              ${pct}
+            </span>
           </div>
           <div class="sparkline">${bars}</div>
         </div>`;
@@ -396,47 +398,17 @@ function updateUptimeChip(meanPercent) {
 }
 
 function renderAlerts(data) {
-  const box = el("alerts-panel");
-  const badge = el("alerts-badge");
-  if (!box) return;
-  const alerts = data.alerts || [];
-  const unack = alerts.filter((a) => !a.acknowledged).length;
-
-  if (badge) {
-    badge.hidden = unack === 0;
-    badge.textContent = unack;
-  }
-
-  const alertsChip = el("stat-alerts");
-  if (alertsChip) {
-    alertsChip.textContent = `${unack} alert${unack !== 1 ? "s" : ""}`;
-  }
-
-  if (!alerts.length) {
-    box.innerHTML = `<div class="stat-label">No recent alerts.</div>`;
+  if (window.ccAlertsMenu) {
+    window.ccAlertsMenu.render(data);
     return;
   }
-
-  const grouped = groupAlerts(alerts.slice(0, 30));
-  box.innerHTML = grouped
-    .slice(0, 12)
-    .map((a) => {
-      const icon = a.level === "error" ? "!" : a.level === "success" ? "✓" : "·";
-      const countSuffix = a.count > 1 ? ` <span class="alert-count">×${a.count}</span>` : "";
-      return `
-        <div class="alert-item ${a.level}${a.acknowledged ? " acknowledged" : ""}">
-          <span class="alert-icon" aria-hidden="true">${icon}</span>
-          <span class="alert-text">${a.title}${countSuffix}</span>
-          <span class="alert-time">${formatRelativeTime(a.created_at)}</span>
-        </div>`;
-    })
-    .join("");
 }
 
-function setOfflineBanner(show) {
+function setOfflineBanner(show, message) {
   const banner = el("offline-banner");
   if (!banner) return;
   banner.hidden = !show;
+  if (show && message) banner.textContent = message;
 }
 
 function setRefreshChip(state, labelText, timeText, when) {
@@ -459,35 +431,116 @@ function setRefreshState(ok, fromCache) {
     pollFailCount = 0;
     offlineMode = false;
     lastLiveAt = new Date();
+    clearHostDown();
     setOfflineBanner(false);
     setRefreshChip("live", "Live", formatTime24(lastLiveAt), lastLiveAt);
   } else if (fromCache) {
     offlineMode = true;
-    setOfflineBanner(true);
+    setOfflineBanner(true, "Host unreachable — layout is cached, metrics are not live");
     setRefreshChip(
-      "stale",
-      "Hold",
+      "down",
+      "Down",
       lastLiveAt ? formatTime24(lastLiveAt) : "––:––:––",
       lastLiveAt
     );
   } else {
     pollFailCount += 1;
     offlineMode = true;
-    setOfflineBanner(true);
+    setOfflineBanner(true, "Host unreachable — layout is cached, metrics are not live");
     setRefreshChip(
       "down",
-      pollFailCount > 1 ? "Retry" : "Fail",
+      pollFailCount > 1 ? "Retry" : "Down",
       lastLiveAt ? formatTime24(lastLiveAt) : "––:––:––",
       lastLiveAt
     );
   }
 }
 
+const FETCH_TIMEOUT_MS = 6000;
+const lastPayload = {};
+
+function payloadStamp(data) {
+  try {
+    return JSON.stringify(data);
+  } catch {
+    return String(Date.now());
+  }
+}
+
+function shouldRender(key, data) {
+  const stamp = payloadStamp(data);
+  if (lastPayload[key] === stamp) return false;
+  lastPayload[key] = stamp;
+  return true;
+}
+
+function setFeedStopped(bodyId, stopped) {
+  const body = el(bodyId);
+  if (!body) return;
+  let note = body.querySelector(".feed-stopped");
+  if (!note) {
+    note = document.createElement("div");
+    note.className = "feed-stopped";
+    note.setAttribute("role", "status");
+    note.textContent = "Feed stopped — retrying";
+    body.prepend(note);
+  }
+  note.hidden = !stopped;
+  body.classList.toggle("is-stopped", stopped);
+}
+
+function renderSystemZeroed() {
+  const box = el("system-stats");
+  if (!box) return;
+  cpuHistory.length = 0;
+  prevNet = null;
+  const hostUptime = el("stat-host-uptime");
+  if (hostUptime) hostUptime.textContent = "Host —";
+  box.innerHTML = `
+    ${gaugeRow("CPU", 0, "—")}
+    <div class="cpu-sparkline" aria-hidden="true"></div>
+    <div class="stat-row"><span class="stat-label">Load</span><span class="stat-value">—</span></div>
+    ${gaugeRow("Memory", 0, "—")}
+  `;
+}
+
+function applyHostDown() {
+  document.body.classList.add("host-down");
+  lastPayload.system = "";
+  lastPayload.docker = "";
+  lastPayload.usb = "";
+  renderSystemZeroed();
+  const dockerBox = el("docker-stats");
+  const countEl = el("docker-count");
+  if (countEl) countEl.textContent = "—";
+  if (dockerBox) dockerBox.innerHTML = `<div class="stat-label">Host unreachable.</div>`;
+  const usbBox = el("usb-stats");
+  if (usbBox) usbBox.innerHTML = `<div class="stat-label">Host unreachable.</div>`;
+  ["panel-system", "panel-usb", "panel-containers"].forEach((id) => {
+    setFeedStopped(id, true);
+  });
+}
+
+function clearHostDown() {
+  document.body.classList.remove("host-down");
+}
+
+async function fetchWithTimeout(url) {
+  const ctrl = new AbortController();
+  const timer = window.setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { signal: ctrl.signal, cache: "no-store" });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 async function fetchWithCache(url, cacheKey) {
   try {
-    const resp = await fetch(url);
+    const resp = await fetchWithTimeout(url);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
+    if (data && data.offline) throw new Error("offline");
     if (window.dashboardCache) {
       window.dashboardCache.save(cacheKey, data);
     }
@@ -497,7 +550,7 @@ async function fetchWithCache(url, cacheKey) {
     if (cached) {
       return { ok: false, stale: true, data: cached.data };
     }
-    throw e;
+    return { ok: false, stale: false, data: null };
   }
 }
 
@@ -510,15 +563,14 @@ function hydrateFromCache() {
     if (!entry) return;
     if (entry.savedAt > newestSavedAt) newestSavedAt = entry.savedAt;
     const data = entry.data;
-    if (key === "system") renderSystem(data);
-    else if (key === "docker") renderDocker(data);
-    else if (key === "alerts") renderAlerts(data);
+    if (key === "alerts") renderAlerts(data);
     else if (key === "health") renderHealth(data);
     else if (key === "uptime") renderUptime(data);
     else if (key === "widgets") renderWidgets(data);
-    else if (key === "usb") renderUsb(data);
   });
   if (newestSavedAt) lastLiveAt = new Date(newestSavedAt);
+  applyHostDown();
+  setRefreshState(false, false);
 }
 
 function initFilter() {
@@ -541,21 +593,7 @@ function initFilter() {
 }
 
 function initStatusChips() {
-  const alertsChip = el("stat-alerts");
   const downChip = el("stat-down");
-
-  if (alertsChip) {
-    alertsChip.addEventListener("click", () => {
-      const section = el("alerts-panel-section");
-      if (section) {
-        section.scrollIntoView({ behavior: "smooth", block: "nearest" });
-        const panel = section.closest(".panel");
-        if (panel && panel.classList.contains("panel--collapsed")) {
-          togglePanel(panel, true);
-        }
-      }
-    });
-  }
 
   function toggleStatusFilter(token) {
     const input = el("service-filter");
@@ -619,33 +657,6 @@ function initCollapsiblePanels() {
       });
     });
   });
-}
-
-async function ackAllAlerts() {
-  const btn = el("ack-all-btn");
-  if (btn) btn.disabled = true;
-  try {
-    const resp = await fetch("/api/alerts/ack/", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRFToken": getCsrfToken(),
-      },
-      body: JSON.stringify({}),
-    });
-    if (!resp.ok) throw new Error("ack failed");
-    const data = await fetch("/api/alerts/").then((r) => r.json());
-    renderAlerts(data);
-  } catch (e) {
-    console.warn("ack all failed", e);
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-}
-
-function initAckButton() {
-  const btn = el("ack-all-btn");
-  if (btn) btn.addEventListener("click", ackAllAlerts);
 }
 
 async function postJson(url, body) {
@@ -728,6 +739,9 @@ function initHostOps() {
   modal?.querySelectorAll("[data-reboot-close]").forEach((node) => {
     node.addEventListener("click", close);
   });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && modal && !modal.hidden) close();
+  });
   confirmBtn?.addEventListener("click", async () => {
     confirmBtn.disabled = true;
     try {
@@ -746,50 +760,79 @@ const IS_GUEST = !document.querySelector('meta[name="csrf-token"]');
 const IS_ADMIN = document.querySelector(".ops-stack")?.dataset.admin === "1";
 
 async function pollGuest() {
-  try {
-    const result = await fetchWithCache("/api/widgets/", "widgets");
-    renderWidgets(result.data);
-    setRefreshState(result.ok, result.stale);
-  } catch (e) {
-    console.warn("guest widget poll failed", e);
-    setRefreshState(false, false);
-  }
+  const result = await fetchWithCache("/api/widgets/", "widgets");
+  if (result.data) renderWidgets(result.data);
+  setRefreshState(result.ok, result.stale);
 }
 
 async function pollWidgets() {
-  try {
-    const result = await fetchWithCache("/api/widgets/", "widgets");
-    renderWidgets(result.data);
-    if (!result.ok && result.stale) {
-      setRefreshState(false, true);
-    }
-  } catch (e) {
-    console.warn("widget poll failed", e);
-  }
+  const result = await fetchWithCache("/api/widgets/", "widgets");
+  if (result.ok && result.data) renderWidgets(result.data);
 }
 
 async function pollFast() {
-  try {
-    const [systemR, dockerR, alertsR, usbR] = await Promise.all([
-      fetchWithCache("/api/system/", "system"),
-      fetchWithCache("/api/docker/", "docker"),
-      fetchWithCache("/api/alerts/", "alerts"),
-      fetchWithCache("/api/system/usb/", "usb"),
-    ]);
-    renderSystem(systemR.data);
-    renderDocker(dockerR.data);
-    renderAlerts(alertsR.data);
-    renderUsb(usbR.data);
-    const anyOk = systemR.ok || dockerR.ok || alertsR.ok || usbR.ok;
-    const anyStale =
-      (systemR.stale && !systemR.ok) ||
-      (dockerR.stale && !dockerR.ok) ||
-      (alertsR.stale && !alertsR.ok) ||
-      (usbR.stale && !usbR.ok);
-    setRefreshState(anyOk, anyStale && !anyOk);
-  } catch (e) {
-    console.warn("dashboard fast poll failed", e);
-    setRefreshState(false, !!window.dashboardCache?.load("system"));
+  const [systemR, dockerR, alertsR, usbR] = await Promise.all([
+    fetchWithCache("/api/system/", "system"),
+    fetchWithCache("/api/docker/", "docker"),
+    fetchWithCache("/api/alerts/", "alerts"),
+    fetchWithCache("/api/system/usb/", "usb"),
+  ]);
+  const live = [systemR, dockerR, alertsR, usbR].some((row) => row.ok);
+  if (!live) {
+    applyHostDown();
+    setRefreshState(false, false);
+    if (alertsR.data) renderAlerts(alertsR.data);
+    return;
+  }
+
+  if (systemR.ok && systemR.data) {
+    setFeedStopped("panel-system", false);
+    if (shouldRender("system", systemR.data)) renderSystem(systemR.data);
+  } else {
+    setFeedStopped("panel-system", true);
+  }
+
+  if (dockerR.ok && dockerR.data) {
+    setFeedStopped("panel-containers", false);
+    if (shouldRender("docker", dockerR.data)) renderDocker(dockerR.data);
+  } else {
+    setFeedStopped("panel-containers", true);
+  }
+
+  if (alertsR.data) renderAlerts(alertsR.data);
+
+  if (usbR.ok && usbR.data) {
+    setFeedStopped("panel-usb", false);
+    if (shouldRender("usb", usbR.data)) renderUsb(usbR.data);
+  } else {
+    setFeedStopped("panel-usb", true);
+  }
+
+  setRefreshState(true, false);
+}
+
+async function pollSlow() {
+  const [healthR, uptimeR] = await Promise.all([
+    fetchWithCache("/api/health/", "health"),
+    fetchWithCache("/api/uptime/", "uptime"),
+  ]);
+  if (healthR.ok && healthR.data) {
+    const fresh = healthJustRan(healthR.data || {});
+    if (fresh) beginDownCheckPulse();
+    renderHealth(healthR.data);
+    if (fresh) window.setTimeout(endDownCheckPulse, 700);
+  } else {
+    endDownCheckPulse();
+    if (healthR.data) renderHealth(healthR.data);
+  }
+  if (uptimeR.ok && uptimeR.data) {
+    setFeedStopped("panel-uptime", false);
+    if (shouldRender("uptime", uptimeR.data)) renderUptime(uptimeR.data);
+  } else if (uptimeR.data) {
+    setFeedStopped("panel-uptime", true);
+    if (shouldRender("uptime", uptimeR.data)) renderUptime(uptimeR.data);
+  } else {
+    setFeedStopped("panel-uptime", true);
   }
 }
 
@@ -830,23 +873,6 @@ function healthJustRan(data) {
   return true;
 }
 
-async function pollSlow() {
-  try {
-    const [healthR, uptimeR] = await Promise.all([
-      fetchWithCache("/api/health/", "health"),
-      fetchWithCache("/api/uptime/", "uptime"),
-    ]);
-    const fresh = healthJustRan(healthR.data || {});
-    if (fresh) beginDownCheckPulse();
-    renderHealth(healthR.data);
-    renderUptime(uptimeR.data);
-    if (fresh) window.setTimeout(endDownCheckPulse, 700);
-  } catch (e) {
-    console.warn("dashboard slow poll failed", e);
-    endDownCheckPulse();
-  }
-}
-
 function stopDashboardTimers() {
   if (fastTimer) window.clearInterval(fastTimer);
   if (slowTimer) window.clearInterval(slowTimer);
@@ -883,7 +909,6 @@ initFilter();
 initStatusChips();
 if (!IS_GUEST) {
   initCollapsiblePanels();
-  initAckButton();
   initHostOps();
   updateGroupTitles();
 }

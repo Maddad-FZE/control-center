@@ -1,6 +1,6 @@
 """Search the bundled Simple Icons library used across Library and cards."""
 
-from library.catalog import SERVICES
+from library.catalog import all_services
 from library.icons import all_simpleicons, library_icon_url, simpleicons_slug
 
 
@@ -11,7 +11,7 @@ def icon_url(slug):
 def featured_slugs():
     slugs = []
     seen = set()
-    for entry in SERVICES:
+    for entry in all_services():
         slug = simpleicons_slug(entry["slug"])
         if slug not in seen:
             seen.add(slug)

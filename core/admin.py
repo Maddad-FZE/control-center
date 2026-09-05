@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
 
-from .models import AuditEvent, SiteSettings, UpdateStatus, UserProfile
+from .models import AuditEvent, SettingsNote, SiteSettings, UpdateStatus, UserProfile
 
 
 class UserProfileInline(admin.StackedInline):
@@ -28,6 +28,11 @@ class SiteSettingsAdmin(admin.ModelAdmin):
 class UpdateStatusAdmin(admin.ModelAdmin):
     list_display = ("latest_version", "last_checked_at", "install_state")
     readonly_fields = ("last_checked_at", "install_started_at", "install_finished_at")
+
+
+@admin.register(SettingsNote)
+class SettingsNoteAdmin(admin.ModelAdmin):
+    list_display = ("updated_at",)
 
 
 @admin.register(AuditEvent)

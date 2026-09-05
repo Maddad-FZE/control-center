@@ -2,10 +2,10 @@ from pathlib import Path
 import json
 
 from django.contrib.auth.models import User
-from django.test import SimpleTestCase, TestCase
+from django.test import TestCase
 from django.urls import reverse
 
-from library.catalog import SERVICES, get_docker_spec, get_service_by_slug
+from library.catalog import all_services, get_docker_spec, get_service_by_slug
 from library.installer import NO_CARD_ON_INSTALL, TUNNEL_SLUG, create_dashboard_card
 
 
@@ -20,7 +20,7 @@ EXPECTED_CONTAINER_PORTS = {
 }
 
 
-class DockerSpecPortTests(SimpleTestCase):
+class DockerSpecPortTests(TestCase):
     def test_nextcloud_maps_host_hint_to_apache_80(self):
         spec = get_docker_spec(get_service_by_slug("nextcloud"))
         self.assertEqual(spec["container_port"], 80)
@@ -47,7 +47,7 @@ class DockerSpecPortTests(SimpleTestCase):
         self.assertEqual(spec["host_port_hint"], 8096)
 
     def test_every_compose_service_has_a_numeric_container_port(self):
-        for entry in SERVICES:
+        for entry in all_services():
             if "ports:" not in (entry.get("compose") or ""):
                 continue
             spec = get_docker_spec(entry)
@@ -76,7 +76,7 @@ class DashboardCardTests(TestCase):
         self.assertFalse(service.is_misc)
 
 
-class IconResolveTests(SimpleTestCase):
+class IconResolveTests(TestCase):
     def test_known_slug_uses_bundled_icon_list(self):
         from library.icons import icon_url_for_entry
 
@@ -702,3 +702,74 @@ class NextcloudInstallTests(TestCase):
         self.assertFalse(InstalledService.objects.filter(slug="nextcloud").exists())
         self.assertFalse(Service.objects.filter(catalog_slug="nextcloud").exists())
         self.assertEqual(message, "Uninstalled")
+
+
+class CatalogApiTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user("admin", password="x", is_superuser=True)
+        self.client.force_login(self.admin)
+
+    def test_settings_has_library_repositories_editor(self):
+        resp = self.client.get(reverse("settings") + "?section=platform")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Library repositories")
+        self.assertContains(resp, 'id="library-repos-edit-btn"')
+        self.assertContains(resp, "library-repos.js")
+
+    def test_catalog_list_returns_seeded_entries(self):
+        resp = self.client.get(reverse("api_catalog_list"))
+        self.assertEqual(resp.status_code, 200)
+        items = resp.json()["items"]
+        self.assertTrue(any(row["slug"] == "jellyfin" for row in items))
+
+    def test_create_update_and_delete_custom_entry(self):
+        compose = (
+            "services:\n  demo:\n    image: demo:latest\n    ports:\n"
+            '      - "9090:80"\n'
+        )
+        create = self.client.post(
+            reverse("api_catalog_create"),
+            data=json.dumps(
+                {
+                    "slug": "demo-app",
+                    "name": "Demo App",
+                    "category": "Testing",
+                    "compose": compose,
+                    "default_port": 9090,
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(create.status_code, 200)
+        update = self.client.post(
+            reverse("api_catalog_save", args=["demo-app"]),
+            data=json.dumps(
+                {
+                    "slug": "demo-app",
+                    "name": "Demo App Renamed",
+                    "category": "Testing",
+                    "compose": compose,
+                    "default_port": 9090,
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(update.status_code, 200)
+        entry = get_service_by_slug("demo-app")
+        self.assertEqual(entry["name"], "Demo App Renamed")
+        delete = self.client.post(reverse("api_catalog_delete", args=["demo-app"]))
+        self.assertEqual(delete.status_code, 200)
+        self.assertIsNone(get_service_by_slug("demo-app"))
+
+    def test_delete_blocked_when_installed(self):
+        from library.models import InstalledService
+
+        InstalledService.objects.create(
+            slug="jellyfin",
+            container_name="cc-jellyfin",
+            host_port=8096,
+            status=InstalledService.Status.RUNNING,
+        )
+        resp = self.client.post(reverse("api_catalog_delete", args=["jellyfin"]))
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("Uninstall", resp.json()["error"])

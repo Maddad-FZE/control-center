@@ -1,10 +1,10 @@
 {% load static dashboard_extras %}
 {% with s=status|get_item:service.id %}
 {% with update_info=service_updates|get_item:service.id %}
-<div class="service-card-wrap">
+<div class="service-card-wrap" data-service-id="{{ service.id }}">
   {% include "dashboard/_card_menu.html" %}
   <a
-    class="service-card service-card--{{ variant }}{% if s and not s.is_up %} service-card--down{% endif %}{% if service.is_public %} service-card--public{% endif %}{% if update_info %} service-card--has-update{% endif %}"
+    class="service-card service-card--{{ variant }}{% if s|service_is_down %} service-card--down{% endif %}{% if service.is_public %} service-card--public{% endif %}{% if update_info %} service-card--has-update{% endif %}"
     href="{% if service.id in open_in_new_tab_ids %}{{ service.open_href }}{% else %}{% url 'service_view' service.id %}{% endif %}"
     {% if service.id in open_in_new_tab_ids %}target="_blank" rel="noopener"{% endif %}
     data-external-href="{{ service.open_href }}"
@@ -12,15 +12,39 @@
     data-service-id="{{ service.id }}"
     data-service-name="{{ service.name|lower }}"
     data-service-desc="{{ service.display_description|lower }} {{ service.category.name|lower }}"
-    data-service-down="{% if s and not s.is_up %}1{% else %}0{% endif %}"
-    data-service-up="{% if s and s.is_up %}1{% else %}0{% endif %}"
+    data-service-down="{% if s|service_is_down %}1{% else %}0{% endif %}"
+    data-service-up="{% if s and s.is_up is True %}1{% else %}0{% endif %}"
     data-widget-type="{{ service.widget_type }}"
     title="{{ service.name }}{% if s and s.response_ms %} · {{ s.response_ms }}ms{% endif %}"
   >
     {% if update_info %}
     <span class="service-update-banner">Update Available</span>
     {% endif %}
-    <span class="status-dot {% if s %}{% if s.is_up %}up{% else %}down{% endif %}{% endif %}" data-service-id="{{ service.id }}" aria-label="{{ service.name }}: {% if s %}{% if s.is_up %}up{% else %}down{% endif %}{% else %}unknown{% endif %}"></span>
+    <span class="status-dot{% if s and s.is_up is True %} up{% elif s|service_is_down %} down{% endif %}" data-service-id="{{ service.id }}" aria-label="{{ service.name }}: {% if s and s.is_up is True %}up{% elif s|service_is_down %}down{% else %}unknown{% endif %}"></span>
+    {% if variant == "app" %}
+    <div class="service-card__compact">
+      <div class="service-icon-wrap">
+        <img
+          class="service-icon"
+          src="{{ service.display_icon }}"
+          alt=""
+          onerror="this.onerror=null;this.src='{% static 'img/service-default.svg' %}';"
+        >
+      </div>
+      <div class="service-card__identity">
+        <div class="service-name">{{ service.name }}</div>
+        <span class="service-category">{{ service.category.name }}</span>
+      </div>
+    </div>
+    <div class="service-card__expand" aria-hidden="true">
+      <p class="service-desc">{{ service.display_description|default:"No description yet." }}</p>
+      <div class="service-card__meta">
+        {% if service.is_public %}<span class="service-meta-chip">Public</span>{% endif %}
+        {% if s and s.response_ms %}<span class="service-meta-chip">{{ s.response_ms }}ms</span>{% endif %}
+        {% if update_info %}<span class="service-meta-chip service-meta-chip--update">Update</span>{% endif %}
+      </div>
+    </div>
+    {% else %}
     <header class="service-card__header">
       <div class="service-icon-wrap">
         <img
@@ -32,18 +56,14 @@
       </div>
       <div class="service-card__identity">
         <div class="service-name">{{ service.name }}</div>
-        {% if variant == "app" %}
-        <span class="service-category">{{ service.category.name }}</span>
-        {% endif %}
       </div>
     </header>
-    {% if variant == "app" %}
-    <p class="service-desc">{{ service.display_description|default:"" }}</p>
-    {% elif service.description %}
+    {% if service.description %}
     <div class="service-desc">{{ service.description }}</div>
     {% endif %}
     {% if variant == "tracked" %}
     <div class="service-card__stats" data-widget-service-id="{{ service.id }}" aria-label="{{ service.name }} stats"></div>
+    {% endif %}
     {% endif %}
     <span class="service-latency" data-service-id="{{ service.id }}" hidden>{% if s and s.response_ms %}{{ s.response_ms }}ms{% endif %}</span>
   </a>

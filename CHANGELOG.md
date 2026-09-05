@@ -9,17 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Host bootstrap (`scripts/install.sh`): install Docker, write `.env`, and start Control Center with one command
+- Settings → **Logs**: tail Control Center and installed Docker service logs with source picker, keyword filter, live tail, and download
+- Settings → **Console**: password-confirmed App and Host shells over WebSocket (superuser only)
+- Settings → **Users**: create, edit, disable, and delete accounts with Admin / Member / Viewer roles and per-user service access
+- Profile → **Security**: TOTP 2FA with recovery codes, optional site-wide enforcement, and console re-auth
+- Profile → **Vault**: encrypted per-user credentials for later auto sign-in, with a console env hook (`CC_SVC_USER` / `CC_SVC_SECRET`)
+- Rotating app log files under `data/logs/` (`app.log`, `tick.log`) with Docker log rotation in compose
+- ASGI worker (`uvicorn`) for WebSocket console while keeping gunicorn as the process manager
+
+### Changed
+
+- Settings is a full-viewport board with numbered sections and field help tips
+- Site secrets (Kuma password, Cloudflare tokens) are encrypted at rest
+- Members see only public cards plus the services an admin assigns; viewers cannot acknowledge alerts
 - Published cards open the public hostname; Open using IP in the card menu still goes to the LAN address
-- Restart the Pi from the System panel (admin, confirmed)
+- Restart the server from the System panel (admin, confirmed)
 - Restart Docker services from Containers, Library, and the card menu
 - USB panel lists plugged-in devices; storage mounts can be unmounted
 - Matter in the Library Home Automation catalog
 - Library and catalog cards use the bundled icon list, then the original icon if there is no match
 - Merlin swoops in on the first visit, then teleports or uses another entrance when you change pages
 - Nextcloud Library install creates a Postgres sidecar and skips the setup wizard (admin username and password only)
+- Settings → Platform → **Library repositories** editor to add, edit, or remove catalog entries (delete blocked while installed or data volumes remain)
 
 ### Fixed
 
+- Library category filter dropdown uses dark background and cream text (readable on all platforms)
+- Dashboard cards no longer show offline when health is unknown; only explicit down checks mark a service red
 - A finished previous install no longer blocks the next update (old 100% bar, log, and Reload popup)
 
 ## [0.3.1] - 2026-08-30

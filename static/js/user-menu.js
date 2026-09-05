@@ -19,6 +19,11 @@
   trigger.addEventListener("click", function (e) {
     e.stopPropagation();
     if (dropdown.hidden) {
+      document.getElementById("alerts-menu")?.classList.remove("is-open");
+      const alertsDrop = document.getElementById("alerts-dropdown");
+      const alertsBell = document.getElementById("alerts-bell");
+      if (alertsDrop) alertsDrop.hidden = true;
+      if (alertsBell) alertsBell.setAttribute("aria-expanded", "false");
       openMenu();
     } else {
       closeMenu();

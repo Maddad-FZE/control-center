@@ -2,7 +2,7 @@
 
 ## Pre-deploy
 
-- [ ] Copy project to Pi (or git clone)
+- [ ] Copy project to the server (or git clone)
 - [ ] `cp .env.example .env` and set strong `SECRET_KEY`
 - [ ] Set `DJANGO_SETTINGS_MODULE=config.settings.prod`
 - [ ] Set `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `SESSION_COOKIE_DOMAIN`
@@ -10,6 +10,20 @@
 - [ ] `python manage.py check --deploy` passes
 
 ## Docker
+
+One-shot on a new Debian/Ubuntu host (installs Docker if needed):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Maddad-FZE/control-center/main/scripts/install.sh | sudo bash
+```
+
+Or, if the tree is already on disk:
+
+```bash
+sudo ./scripts/install.sh
+```
+
+Manual Compose:
 
 ```bash
 docker compose build
@@ -30,7 +44,7 @@ Add public hostname:
 ## Cutover from Homepage
 
 1. Run platform on **8099** alongside Homepage **:80** for validation
-2. `python manage.py seed_homelab --yaml /path/to/services.yaml` (optional import from Pi)
+2. `python manage.py seed_homelab --yaml /path/to/services.yaml` (optional import from the host)
 3. Copy logo to `static/img/logo.png`
 4. Point `zaidan.home` tunnel/DNS to new app when satisfied
 5. Stop Homepage container after validation period
@@ -98,9 +112,9 @@ The container (or host) needs outbound HTTPS to GitHub.
 The slim image has no Docker CLI. Leave `UPDATE_RESTART_COMMAND` empty in
 Docker so the updater sends `SIGHUP` to the gunicorn master. Do not set
 `UPDATE_RESTART_COMMAND=docker restart …` inside the container. To bounce
-the container from the Pi, run `docker restart control-center` on the host.
+the container from the server, run `docker restart control-center` on the host.
 
-Dashboard **Restart Pi** reboots the machine. On Docker it starts a short
+Dashboard **Restart Server** reboots the machine. On Docker it starts a short
 privileged helper via the mounted socket. On a venv host set
 `HOST_REBOOT_COMMAND=sudo reboot`. Compose bind-mounts `/sys/bus/usb` so the
 USB panel can see devices; unmount still needs the mount path to be visible
@@ -119,11 +133,45 @@ Requirements and caveats:
 
 - Volume mount: `./data:/app/data`
 - Backup `data/db.sqlite3` regularly
+- Backup `data/vault.key` with the database (credential vault and encrypted site secrets)
 
 ## SQLite production notes
 
 - Gunicorn workers: **1** (or use PostgreSQL for multi-worker)
 - WAL mode enabled automatically on connection
+
+## ASGI / WebSocket (Console)
+
+Production runs **gunicorn** with `uvicorn.workers.UvicornWorker` on `config.asgi:application` so HTTP and `/ws/console/` share one port.
+
+Behind a reverse proxy, allow WebSocket upgrade on the same path as the app (e.g. `/ws/console/`).
+
+Local dev (Console tab):
+
+```bash
+pip install -r requirements.txt
+uvicorn config.asgi:application --host 127.0.0.1 --port 8000 --reload
+```
+
+`runserver` does not serve WebSockets.
+
+### Logs / Console env (optional)
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `CC_LOG_DIR` | `data/logs` | Directory for rotating app logs |
+| `CC_LOG_FILE` | `data/logs/app.log` | Main app log path |
+| `CC_TICK_LOG_FILE` | `data/logs/tick.log` | Tick process log path |
+| `CONSOLE_ENABLED` | `true` | App shell tab |
+| `CONSOLE_HOST_ENABLED` | `true` | Host shell tab (privileged in Docker) |
+| `CONSOLE_IDLE_SECONDS` | `900` | Idle disconnect |
+| `CONSOLE_MAX_SECONDS` | `14400` | Hard session cap |
+| `CC_VAULT_KEY` | (generated file) | Fernet key for vault + encrypted site secrets |
+| `CC_VAULT_KEY_FILE` | `data/vault.key` | Where to store a generated key if `CC_VAULT_KEY` is unset |
+
+Back up `data/vault.key` with `data/db.sqlite3`. Losing the key makes stored secrets unreadable.
+
+New Python packages: `cryptography`, `qrcode`.
 
 ## Nextcloud
 

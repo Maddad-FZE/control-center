@@ -18,6 +18,11 @@ def site(request):
         favicon_url = site_settings.favicon.url
 
     is_admin = request.user.is_authenticated and request.user.is_superuser
+    user_role = ""
+    if request.user.is_authenticated:
+        from core.access import role_of
+
+        user_role = role_of(request.user)
     url_name = getattr(getattr(request, "resolver_match", None), "url_name", "") or ""
     wizard_enabled = bool(getattr(site_settings, "wizard_enabled", False))
     wizard_notify = bool(getattr(site_settings, "wizard_notify", True))
@@ -38,7 +43,7 @@ def site(request):
 
         update_ready = update_available()
 
-    return {
+    result = {
         "site_title": (site_settings.title or "").strip() or settings.SITE_TITLE,
         "site_tagline": (site_settings.tagline or "").strip(),
         "nav_apps": nav_apps,
@@ -56,6 +61,15 @@ def site(request):
         ),
         "server_timezone": settings.TIME_ZONE,
         "is_admin": is_admin,
+        "user_role": user_role,
         "app_version": get_current_version(),
         "update_available": update_ready,
+        "unack_alerts": 0,
     }
+
+    if request.user.is_authenticated:
+        from dashboard.models import Alert
+
+        result["unack_alerts"] = Alert.objects.filter(acknowledged=False).count()
+
+    return result

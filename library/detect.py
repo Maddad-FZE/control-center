@@ -8,7 +8,7 @@ import docker
 from django.conf import settings
 from django.core.cache import cache
 
-from .catalog import SERVICES, get_docker_spec
+from .catalog import all_services, get_service_by_slug
 from .installer import DOCKER_LABEL_SLUG, get_docker_client, _image_version
 from .models import InstalledService
 
@@ -48,7 +48,7 @@ def _build_catalog_index():
     by_slug_tail = {}
     by_slug = {}
 
-    for entry in SERVICES:
+    for entry in all_services():
         slug = entry["slug"]
         by_slug[slug] = slug
         spec = get_docker_spec(entry)

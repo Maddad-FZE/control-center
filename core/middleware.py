@@ -62,3 +62,39 @@ class SetupRequiredMiddleware:
         if not any(path.startswith(p) for p in allowed_prefixes):
             return redirect(reverse("setup"))
         return self.get_response(request)
+
+
+class AccountGuardMiddleware:
+    """Force 2FA enrolment and password change when required."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated:
+            return self.get_response(request)
+        path = request.path
+        if path.startswith(("/static/", "/media/", "/sw.js")):
+            return self.get_response(request)
+        if path.startswith(("/logout/", "/login/")):
+            return self.get_response(request)
+
+        profile = getattr(user, "profile", None)
+        if profile and profile.must_change_password:
+            if not path.startswith(("/profile/", "/password/change/")):
+                return redirect(reverse("profile") + "?section=security")
+
+        from core.access import is_admin
+        from core.site_settings import get_site_settings
+        from core.totp import twofa_enabled
+
+        site = get_site_settings()
+        needs_2fa = bool(site.require_2fa_for_all) or (
+            bool(site.require_2fa_for_admins) and is_admin(user)
+        )
+        if needs_2fa and not twofa_enabled(user):
+            if not path.startswith(("/profile/", "/password/change/")):
+                return redirect(reverse("profile") + "?section=security")
+
+        return self.get_response(request)

@@ -2,9 +2,11 @@ from urllib.parse import urlparse
 
 from django import forms
 
-from library.catalog import LIBRARY_DESCRIPTIONS, SERVICES, get_service_by_slug
+from library.catalog import LIBRARY_DESCRIPTIONS, all_services, get_service_by_slug
 from library.icons import icon_url_for_entry
 from library.models import InstalledService
+
+from core.widgets import ImageUploadWidget
 
 from .icon_library import icon_url, slug_from_icon_url
 from .models import Service, ServiceCategory, ServiceMetric
@@ -43,7 +45,7 @@ def _ensure_category(name):
 
 def link_choice_groups():
     """Return (choices, meta) for the named service picker."""
-    by_slug = {entry["slug"]: entry for entry in SERVICES}
+    by_slug = {entry["slug"]: entry for entry in all_services()}
     installed = list(
         InstalledService.objects.filter(status__in=("running", "stopped", "installing"))
     )
@@ -63,7 +65,7 @@ def link_choice_groups():
         groups.append(("Installed", installed_choices))
 
     library_choices = []
-    for entry in SERVICES:
+    for entry in all_services():
         if entry["slug"] in installed_slugs:
             continue
         key = f"catalog:{entry['slug']}"
@@ -164,6 +166,7 @@ class ServiceForm(forms.ModelForm):
             "widget_type": forms.HiddenInput(),
             "health_check_url": forms.HiddenInput(),
             "sort_order": forms.HiddenInput(),
+            "logo": ImageUploadWidget(),
         }
 
     def __init__(self, *args, request=None, **kwargs):

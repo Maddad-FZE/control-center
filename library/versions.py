@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from core.updates import _parse_published_at, is_newer
 
-from .catalog import SERVICES, get_service_by_slug
+from .catalog import all_services, get_service_by_slug
 from .models import CatalogRelease, InstalledService
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ REQUEST_TIMEOUT = 10
 def _unique_repos():
     repos = []
     seen = set()
-    for entry in SERVICES:
+    for entry in all_services():
         repo = entry.get("repo", "").strip()
         if repo and repo not in seen:
             seen.add(repo)

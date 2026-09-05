@@ -1,0 +1,20 @@
+<div class="image-upload{% if widget.preview_url %} is-filled{% endif %}" data-image-upload>
+  <div class="image-upload__frame">
+    <img class="image-upload__preview" src="{{ widget.preview_url }}" alt=""{% if not widget.preview_url %} hidden{% endif %}>
+    <span class="image-upload__empty"{% if widget.preview_url %} hidden{% endif %}>No image</span>
+    <div class="image-upload__actions">
+      <button type="button" class="image-upload__btn" data-image-edit aria-label="Replace image">
+        <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+          <path fill="currentColor" d="M11.6 1.6a1.2 1.2 0 0 1 1.7 0l1.1 1.1a1.2 1.2 0 0 1 0 1.7L6.2 12.6 3 13l.4-3.2z"/>
+        </svg>
+      </button>
+      <button type="button" class="image-upload__btn" data-image-clear aria-label="Remove image"{% if not widget.preview_url %} hidden{% endif %}>
+        <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+          <path fill="none" stroke="currentColor" stroke-width="2" d="M4 4l8 8M12 4L4 12"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+  {% if widget.is_initial %}<input type="checkbox" name="{{ widget.checkbox_name }}" id="{{ widget.checkbox_id }}" class="image-upload__clear"{% if widget.attrs.disabled %} disabled{% endif %}>{% endif %}
+  <input type="{{ widget.type }}" name="{{ widget.name }}"{% include "django/forms/widgets/attrs.html" %}>
+</div>

@@ -205,6 +205,22 @@ def _health_row(service, check):
     }
 
 
+def probe_service_health(service):
+    """Probe one service over HTTP and store a ServiceCheck row."""
+    url = (service.health_check_url or service.href or "").strip()
+    if not url:
+        return None
+    is_up, ms, err = _check_url(url)
+    prev = _latest_check_map().get(service.id)
+    row = ServiceCheck.objects.create(
+        service=service, is_up=is_up, response_ms=ms, error=err
+    )
+    _apply_health_side_effects(service, prev, is_up, err)
+    cache.delete("health:results")
+    cache.delete("uptime:payload")
+    return row
+
+
 def _apply_health_side_effects(service, prev, is_up, err):
     if prev and not prev.is_up and not is_up:
         if not _has_open_down_alert(service):
@@ -285,7 +301,22 @@ def run_health_checks():
         if service.id in results_by_id:
             continue
         prev = latest.get(service.id)
-        if prev:
+        if service.kuma_monitor_id:
+            if prev:
+                results_by_id[service.id] = _health_row(service, prev)
+            continue
+        if prev and (now - prev.checked_at).total_seconds() < CHECK_THROTTLE_SECONDS:
+            results_by_id[service.id] = _health_row(service, prev)
+            continue
+        url = (service.health_check_url or service.href or "").strip()
+        if url:
+            is_up, ms, err = _check_url(url)
+            row = ServiceCheck.objects.create(
+                service=service, is_up=is_up, response_ms=ms, error=err
+            )
+            _apply_health_side_effects(service, prev, is_up, err)
+            results_by_id[service.id] = _health_row(service, row)
+        elif prev:
             results_by_id[service.id] = _health_row(service, prev)
 
     results = [results_by_id[svc.id] for svc in services if svc.id in results_by_id]
@@ -323,9 +354,22 @@ def get_cached_alerts(limit=30):
     return alerts
 
 
+def _uptime_payload_has_checks(payload):
+    uptime = (payload or {}).get("uptime") or {}
+    return any(
+        entry.get("percent") is not None or entry.get("bars")
+        for entry in uptime.values()
+    )
+
+
 def get_cached_uptime_payload():
     cached = cache.get("uptime:payload")
-    if cached is not None and cached.get("kuma_available") and cached.get("kuma_synced"):
+    if (
+        cached is not None
+        and cached.get("kuma_available")
+        and cached.get("kuma_synced")
+        and _uptime_payload_has_checks(cached)
+    ):
         return cached
     from dashboard import kuma
 
@@ -350,14 +394,25 @@ def get_cached_uptime_payload():
         cache.set("uptime:payload", payload, HEALTH_CACHE_TTL)
         return payload
     since = timezone.now() - timezone.timedelta(hours=24)
+    service_ids = [svc.id for svc in services]
     rows = list(
         ServiceCheck.objects.filter(
-            service_id__in=[svc.id for svc in services],
+            service_id__in=service_ids,
             checked_at__gte=since,
         )
         .order_by("checked_at")
         .values("service_id", "is_up", "checked_at")
     )
+    if not rows and kuma.kuma_is_running():
+        maybe_run_health_tick()
+        rows = list(
+            ServiceCheck.objects.filter(
+                service_id__in=service_ids,
+                checked_at__gte=since,
+            )
+            .order_by("checked_at")
+            .values("service_id", "is_up", "checked_at")
+        )
     by_service = defaultdict(list)
     for row in rows:
         by_service[row["service_id"]].append(row)
@@ -366,10 +421,12 @@ def get_cached_uptime_payload():
         checks = by_service.get(svc.id, [])
         ups = [1 if row["is_up"] else 0 for row in checks]
         percent = round(100 * sum(ups) / len(ups), 1) if ups else None
+        last = checks[-1] if checks else None
         data[str(svc.id)] = {
             "name": svc.name,
             "percent": percent,
             "bars": _sparkline_from_rows(checks),
+            "is_up": last["is_up"] if last else None,
         }
     payload = {"uptime": data, "kuma_available": True, "kuma_synced": True}
     cache.set("uptime:payload", payload, UPTIME_CACHE_TTL)
@@ -763,8 +820,12 @@ def fetch_service_widget(service):
     return result
 
 
-def fetch_all_widgets(public_only=False):
-    bundle_key = f"widgets:bundle:{public_only}"
+def fetch_all_widgets(public_only=False, service_ids=None):
+    if service_ids is not None:
+        ids_key = ",".join(str(i) for i in sorted(service_ids))
+        bundle_key = f"widgets:bundle:ids:{ids_key}"
+    else:
+        bundle_key = f"widgets:bundle:{public_only}"
     stale_key = f"{bundle_key}:stale"
     cached = cache.get(bundle_key)
     if cached is not None:
@@ -773,7 +834,9 @@ def fetch_all_widgets(public_only=False):
     qs = list(
         Service.objects.filter(enabled=True).prefetch_related("metrics")
     )
-    if public_only:
+    if service_ids is not None:
+        qs = [s for s in qs if s.id in service_ids]
+    elif public_only:
         qs = [s for s in qs if s.is_public]
 
     widgets = {}

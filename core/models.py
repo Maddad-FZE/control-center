@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth.models import User
 
+from .crypto import EncryptedTextField
+
 
 class SiteSettings(models.Model):
     title = models.CharField(max_length=120, blank=True)
@@ -19,15 +21,17 @@ class SiteSettings(models.Model):
         help_text="LAN IP or hostname for library-installed service cards",
     )
     kuma_username = models.CharField(max_length=64, blank=True)
-    kuma_password = models.CharField(max_length=128, blank=True)
+    kuma_password = EncryptedTextField(blank=True)
     kuma_setup_done = models.BooleanField(default=False)
-    cf_api_token = models.CharField(max_length=255, blank=True)
+    cf_api_token = EncryptedTextField(blank=True)
     cf_account_id = models.CharField(max_length=64, blank=True)
     cf_zone_id = models.CharField(max_length=64, blank=True)
     cf_zone_name = models.CharField(max_length=255, blank=True)
     cf_tunnel_id = models.CharField(max_length=64, blank=True)
-    cf_tunnel_token = models.TextField(blank=True)
+    cf_tunnel_token = EncryptedTextField(blank=True)
     cf_tunnel_name = models.CharField(max_length=64, blank=True)
+    require_2fa_for_admins = models.BooleanField(default=False)
+    require_2fa_for_all = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = "Site settings"
@@ -97,6 +101,11 @@ class UserProfile(models.Model):
         SLATE = "slate", "Cool Slate"
         TERMINAL = "terminal", "Green Terminal"
 
+    class Role(models.TextChoices):
+        ADMIN = "admin", "Admin"
+        MEMBER = "member", "Member"
+        VIEWER = "viewer", "Viewer"
+
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     crt_enabled = models.BooleanField(default=True)
     theme = models.CharField(max_length=16, choices=Theme.choices, default=Theme.WOOD)
@@ -106,9 +115,83 @@ class UserProfile(models.Model):
         blank=True,
         help_text="Service ids that should skip the in-app overlay",
     )
+    role = models.CharField(max_length=16, choices=Role.choices, default=Role.MEMBER)
+    allowed_services = models.ManyToManyField(
+        "dashboard.Service",
+        blank=True,
+        related_name="allowed_users",
+    )
+    totp_secret = EncryptedTextField(blank=True)
+    totp_confirmed_at = models.DateTimeField(null=True, blank=True)
+    must_change_password = models.BooleanField(default=False)
 
     def __str__(self):
         return f"Profile({self.user.username})"
+
+
+class RecoveryCode(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="recovery_codes")
+    code_hash = models.CharField(max_length=128)
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["user", "used_at"])]
+
+
+class VaultEntry(models.Model):
+    class Kind(models.TextChoices):
+        PASSWORD = "password", "Password"
+        TOKEN = "token", "Token"
+        NOTE = "note", "Note"
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="vault_entries")
+    service = models.ForeignKey(
+        "dashboard.Service",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="vault_entries",
+    )
+    label = models.CharField(max_length=120)
+    username = models.CharField(max_length=150, blank=True)
+    secret_ciphertext = EncryptedTextField(blank=True)
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.PASSWORD)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["label"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "service", "label"],
+                name="vault_user_service_label_uniq",
+            )
+        ]
+
+    def __str__(self):
+        return f"VaultEntry({self.user.username}:{self.label})"
+
+
+class SettingsNote(models.Model):
+    body = models.TextField(blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Settings note"
+        verbose_name_plural = "Settings notes"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def __str__(self):
+        return "Settings notes"
 
 
 class AuditEvent(models.Model):
@@ -121,6 +204,10 @@ class AuditEvent(models.Model):
         SERVICE_DOWN = "service_down", "Service down"
         SERVICE_UP = "service_up", "Service up"
         APP = "app", "Application"
+        CONSOLE = "console", "Console"
+        USER = "user", "User change"
+        TWOFA = "2fa", "Two-factor"
+        VAULT = "vault", "Vault"
 
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     event_type = models.CharField(max_length=32, choices=EventType.choices)

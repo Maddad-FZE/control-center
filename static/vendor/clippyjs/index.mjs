@@ -85,6 +85,7 @@ var Animator = class Animator {
 		return r;
 	}
 	preloadSounds(sounds) {
+		if (window.ccWizardMuted) return;
 		for (let i = 0; i < this._data.sounds.length; i++) {
 			let snd = this._data.sounds[i];
 			let uri = sounds[snd];
@@ -139,6 +140,7 @@ var Animator = class Animator {
 		return this._currentFrameIndex + 1;
 	}
 	_playSound() {
+		if (window.ccWizardMuted) return;
 		let s = this._currentFrame.sound;
 		if (!s) return;
 		let audio = this._sounds[s];
@@ -771,6 +773,7 @@ async function initAgent(loaders) {
 	return new Agent(map, data, sounds);
 }
 async function _loadSounds(loaders) {
+	if (window.ccWizardMuted) return {};
 	const audio = document.createElement("audio");
 	if (!(!!audio.canPlayType && audio.canPlayType("audio/mp3") !== "")) return {};
 	return (await loaders.sound()).default;

@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import tarfile
@@ -343,6 +344,333 @@ class StaleInstallProgressTests(TestCase):
         self.assertEqual(status.latest_version, "v0.3.1")
         self.assertEqual(status.install_state, UpdateStatus.InstallState.IDLE)
         self.assertEqual(status.install_log, "")
+
+
+class SettingsLogsConsoleTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+
+        self.admin = User.objects.create_user("admin", password="secret", is_superuser=True)
+        self.member = User.objects.create_user("member", password="secret")
+        cache.clear()
+
+    def test_settings_shows_logs_and_console(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get("/settings/?section=logs")
+        self.assertContains(resp, 'data-section="logs"')
+        self.assertContains(resp, "settings-logs.js")
+        self.assertContains(resp, 'data-section="console"')
+        self.assertContains(resp, "settings-console.js")
+
+    def test_logs_sources_forbidden_for_member(self):
+        self.client.force_login(self.member)
+        resp = self.client.get("/settings/api/logs/sources/")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_logs_file_tail_and_filter(self):
+        from core.logs import ensure_log_dirs, fetch_logs
+
+        ensure_log_dirs()
+        log_path = Path(settings.CC_LOG_FILE)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text("alpha line\nbeta line\n", encoding="utf-8")
+        payload = fetch_logs("app", query="beta", tail=50)
+        self.assertEqual(payload["lines"], ["beta line"])
+        self.assertFalse(payload.get("error"))
+
+    def test_logs_rejects_invalid_source(self):
+        from core.logs import fetch_logs
+
+        payload = fetch_logs("docker:evil;rm", tail=10)
+        self.assertIn("error", payload)
+
+    @patch("core.logs.docker.DockerClient")
+    @patch("core.logs._docker_available")
+    def test_docker_logs_does_not_pass_timeout_to_logs(self, mock_avail, mock_client_cls):
+        from core.logs import _read_docker_logs
+
+        mock_avail.return_value = (True, MagicMock())
+        mock_container = MagicMock()
+        mock_container.logs.return_value = b"alpha line\n"
+        mock_client_cls.return_value.containers.get.return_value = mock_container
+
+        result = _read_docker_logs("control-center", tail=50)
+
+        self.assertEqual(result["lines"], ["alpha line"])
+        mock_container.logs.assert_called_once()
+        self.assertNotIn("timeout", mock_container.logs.call_args.kwargs)
+
+    def test_console_ticket_requires_password(self):
+        self.client.force_login(self.admin)
+        resp = self.client.post(
+            "/settings/api/console/ticket/",
+            data='{"target":"app","password":"wrong"}',
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_console_ticket_issues_token(self):
+        self.client.force_login(self.admin)
+        resp = self.client.post(
+            "/settings/api/console/ticket/",
+            data='{"target":"app","password":"secret"}',
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("ticket", resp.json())
+
+
+class UsersAccessTwoFAVaultTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from dashboard.models import Service, ServiceCategory
+
+        self.admin = User.objects.create_user("admin", password="secret", is_superuser=True)
+        self.member = User.objects.create_user("member", password="secret")
+        cache.clear()
+        self.cat = ServiceCategory.objects.create(name="Apps")
+        self.private = Service.objects.create(
+            category=self.cat, name="Private", href="http://192.168.0.40:9/", enabled=True, is_public=False
+        )
+        self.public = Service.objects.create(
+            category=self.cat, name="Public", href="http://192.168.0.40:8/", enabled=True, is_public=True
+        )
+
+    def test_users_api_forbidden_for_member(self):
+        self.client.force_login(self.member)
+        resp = self.client.get("/settings/api/users/")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_create_user_and_last_admin_guard(self):
+        self.client.force_login(self.admin)
+        resp = self.client.post(
+            "/settings/api/users/",
+            data=json.dumps({"username": "newmember", "role": "member"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        payload = resp.json()
+        self.assertEqual(payload["role"], "member")
+        self.assertTrue(payload.get("generated_password"))
+
+        resp = self.client.patch(
+            f"/settings/api/users/{self.admin.id}/",
+            data=json.dumps({"role": "member"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("last active admin", resp.json()["error"])
+
+    def test_cannot_delete_self(self):
+        from django.contrib.auth.models import User
+
+        other = User.objects.create_user("boss", password="secret", is_superuser=True)
+        self.client.force_login(self.admin)
+        resp = self.client.delete(
+            f"/settings/api/users/{self.admin.id}/",
+            data=json.dumps({"username": "admin"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("your own account", resp.json()["error"])
+        other.delete()
+
+    def test_settings_users_has_in_app_table(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get("/settings/?section=users")
+        self.assertContains(resp, "users-add-btn")
+        self.assertContains(resp, "settings-users.js")
+        self.assertNotContains(resp, "Open user admin")
+
+    def test_member_sees_only_assigned_and_public(self):
+        from core.access import visible_service_ids
+
+        ids = visible_service_ids(self.member)
+        self.assertIn(self.public.id, ids)
+        self.assertNotIn(self.private.id, ids)
+        self.member.profile.allowed_services.add(self.private)
+        ids = visible_service_ids(self.member)
+        self.assertIn(self.private.id, ids)
+
+    def test_viewer_cannot_ack_alerts(self):
+        from dashboard.models import Alert
+
+        self.member.profile.role = "viewer"
+        self.member.profile.save()
+        Alert.objects.create(level="warning", title="Down", message="x")
+        self.client.force_login(self.member)
+        resp = self.client.post("/api/alerts/ack/", data="{}", content_type="application/json")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_totp_round_trip_and_login(self):
+        from core.totp import generate_secret, totp_at, verify_totp
+
+        secret = generate_secret()
+        code = totp_at(secret)
+        self.assertTrue(verify_totp(secret, code))
+        self.assertFalse(verify_totp(secret, "000000"))
+        profile = self.admin.profile
+        profile.totp_secret = secret
+        from django.utils import timezone
+
+        profile.totp_confirmed_at = timezone.now()
+        profile.save()
+        resp = self.client.post("/login/", {"username": "admin", "password": "secret"})
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, "/login/2fa/")
+        resp = self.client.post("/login/2fa/", {"code": totp_at(secret)})
+        self.assertEqual(resp.status_code, 302)
+
+    def test_console_ticket_requires_totp_when_enabled(self):
+        from core.totp import generate_secret, totp_at
+        from django.utils import timezone
+
+        secret = generate_secret()
+        profile = self.admin.profile
+        profile.totp_secret = secret
+        profile.totp_confirmed_at = timezone.now()
+        profile.save()
+        self.client.force_login(self.admin)
+        resp = self.client.post(
+            "/settings/api/console/ticket/",
+            data='{"target":"app","password":"secret"}',
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 403)
+        resp = self.client.post(
+            "/settings/api/console/ticket/",
+            data=json.dumps({"target": "app", "password": "secret", "totp": totp_at(secret)}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+
+    def test_vault_encrypt_and_owner_only(self):
+        from core.crypto import decrypt, encrypt, looks_encrypted
+        from core.models import VaultEntry
+
+        token = encrypt("hunter2")
+        self.assertTrue(looks_encrypted(token))
+        self.assertEqual(decrypt(token), "hunter2")
+        self.client.force_login(self.member)
+        resp = self.client.post(
+            "/profile/api/vault/",
+            data=json.dumps(
+                {
+                    "label": "Pi-hole",
+                    "username": "admin",
+                    "secret": "hunter2",
+                    "kind": "password",
+                    "service_id": self.public.id,
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        entry_id = resp.json()["id"]
+        stored = VaultEntry.objects.get(pk=entry_id)
+        self.assertEqual(stored.secret_ciphertext, "hunter2")
+        other = self.client
+        other.force_login(self.admin)
+        resp = other.get(f"/profile/api/vault/{entry_id}/")
+        self.assertEqual(resp.status_code, 404)
+        self.client.force_login(self.member)
+        resp = self.client.post(
+            f"/profile/api/vault/{entry_id}/reveal/",
+            data=json.dumps({"password": "secret"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["secret"], "hunter2")
+
+    def test_profile_board_chrome_and_password_change(self):
+        self.client.force_login(self.member)
+        resp = self.client.get("/profile/")
+        self.assertContains(resp, "1 — Categories")
+        self.assertContains(resp, "2 — Merlin")
+        self.assertContains(resp, "3 — Information")
+        self.assertContains(resp, "4 — Identity")
+        self.assertContains(resp, "5 — Account")
+        self.assertContains(resp, 'class="help-tip"')
+        self.assertContains(resp, "help-tips.js")
+        self.assertContains(resp, "settings.css")
+        self.assertNotContains(resp, "settings-users.js")
+        self.assertNotContains(resp, "Open user admin")
+        self.assertNotContains(resp, "profile-tabs")
+
+        resp = self.client.get("/profile/?tab=security")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("section=security", resp["Location"])
+
+        resp = self.client.get("/profile/?tab=vault&service=9")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("section=vault", resp["Location"])
+        self.assertIn("service=9", resp["Location"])
+
+        resp = self.client.post(
+            "/profile/",
+            {
+                "form": "password",
+                "section": "security",
+                "old_password": "secret",
+                "new_password1": "NewSecret123!",
+                "new_password2": "NewSecret123!",
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("section=security", resp["Location"])
+        self.member.refresh_from_db()
+        self.assertTrue(self.member.check_password("NewSecret123!"))
+
+    def test_password_change_url_redirects_to_profile(self):
+        self.client.force_login(self.member)
+        resp = self.client.get("/password/change/")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/profile/", resp["Location"])
+        self.assertIn("section=security", resp["Location"])
+
+    def test_must_change_password_sends_to_profile_security(self):
+        self.member.profile.must_change_password = True
+        self.member.profile.save()
+        self.client.force_login(self.member)
+        resp = self.client.get("/")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/profile/", resp["Location"])
+        self.assertIn("section=security", resp["Location"])
+        resp = self.client.get("/profile/")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("section=security", resp["Location"])
+        resp = self.client.get("/profile/?section=security")
+        self.assertContains(resp, "An admin asked you to set a new password")
+        self.assertContains(resp, "5 — Security")
+
+    def test_require_2fa_redirects_section_security(self):
+        from core.models import SiteSettings
+        from core.site_settings import clear_site_settings_cache
+
+        site = SiteSettings.load()
+        site.require_2fa_for_all = True
+        site.save()
+        clear_site_settings_cache()
+        self.client.force_login(self.member)
+        resp = self.client.get("/")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/profile/", resp["Location"])
+        self.assertIn("section=security", resp["Location"])
+        self.assertNotIn("tab=security", resp["Location"])
+
+
+class InstallScriptTests(SimpleTestCase):
+    def test_host_bootstrap_script(self):
+        script = Path(__file__).resolve().parents[1] / "scripts" / "install.sh"
+        self.assertTrue(script.is_file())
+        text = script.read_text(encoding="utf-8")
+        self.assertIn("docker compose", text)
+        self.assertIn("/opt/control-center", text)
+        self.assertIn("SECRET_KEY", text)
+        self.assertIn("SERVICES_HOST", text)
+        self.assertIn("SESSION_COOKIE_SECURE=false", text)
+        self.assertNotIn("seed_homelab", text)
+        self.assertNotIn("docker rm", text)
 
 
 if __name__ == "__main__":
