@@ -211,7 +211,7 @@
       }
       if (data.status === "error") {
         hideInstallModal();
-        alert(data.error || "Install failed");
+        await window.ccDialog.alert(data.error || "Install failed", { title: "Install" });
         window.location.reload();
         return;
       }
@@ -225,7 +225,11 @@
       const slug = btn.dataset.slug;
       const name = btn.dataset.name || slug;
       if (!slug) return;
-      if (!window.confirm(`Restart ${name}? It will be briefly offline.`)) return;
+      const restartOk = await window.ccDialog.confirm(
+        `Restart ${name}? It will be briefly offline.`,
+        { title: "Restart", confirmLabel: "Restart" },
+      );
+      if (!restartOk) return;
       const original = btn.textContent;
       btn.disabled = true;
       btn.textContent = "Restarting…";
@@ -242,7 +246,7 @@
           btn.textContent = original;
         }, 1500);
       } catch (e) {
-        window.alert(e.message || "Restart failed");
+        await window.ccDialog.alert(e.message || "Restart failed", { title: "Restart" });
         btn.disabled = false;
         btn.textContent = original;
       }
@@ -273,7 +277,7 @@
       hideInstallModal();
       btn.disabled = false;
       btn.textContent = "Install";
-      alert(e.message || "Install failed");
+      await window.ccDialog.alert(e.message || "Install failed", { title: "Install" });
     }
   }
 
@@ -318,7 +322,7 @@
           console.warn("install failed", e);
           btn.disabled = false;
           btn.textContent = "Install";
-          alert(e.message || "Install failed");
+          await window.ccDialog.alert(e.message || "Install failed", { title: "Install" });
         }
         return;
       }

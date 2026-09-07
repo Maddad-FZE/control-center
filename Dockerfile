@@ -19,6 +19,6 @@ ENV DJANGO_SETTINGS_MODULE=config.settings.prod
 
 RUN python manage.py collectstatic --noinput 2>/dev/null || true
 
-EXPOSE 8099
+EXPOSE 80
 
-CMD ["gunicorn", "config.asgi:application", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8099", "--workers", "1", "--threads", "2", "--timeout", "120"]
+CMD ["gunicorn", "config.asgi:application", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:80", "--workers", "1", "--threads", "2", "--timeout", "120"]

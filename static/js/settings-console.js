@@ -117,11 +117,21 @@
 
   async function connect() {
     if (socket) return;
-    const password = window.prompt("Confirm your password to open the console:");
+    const password = await window.ccDialog.prompt("Confirm your password to open the console.", {
+      title: "Console",
+      confirmLabel: pane.dataset.twofa === "1" ? "Continue" : "Open",
+      inputType: "password",
+      autocomplete: "current-password",
+    });
     if (!password) return;
     let totp = "";
     if (pane.dataset.twofa === "1") {
-      totp = window.prompt("Authenticator code:") || "";
+      totp = await window.ccDialog.prompt("Enter your authenticator code.", {
+        title: "Console",
+        confirmLabel: "Open",
+        placeholder: "123456",
+        autocomplete: "one-time-code",
+      });
       if (!totp) return;
     }
     connectBtn.disabled = true;

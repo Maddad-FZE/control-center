@@ -69,7 +69,7 @@ def setup_view(request):
         return redirect("dashboard")
     form = SetupAdminForm()
     if request.method == "POST":
-        form = SetupAdminForm(request.POST)
+        form = SetupAdminForm(request.POST, request.FILES)
         if form.is_valid():
             try:
                 user = User.objects.create_superuser(
@@ -81,7 +81,28 @@ def setup_view(request):
                 for message in exc.messages:
                     form.add_error("password1", message)
             else:
-                login(request, user)
+                site = get_site_settings()
+                site.title = form.cleaned_data["title"].strip()
+                site.tagline = (form.cleaned_data.get("tagline") or "").strip()
+                site.weather_location = (
+                    form.cleaned_data.get("weather_location") or ""
+                ).strip()
+                site.wizard_enabled = bool(form.cleaned_data.get("wizard_enabled"))
+                if form.cleaned_data.get("logo"):
+                    site.logo = form.cleaned_data["logo"]
+                if form.cleaned_data.get("favicon"):
+                    site.favicon = form.cleaned_data["favicon"]
+                host = (request.get_host() or "").split(":")[0]
+                if host and host not in {"localhost", "127.0.0.1", "::1"}:
+                    site.services_host = host
+                update_weather_coordinates(site)
+                site.save()
+                clear_site_settings_cache()
+                login(
+                    request,
+                    user,
+                    backend="django.contrib.auth.backends.ModelBackend",
+                )
                 messages.success(request, "Admin account created. Welcome!")
                 return redirect("dashboard")
     return render(request, "core/setup.html", {"form": form})

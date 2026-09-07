@@ -143,9 +143,10 @@ if [[ ! -f docker-compose.yml || ! -f .env.example ]]; then
   die "Control Center files missing in $INSTALL_DIR."
 fi
 
-mkdir -p data
+mkdir -p data media
 
 HOST_IP="$(lan_ip)"
+CSRF_ORIGIN="http://${HOST_IP}"
 if [[ ! -f .env ]]; then
   echo "install: writing .env for $HOST_IP"
   KEY="$(openssl rand -base64 48 | tr -d '\n/=+' | head -c 50)"
@@ -154,7 +155,7 @@ DJANGO_SETTINGS_MODULE=config.settings.prod
 SECRET_KEY=${KEY}
 DEBUG=False
 ALLOWED_HOSTS=localhost,127.0.0.1,${HOST_IP}
-CSRF_TRUSTED_ORIGINS=http://localhost:8099,http://127.0.0.1:8099,http://${HOST_IP}:8099
+CSRF_TRUSTED_ORIGINS=http://localhost,http://127.0.0.1,${CSRF_ORIGIN}
 SESSION_COOKIE_DOMAIN=
 SESSION_COOKIE_SECURE=false
 CSRF_COOKIE_SECURE=false
@@ -173,6 +174,9 @@ EOF
   chmod 600 .env
 else
   echo "install: keeping existing .env"
+  if grep -q '^CSRF_TRUSTED_ORIGINS=' .env && ! grep -q "$CSRF_ORIGIN" .env; then
+    sed -i "s|^CSRF_TRUSTED_ORIGINS=\\(.*\\)|CSRF_TRUSTED_ORIGINS=\\1,${CSRF_ORIGIN}|" .env
+  fi
 fi
 
 echo "install: starting Control Center (this may take a few minutes)…"
@@ -180,6 +184,6 @@ compose -p "$COMPOSE_PROJECT" up -d --build
 
 echo
 echo "Control Center is starting."
-echo "Open  http://${HOST_IP}:8099/  and create the first admin account."
+echo "Open  http://${HOST_IP}/  and finish first-time setup."
 echo "Files: ${INSTALL_DIR}"
 echo "This installer does not seed dashboard cards or change other Docker apps."

@@ -38,12 +38,12 @@ docker compose exec control-center python manage.py collectstatic --noinput
 
 Add public hostname:
 
-- `control.thezaidan.family` → `http://192.168.0.40:8099` (optional dashboard)
+- `control.thezaidan.family` → `http://192.168.0.40` (optional dashboard)
 - Per mini-app hostnames via `HOST_APP_MAP`
 
 ## Cutover from Homepage
 
-1. Run platform on **8099** alongside Homepage **:80** for validation
+1. Run platform on **port 80** alongside Homepage on another port for validation
 2. `python manage.py seed_homelab --yaml /path/to/services.yaml` (optional import from the host)
 3. Copy logo to `static/img/logo.png`
 4. Point `zaidan.home` tunnel/DNS to new app when satisfied

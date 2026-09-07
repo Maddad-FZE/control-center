@@ -7,9 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-07
+
 ### Added
 
 - Host bootstrap (`scripts/install.sh`): install Docker, write `.env`, and start Control Center with one command
+- First-run setup asks for server name, tagline, logo, and favicon as well as the admin account
 - Settings → **Logs**: tail Control Center and installed Docker service logs with source picker, keyword filter, live tail, and download
 - Settings → **Console**: password-confirmed App and Host shells over WebSocket (superuser only)
 - Settings → **Users**: create, edit, disable, and delete accounts with Admin / Member / Viewer roles and per-user service access
@@ -38,13 +41,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Library category filter dropdown uses dark background and cream text (readable on all platforms)
 - Dashboard cards no longer show offline when health is unknown; only explicit down checks mark a service red
 - A finished previous install no longer blocks the next update (old 100% bar, log, and Reload popup)
+- Confirm, alert, and prompt dialogs use Control Center chrome instead of browser popups
+- Apps cards open on click again after hold-to-reorder changes
+- Delete card removes from the dashboard without a full page reload
+- Merlin only waves on idle when there are unacknowledged alerts
 
 ## [0.3.1] - 2026-08-30
 
-### Added
-
 - Library Cloudflare Tunnel install, token link in Settings, and explicit publish/unpublish
-- Publishing Control Center or port 8099 is blocked so the dashboard stays on the LAN
+- Publishing Control Center (port 80, or legacy 8099) is blocked so the dashboard stays on the LAN
 
 ### Fixed
 

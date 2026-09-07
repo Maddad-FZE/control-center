@@ -31,7 +31,9 @@
       </nav>
     </section>
 
+    {% if wizard_enabled %}
     {% include "core/_merlin_dock.html" %}
+    {% endif %}
   </div>
 
   <section class="settings-group settings-group--info">

@@ -48,6 +48,12 @@ Host unreachable — layout is cached, metrics are not live
         </div>
       </section>
 
+      {% if wizard_enabled and not is_guest %}
+      <aside class="dashboard-merlin" id="dashboard-merlin">
+        {% include "core/_merlin_dock.html" with merlin_index=5 %}
+      </aside>
+      {% endif %}
+
       <section class="services-group services-group--apps">
         <h2 class="group-title{% if 'apps' in down_section_ids %} group-title--alert{% endif %}">2 — Apps</h2>
         <div class="service-grid service-grid--apps"{% if is_admin %} data-apps-reorder="1"{% endif %}>
@@ -67,9 +73,9 @@ Host unreachable — layout is cached, metrics are not live
               {% include "dashboard/_card_menu.html" %}
               <a
                 class="bookmark bookmark--service{% if s|service_is_down %} bookmark--down{% endif %}"
-                href="{% if service.id in open_in_new_tab_ids %}{{ service.open_href }}{% else %}{% url 'service_view' service.id %}{% endif %}"
+                href="{% if service.id in open_in_new_tab_ids %}{{ service.launch_href|default:service.open_href }}{% else %}{% url 'service_view' service.id %}{% endif %}"
                 {% if service.id in open_in_new_tab_ids %}target="_blank" rel="noopener"{% endif %}
-                data-external-href="{{ service.open_href }}"
+                data-external-href="{{ service.launch_href|default:service.open_href }}"
                 data-view-href="{% url 'service_view' service.id %}"
                 data-service-id="{{ service.id }}"
                 data-service-name="{{ service.name|lower }}"

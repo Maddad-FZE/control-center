@@ -156,7 +156,14 @@
   }
 
   async function resetPassword(user) {
-    if (!confirm(`Generate a new password for ${user.username}?`)) return;
+    if (
+      !(await window.ccDialog.confirm(`Generate a new password for ${user.username}?`, {
+        title: "Reset password",
+        confirmLabel: "Generate",
+      }))
+    ) {
+      return;
+    }
     try {
       const data = await api(`/settings/api/users/${user.id}/password/`, {
         method: "POST",
@@ -172,7 +179,14 @@
   }
 
   async function resetTwofa(user) {
-    if (!confirm(`Reset 2FA for ${user.username}? They will need to enrol again.`)) return;
+    if (
+      !(await window.ccDialog.confirm(
+        `Reset 2FA for ${user.username}? They will need to enrol again.`,
+        { title: "Reset 2FA", confirmLabel: "Reset", danger: true },
+      ))
+    ) {
+      return;
+    }
     try {
       await api(`/settings/api/users/${user.id}/2fa/reset/`, { method: "POST", body: "{}" });
       setStatus(`2FA reset for ${user.username}`);
@@ -183,8 +197,14 @@
   }
 
   async function removeUser(user) {
-    const typed = window.prompt(`Type ${user.username} to delete this account:`);
-    if (!typed) return;
+    const typed = await window.ccDialog.prompt(`Type ${user.username} to delete this account.`, {
+      title: "Delete account",
+      confirmLabel: "Delete",
+      danger: true,
+      expected: user.username,
+      placeholder: user.username,
+    });
+    if (typed == null) return;
     try {
       await api(`/settings/api/users/${user.id}/`, {
         method: "DELETE",

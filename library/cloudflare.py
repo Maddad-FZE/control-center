@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 API_BASE = "https://api.cloudflare.com/client/v4"
 TUNNEL_NAME = "control-center"
-CC_PORTS = {8099}
+CC_PORTS = {80, 8099}
 TOKEN_PERMISSIONS = [
     {"key": "argotunnel", "type": "edit"},
     {"key": "account_settings", "type": "read"},
@@ -355,8 +355,13 @@ def is_control_center_target(origin_url="", catalog_slug="", port=None, request=
     except (TypeError, ValueError):
         port_num = None
     parsed = urlparse(origin_url or "")
-    if port_num is None and parsed.port:
-        port_num = parsed.port
+    if port_num is None:
+        if parsed.port:
+            port_num = parsed.port
+        elif parsed.scheme == "http":
+            port_num = 80
+        elif parsed.scheme == "https":
+            port_num = 443
     if port_num in CC_PORTS:
         return True
     if request:

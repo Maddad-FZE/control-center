@@ -1,4 +1,5 @@
 import json
+import logging
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required, login_required
@@ -16,6 +17,7 @@ from library.catalog import LIBRARY_DESCRIPTIONS, get_service_by_slug
 from library.icons import icon_url_for_entry
 from library.installer import services_host
 from library.models import InstalledService
+from library.pihole import attach_launch_href
 from library.versions import update_map_for_services
 
 from .forms import ServiceForm, ServiceMetricFormSet
@@ -23,6 +25,8 @@ from .models import Alert, Service, ServiceCategory
 from .prefs import open_in_new_tab_ids, prefers_new_tab, set_open_in_new_tab
 from .presets import apply_preset_metrics
 from . import hostops, services
+
+logger = logging.getLogger(__name__)
 
 
 def _is_guest(request):
@@ -113,6 +117,7 @@ def dashboard_view(request):
     for cat in categories:
         for svc in cat.filtered_services:
             _apply_publish_urls(svc, published_by_id, published_by_slug)
+            attach_launch_href(request, svc)
             svc.container_name = containers_by_slug.get(svc.catalog_slug, "")
             if svc.is_misc:
                 misc_services.append(svc)
@@ -185,6 +190,7 @@ def service_view(request, service_id):
     if service is None:
         return redirect("dashboard")
     _apply_publish_urls(service)
+    attach_launch_href(request, service)
     href = service.open_href
     if not href:
         return redirect("dashboard")
@@ -194,11 +200,51 @@ def service_view(request, service_id):
         {
             "service": service,
             "service_href": href,
+            "launch_href": service.launch_href,
             "lan_href": service.lan_href,
             "open_in_new_tab": prefers_new_tab(request.user, service.id),
             "is_guest": _is_guest(request),
         },
     )
+
+
+@login_not_required
+def service_launch_view(request, service_id):
+    from library import pihole as pihole_setup
+
+    service = _visible_service(request, service_id)
+    if service is None:
+        return redirect("dashboard")
+    _apply_publish_urls(service)
+    target = pihole_setup.browser_url(request, service) or service.open_href
+    if not target:
+        return redirect("dashboard")
+    if _is_guest(request) or not pihole_setup.supports_autologin(service):
+        return redirect(service.open_href or target)
+
+    password = pihole_setup.ensure_password(service, request.user)
+    if not password:
+        return redirect(service.open_href or target)
+
+    base = pihole_setup.auth_base(service)
+    sid, error = ("", "")
+    if base:
+        sid, error = services._pihole_authenticate(base, password)
+    if not sid:
+        logger.debug("Pi-hole auto-login skipped: %s", error)
+        return redirect(service.open_href or target)
+
+    response = redirect(target)
+    response.set_cookie(
+        "sid",
+        sid,
+        path="/",
+        samesite="Lax",
+        secure=request.is_secure(),
+        httponly=False,
+        max_age=1800,
+    )
+    return response
 
 
 @login_required

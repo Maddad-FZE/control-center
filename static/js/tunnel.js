@@ -159,7 +159,11 @@
   });
 
   unlinkBtn?.addEventListener("click", async () => {
-    if (!window.confirm("Unlink Cloudflare? Published hostnames on this host will be removed here.")) return;
+    const ok = await window.ccDialog.confirm(
+      "Unlink Cloudflare? Published hostnames on this host will be removed here.",
+      { title: "Unlink Cloudflare", confirmLabel: "Unlink", danger: true },
+    );
+    if (!ok) return;
     unlinkBtn.disabled = true;
     try {
       await jsonFetch("/library/api/tunnel/unlink/", { method: "POST", body: "{}" });
@@ -179,7 +183,7 @@
       });
       window.location.reload();
     } catch (err) {
-      window.alert(err.message);
+      await window.ccDialog.alert(err.message, { title: "Unpublish" });
     }
   });
 
@@ -258,7 +262,12 @@
 
   document.querySelectorAll(".library-unpublish-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      if (!window.confirm(`Stop publishing ${btn.dataset.hostname}?`)) return;
+      const ok = await window.ccDialog.confirm(`Stop publishing ${btn.dataset.hostname}?`, {
+        title: "Unpublish",
+        confirmLabel: "Stop publishing",
+        danger: true,
+      });
+      if (!ok) return;
       try {
         await jsonFetch("/library/api/tunnel/unpublish/", {
           method: "POST",
@@ -266,7 +275,7 @@
         });
         window.location.reload();
       } catch (err) {
-        window.alert(err.message);
+        await window.ccDialog.alert(err.message, { title: "Unpublish" });
       }
     });
   });

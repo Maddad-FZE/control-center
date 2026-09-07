@@ -133,7 +133,17 @@ SERVICES = [
         "default_port": 80,
         "path": "/admin/",
         "widget_type": "pihole",
-        "compose": _compose("pihole", "pihole/pihole:latest", 80, env={"TZ": "Asia/Dubai", "FTLCONF_webserver_api_enabled": "true"}),
+        "compose": _compose(
+            "pihole",
+            "pihole/pihole:latest",
+            80,
+            env={
+                "TZ": "Asia/Dubai",
+                "FTLCONF_webserver_api_enabled": "true",
+                "FTLCONF_dns_listeningMode": "all",
+            },
+            volumes=["./etc-pihole:/etc/pihole"],
+        ),
     },
     {
         "slug": "adguard-home",

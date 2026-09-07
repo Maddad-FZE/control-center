@@ -115,6 +115,16 @@ class OverlayViewTests(TestCase):
         self.assertContains(resp, 'data-apps-reorder="1"')
         self.assertContains(resp, "apps-cards.js")
 
+    def test_apps_click_is_not_captured_by_reorder(self):
+        source = Path(__file__).resolve().parents[1] / "static" / "js" / "apps-cards.js"
+        text = source.read_text(encoding="utf-8")
+        pointer_down = text.split("function onPointerDown", 1)[1].split("function onHoldMove", 1)[0]
+        self.assertNotIn("setPointerCapture", text)
+        self.assertNotIn("clearHover()", pointer_down)
+        self.assertIn("if (suppressClick || reorderMode)", text)
+        self.assertIn('wrap.addEventListener("pointerdown", onPointerDown)', text)
+        self.assertNotIn('wrap.addEventListener("pointerdown", onPointerDown, true)', text)
+
     def test_empty_section_placeholders_match_card_size(self):
         css = (Path(__file__).resolve().parents[1] / "static" / "css" / "dashboard.css").read_text(
             encoding="utf-8"
@@ -579,7 +589,13 @@ class KumaHealthTests(TestCase):
         self.assertNotContains(resp, 'data-can-install="1"')
 
     def test_settings_monitor_has_show_and_copy(self):
+        from core.site_settings import clear_site_settings_cache
+
         admin = User.objects.create_user("admin", password="x", is_superuser=True)
+        site = SiteSettings.load()
+        site.wizard_enabled = True
+        site.save()
+        clear_site_settings_cache()
         self.client.force_login(admin)
         resp = self.client.get(reverse("settings") + "?section=site")
         self.assertContains(resp, "1 — Categories")
@@ -588,6 +604,7 @@ class KumaHealthTests(TestCase):
         self.assertContains(resp, "4 — Notes")
         self.assertContains(resp, "5 — Site")
         self.assertContains(resp, 'id="settings-merlin-dock"')
+        self.assertContains(resp, 'id="merlin-dock-section"')
         self.assertContains(resp, 'id="settings-notes-editor"')
         self.assertNotContains(resp, "Save Merlin")
         self.assertNotContains(resp, "SEC. 0")
@@ -612,6 +629,20 @@ class KumaHealthTests(TestCase):
         self.assertIn("closeHelpTips", tips.read_text(encoding="utf-8"))
 
 
+class CardMenuPortalTests(TestCase):
+    def test_dropdown_is_moved_to_body(self):
+        source = Path(__file__).resolve().parents[1] / "static" / "js" / "card-menu.js"
+        text = source.read_text(encoding="utf-8")
+        self.assertIn("document.body.appendChild(dropdown)", text)
+        self.assertIn("is-portaled", text)
+        self.assertIn("placeDropdown", text)
+        self.assertIn("window.location.reload()", text)
+        self.assertIn("takeCardWrap(menu)", text)
+        self.assertIn("cc-cards-changed", text)
+        delete_block = text.split('if (action === "delete")', 1)[1]
+        self.assertNotIn("window.location.reload()", delete_block)
+
+
 class WizardBubbleAvailabilityTests(TestCase):
     def test_tips_require_a_visible_target(self):
         from pathlib import Path
@@ -627,11 +658,19 @@ class WizardBubbleAvailabilityTests(TestCase):
         self.assertIn('id: "mute"', text)
         self.assertIn("matchHelpIntent", text)
         self.assertIn("cc-wizard-muted", text)
-        self.assertIn('const common = ["Blink", "Blink", "Pleased", "Wave"];', text)
+        self.assertIn("cc-wizard-docked", text)
+        self.assertIn('id: "dock"', text)
+        self.assertIn('id: "undock"', text)
+        self.assertIn('el.style.position = "fixed"', text)
+        self.assertIn("Hello, how can I help?", text)
+        self.assertNotIn('matchHelpIntent("help"', text)
+        self.assertIn('const common = ["Blink", "Blink", "Pleased"];', text)
+        self.assertIn("function hasUnackedAlerts()", text)
+        self.assertIn('if (name === "Wave" && !hasUnackedAlerts())', text)
         self.assertNotIn("setTimeout(done, 2400)", text)
         self.assertIn("function bumpAnim()", text)
         self.assertIn("innerWidth + 24", text)
-        self.assertIn('pick(["Show", "GetAttention", "Surprised", "Congratulate"])', text)
+        self.assertIn('pick(["Show", "Surprised", "Congratulate"])', text)
         self.assertIn("cc-wizard--docked", text)
         self.assertIn("profile_account", text)
         self.assertIn("profile_security", text)
@@ -655,6 +694,70 @@ class MerlinHelpIntentTests(TestCase):
         self.assertIn('action: "restart-container"', text)
         self.assertIn('action: "ack"', text)
         self.assertIn('action: "mute"', text)
+        self.assertIn("tell me about the dashboard", text)
+        self.assertIn("tell me about the vault", text)
+        self.assertIn("weather city", text)
+        self.assertIn("tell me about the library", text)
+        self.assertIn("I am not sure. What do you want to know about?", text)
+        self.assertNotIn("Try one of these.", text)
+
+
+class MerlinDockPresenceTests(TestCase):
+    def setUp(self):
+        from core.site_settings import clear_site_settings_cache
+
+        self.clear_cache = clear_site_settings_cache
+        self.admin = User.objects.create_user("admin", password="x", is_superuser=True)
+        self.member = User.objects.create_user("member", password="x")
+
+    def _set_wizard(self, enabled):
+        site = SiteSettings.load()
+        site.wizard_enabled = enabled
+        site.save()
+        self.clear_cache()
+
+    def test_settings_and_profile_show_merlin_only_when_enabled(self):
+        self.client.force_login(self.admin)
+        self._set_wizard(False)
+        settings_off = self.client.get(reverse("settings"))
+        self.assertNotContains(settings_off, "2 — Merlin")
+        self.assertNotContains(settings_off, 'id="settings-merlin-dock"')
+        self.assertNotContains(settings_off, "Merlin is off")
+
+        profile_off = self.client.get("/profile/")
+        self.assertNotContains(profile_off, "2 — Merlin")
+        self.assertNotContains(profile_off, 'id="settings-merlin-dock"')
+
+        self._set_wizard(True)
+        settings_on = self.client.get(reverse("settings"))
+        self.assertContains(settings_on, "2 — Merlin")
+        self.assertContains(settings_on, 'id="settings-merlin-dock"')
+        self.assertContains(settings_on, 'id="merlin-dock-section"')
+
+        profile_on = self.client.get("/profile/")
+        self.assertContains(profile_on, "2 — Merlin")
+        self.assertContains(profile_on, 'id="settings-merlin-dock"')
+
+    def test_dashboard_merlin_column_only_when_enabled_for_signed_in(self):
+        self._set_wizard(False)
+        self.client.force_login(self.member)
+        off = self.client.get(reverse("dashboard"))
+        self.assertNotContains(off, 'id="dashboard-merlin"')
+        self.assertNotContains(off, 'id="settings-merlin-dock"')
+        self.assertNotContains(off, "5 — Merlin")
+
+        self._set_wizard(True)
+        on = self.client.get(reverse("dashboard"))
+        self.assertContains(on, 'id="dashboard-merlin"')
+        self.assertContains(on, 'id="settings-merlin-dock"')
+        self.assertContains(on, "5 — Merlin")
+        self.assertNotContains(on, "2 — Merlin")
+
+        guest = self.client
+        guest.logout()
+        public = guest.get(reverse("dashboard"))
+        self.assertNotContains(public, 'id="dashboard-merlin"')
+        self.assertNotContains(public, 'id="settings-merlin-dock"')
 
 
 class DashboardAlertsMenuTests(TestCase):
@@ -763,3 +866,49 @@ class HostOpsTests(TestCase):
         self.client.force_login(self.admin)
         resp = self.client.post(reverse("api_service_restart", args=["pihole"]))
         self.assertEqual(resp.status_code, 404)
+
+
+class PiholeLaunchTests(TestCase):
+    def setUp(self):
+        self.cat = ServiceCategory.objects.create(name="Networking")
+        self.pihole = Service.objects.create(
+            category=self.cat,
+            name="Pi-hole",
+            href="http://127.0.0.1:8089/admin/",
+            host="127.0.0.1",
+            port=8089,
+            path="/admin/",
+            catalog_slug="pihole",
+            widget_type=Service.WidgetType.PIHOLE,
+            widget_url="http://127.0.0.1:8089",
+            widget_api_key="pihole-secret",
+            enabled=True,
+            is_public=False,
+        )
+        self.admin = User.objects.create_user("admin", password="x", is_superuser=True)
+
+    def test_overlay_uses_launch_url(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse("service_view", args=[self.pihole.id]))
+        launch = reverse("service_launch", args=[self.pihole.id])
+        self.assertContains(resp, f'src="{launch}"')
+        self.assertContains(resp, f'href="{launch}"')
+
+    def test_dashboard_new_tab_uses_launch_url(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse("dashboard"))
+        launch = reverse("service_launch", args=[self.pihole.id])
+        self.assertContains(resp, f'href="{launch}"')
+
+    @patch("dashboard.services._pihole_authenticate", return_value=("sid-token", ""))
+    def test_launch_sets_sid_cookie_and_redirects(self, _auth):
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse("service_launch", args=[self.pihole.id]))
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp["Location"], "http://testserver:8089/admin/")
+        self.assertEqual(resp.cookies["sid"].value, "sid-token")
+
+    def test_guest_launch_skips_cookie(self):
+        resp = self.client.get(reverse("service_launch", args=[self.pihole.id]))
+        self.assertEqual(resp.status_code, 302)
+        self.assertNotIn("sid", resp.cookies)

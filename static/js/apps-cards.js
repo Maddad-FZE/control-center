@@ -92,13 +92,6 @@
     function clearHold() {
       if (holdTimer) window.clearTimeout(holdTimer);
       holdTimer = null;
-      if (holdWrap && holdPointerId != null) {
-        try {
-          holdWrap.releasePointerCapture(holdPointerId);
-        } catch {
-          /* ignore */
-        }
-      }
       if (holdWrap) holdWrap.classList.remove("is-holding");
       holdWrap = null;
       holdPointerId = null;
@@ -222,18 +215,11 @@
       const wrap = event.currentTarget;
       if (event.target.closest(".service-card-menu, .service-card-dropdown")) return;
 
-      clearHover();
       holdWrap = wrap;
       holdPointerId = event.pointerId;
       lastPointer = snapshotPointer(event);
       wrap.classList.add("is-holding");
       grid.classList.add("is-holding");
-
-      try {
-        wrap.setPointerCapture(event.pointerId);
-      } catch {
-        /* ignore */
-      }
 
       holdTimer = window.setTimeout(() => {
         holdTimer = null;
@@ -287,8 +273,8 @@
       wrap.addEventListener("mouseenter", onMouseEnter);
       wrap.addEventListener("mouseleave", onMouseLeave);
       if (canReorder) {
-        wrap.addEventListener("pointerdown", onPointerDown, true);
-        card.addEventListener("click", onClick, true);
+        wrap.addEventListener("pointerdown", onPointerDown);
+        card.addEventListener("click", onClick);
         card.addEventListener("dragstart", (event) => event.preventDefault());
       }
     });

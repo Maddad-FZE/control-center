@@ -4,7 +4,7 @@ Django platform for the Zaidan homelab: dashboard, shared auth, retro theme, and
 
 **Workspace:** `/home/dzaidan/control-center`  
 **Dev URL:** http://127.0.0.1:8000/  
-**Server URL (when deployed):** http://192.168.0.40:8099/
+**Server URL (when deployed):** http://192.168.0.40/
 
 ## Install on a server (Debian / Ubuntu)
 
@@ -14,7 +14,7 @@ SSH into the machine, then:
 curl -fsSL https://raw.githubusercontent.com/Maddad-FZE/control-center/main/scripts/install.sh | sudo bash
 ```
 
-That installs Docker if needed, clones to `/opt/control-center`, writes `.env` from the LAN IP, and starts Compose. Open `http://<lan-ip>:8099/` and create the first admin. Existing `.env` and `data/` are left alone; other containers are not touched.
+That installs Docker if needed, clones to `/opt/control-center`, writes `.env` from the LAN IP, and starts Compose. Open `http://<lan-ip>/` and finish first-time setup (server name, logo, admin). Existing `.env` and `data/` are left alone; other containers are not touched.
 
 Already cloned:
 

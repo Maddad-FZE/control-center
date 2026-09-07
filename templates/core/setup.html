@@ -1,12 +1,12 @@
 {% extends "core/base.html" %}
-{% load static %}
+{% load static assets %}
 {% block title %}Setup — {{ site_title }}{% endblock %}
 {% block content %}
 <div class="panel login-wrap setup-wrap">
-  <div class="panel-head">First-time setup</div>
+  <div class="panel-head">Set up Control Center</div>
   <div class="panel-body">
-    <p class="settings-hint">Create the admin account for this control center. Password must be at least 8 characters.</p>
-    <form method="post" id="setup-form">
+    <p class="settings-hint setup-intro">Welcome. Name this Control Center, optionally add a logo, then create the admin account you will sign in with. You can change all of this later in Settings.</p>
+    <form method="post" enctype="multipart/form-data" id="setup-form">
       {% csrf_token %}
       {% if form.non_field_errors %}
         {% for error in form.non_field_errors %}
@@ -14,8 +14,61 @@
         {% endfor %}
       {% endif %}
       <div class="form-group">
+        <label for="{{ form.title.id_for_label }}">Name</label>
+        {{ form.title }}
+        <p class="settings-hint">Shown at the top of every page.</p>
+        {% if form.title.errors %}
+          <p class="alert-item error">{{ form.title.errors|join:", " }}</p>
+        {% endif %}
+      </div>
+      <div class="form-group">
+        <label for="{{ form.tagline.id_for_label }}">Tagline</label>
+        {{ form.tagline }}
+        <p class="settings-hint">Optional. A short line under the name.</p>
+        {% if form.tagline.errors %}
+          <p class="alert-item error">{{ form.tagline.errors|join:", " }}</p>
+        {% endif %}
+      </div>
+      <div class="form-group">
+        <label for="{{ form.weather_location.id_for_label }}">Weather city</label>
+        {{ form.weather_location }}
+        <p class="settings-hint">Optional. City name for the forecast in the header, for example Dubai.</p>
+        {% if form.weather_location.errors %}
+          <p class="alert-item error">{{ form.weather_location.errors|join:", " }}</p>
+        {% endif %}
+      </div>
+      <div class="setup-brand">
+        <div class="form-group">
+          <label for="{{ form.logo.id_for_label }}">Logo</label>
+          {{ form.logo }}
+          <p class="settings-hint">Optional. A square image works best. Leave empty to keep the built-in mark.</p>
+          {% if form.logo.errors %}
+            <p class="alert-item error">{{ form.logo.errors|join:", " }}</p>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label for="{{ form.favicon.id_for_label }}">Browser icon</label>
+          {{ form.favicon }}
+          <p class="settings-hint">Optional. The small icon in the browser tab. PNG, SVG, or ICO.</p>
+          {% if form.favicon.errors %}
+            <p class="alert-item error">{{ form.favicon.errors|join:", " }}</p>
+          {% endif %}
+        </div>
+      </div>
+      <div class="form-group form-group--checkbox">
+        <label class="checkbox-label" for="{{ form.wizard_enabled.id_for_label }}">
+          {{ form.wizard_enabled }}
+          <span>Enable Merlin for tutorials and help</span>
+        </label>
+        <p class="settings-hint">Merlin points out features as you go. You can turn him off later in Settings.</p>
+        {% if form.wizard_enabled.errors %}
+          <p class="alert-item error">{{ form.wizard_enabled.errors|join:", " }}</p>
+        {% endif %}
+      </div>
+      <div class="form-group">
         <label for="{{ form.username.id_for_label }}">Admin username</label>
         {{ form.username }}
+        <p class="settings-hint">This first account has full access.</p>
         {% if form.username.errors %}
           <p class="alert-item error">{{ form.username.errors|join:", " }}</p>
         {% endif %}
@@ -23,6 +76,7 @@
       <div class="form-group">
         <label for="{{ form.password1.id_for_label }}">Password</label>
         {{ form.password1 }}
+        <p class="settings-hint">At least 8 characters. Mix letters and numbers.</p>
         <div class="password-strength" id="password-strength" hidden>
           <div class="password-strength__bar"><span class="password-strength__fill" id="password-strength-fill"></span></div>
           <span class="password-strength__label" id="password-strength-label"></span>
@@ -38,11 +92,12 @@
           <p class="alert-item error">{{ form.password2.errors|join:", " }}</p>
         {% endif %}
       </div>
-      <button type="submit" class="btn">Create admin &amp; continue</button>
+      <button type="submit" class="btn">Create account and continue</button>
     </form>
   </div>
 </div>
 {% endblock %}
 {% block extra_js %}
-<script src="{% static 'js/password-strength.js' %}" defer></script>
+<script src="{% vstatic 'js/image-upload.js' %}" defer></script>
+<script src="{% vstatic 'js/password-strength.js' %}" defer></script>
 {% endblock %}

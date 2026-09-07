@@ -48,7 +48,7 @@ EXTRA_ALLOWED_HOSTS=notes.thezaidan.family
 SESSION_COOKIE_DOMAIN=.thezaidan.family
 ```
 
-Cloudflare tunnel hostname → `http://192.168.0.40:8099`
+Cloudflare tunnel hostname → `http://192.168.0.40`
 
 Mark views public with `@login_not_required` where needed.
 

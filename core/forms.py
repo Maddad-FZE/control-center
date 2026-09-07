@@ -80,9 +80,37 @@ class SiteSettingsForm(forms.ModelForm):
 
 
 class SetupAdminForm(forms.Form):
-    username = forms.CharField(max_length=150)
-    password1 = forms.CharField(widget=forms.PasswordInput)
-    password2 = forms.CharField(widget=forms.PasswordInput)
+    username = forms.CharField(max_length=150, label="Admin username")
+    password1 = forms.CharField(label="Password", widget=forms.PasswordInput)
+    password2 = forms.CharField(label="Confirm password", widget=forms.PasswordInput)
+    title = forms.CharField(
+        max_length=120,
+        label="Name",
+        widget=forms.TextInput(attrs={"placeholder": "My Control Center"}),
+    )
+    tagline = forms.CharField(
+        max_length=200,
+        required=False,
+        label="Tagline",
+        widget=forms.TextInput(attrs={"placeholder": "A short line under the name"}),
+    )
+    weather_location = forms.CharField(
+        max_length=120,
+        required=False,
+        label="Weather city",
+        widget=forms.TextInput(attrs={"placeholder": "e.g. Dubai"}),
+    )
+    logo = forms.ImageField(required=False, widget=ImageUploadWidget())
+    favicon = forms.FileField(
+        required=False,
+        widget=ImageUploadWidget(attrs={"accept": "image/*,.ico,image/x-icon"}),
+    )
+    wizard_enabled = forms.BooleanField(
+        required=False,
+        initial=True,
+        label="Enable Merlin for tutorials and help",
+        widget=forms.CheckboxInput(),
+    )
 
     def clean_password1(self):
         password = self.cleaned_data.get("password1", "")

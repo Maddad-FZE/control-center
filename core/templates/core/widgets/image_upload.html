@@ -1,6 +1,6 @@
 <div class="image-upload{% if widget.preview_url %} is-filled{% endif %}" data-image-upload>
   <div class="image-upload__frame">
-    <img class="image-upload__preview" src="{{ widget.preview_url }}" alt=""{% if not widget.preview_url %} hidden{% endif %}>
+    <img class="image-upload__preview" alt=""{% if widget.preview_url %} src="{{ widget.preview_url }}"{% else %} hidden{% endif %}>
     <span class="image-upload__empty"{% if widget.preview_url %} hidden{% endif %}>No image</span>
     <div class="image-upload__actions">
       <button type="button" class="image-upload__btn" data-image-edit aria-label="Replace image">

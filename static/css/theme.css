@@ -908,6 +908,15 @@ body.wizard-notify .toast-stack {
   z-index: 10001 !important;
 }
 
+.cc-wizard.cc-wizard--docked {
+  position: relative !important;
+  z-index: 1 !important;
+  left: auto !important;
+  top: auto !important;
+  transform: scale(var(--cc-wizard-dock-scale, 1)) !important;
+  transform-origin: center bottom;
+}
+
 .cc-wizard--teleport {
   animation: cc-wizard-teleport 0.42s ease-out forwards;
 }
@@ -1004,6 +1013,12 @@ body.wizard-notify .toast-stack {
 .cc-wizard-orb--help {
   background: #c5b6f0;
   border-radius: 1.6rem 1.9rem 1.35rem 1.75rem;
+}
+
+.cc-wizard-orb--dock,
+.cc-wizard-orb--undock {
+  background: #f0c98a;
+  border-radius: 1.55rem 1.4rem 1.85rem 1.5rem;
 }
 
 .cc-wizard-orb--mute {
@@ -1569,6 +1584,30 @@ label {
   margin: 4rem auto;
 }
 
+.login-wrap.setup-wrap {
+  max-width: 36rem;
+}
+
+.setup-wrap .setup-intro {
+  margin: 0 0 1rem;
+}
+
+.setup-wrap .form-group > .settings-hint {
+  margin-top: 0.35rem;
+}
+
+.setup-brand {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .setup-brand {
+    grid-template-columns: 1fr;
+  }
+}
+
 .alert-item {
   font-size: 0.78rem;
 }
@@ -1778,6 +1817,37 @@ table.data th {
 
 .library-modal[hidden] {
   display: none;
+}
+
+.cc-dialog {
+  z-index: 10080;
+}
+
+.cc-dialog .settings-hint {
+  margin: 0;
+  color: var(--tva-cream);
+  white-space: pre-wrap;
+}
+
+.cc-dialog__error {
+  margin: 0.55rem 0 0;
+  font-size: 0.68rem;
+  color: #fca5a5;
+  line-height: 1.45;
+}
+
+.cc-dialog__error[hidden],
+.cc-dialog .cc-dialog__label[hidden] {
+  display: none;
+}
+
+.cc-dialog__label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tva-amber);
 }
 
 .library-modal__backdrop {

@@ -3,8 +3,42 @@ import { matchHelpIntent } from "./wizard-help.js";
 const GREETED_KEY = "cc-wizard-greeted";
 const POS_KEY = "cc-wizard-pos";
 const MUTE_KEY = "cc-wizard-muted";
+const DOCK_KEY = "cc-wizard-docked";
 
 window.ccWizardMuted = localStorage.getItem(MUTE_KEY) === "1";
+let merlinDocked = false;
+
+function prefersDocked() {
+  try {
+    const raw = localStorage.getItem(DOCK_KEY);
+    if (raw === null) return true;
+    return raw === "1";
+  } catch {
+    return true;
+  }
+}
+
+function setDockPref(value) {
+  try {
+    localStorage.setItem(DOCK_KEY, value ? "1" : "0");
+  } catch {
+    /* ignore quota */
+  }
+}
+
+function showDockSection() {
+  const section = document.getElementById("merlin-dock-section");
+  const wrap = document.getElementById("dashboard-merlin");
+  if (section) section.hidden = false;
+  if (wrap) wrap.hidden = false;
+}
+
+function hideDockSection() {
+  const section = document.getElementById("merlin-dock-section");
+  const wrap = document.getElementById("dashboard-merlin");
+  if (section) section.hidden = true;
+  if (wrap) wrap.hidden = true;
+}
 
 const TIPS = {
   dashboard: [
@@ -127,11 +161,12 @@ function tipsForPage() {
   const key = pageKey();
   const extra = key === "default" ? [] : TIPS.default;
   const tips = [...TIPS[key], ...extra].filter((tip) => !tip.target || resolveTarget(tip.target));
-  const wizardPage = document.body.dataset.wizardPage;
-  if (wizardPage === "settings" || wizardPage === "profile") {
-    return tips.filter((tip) => !/drag me/i.test(tip.text || ""));
-  }
-  return tips;
+  return tips.filter((tip) => {
+    const text = tip.text || "";
+    if (merlinDocked && /drag me/i.test(text)) return false;
+    if (!merlinDocked && /cannot be dragged/i.test(text)) return false;
+    return true;
+  });
 }
 
 function homePos() {
@@ -164,6 +199,14 @@ let animGen = 0;
 function bumpAnim() {
   animGen += 1;
   return animGen;
+}
+
+function hasUnackedAlerts() {
+  const badge = document.getElementById("alerts-badge");
+  if (!badge || badge.hidden) return false;
+  const n = Number.parseInt(String(badge.textContent || "").trim(), 10);
+  if (Number.isFinite(n)) return n > 0;
+  return Boolean(String(badge.textContent || "").trim());
 }
 
 function pick(names) {
@@ -216,6 +259,9 @@ function stopIdle(agent) {
 }
 
 function playAnim(agent, name) {
+  if (name === "Wave" && !hasUnackedAlerts()) {
+    name = "Pleased";
+  }
   const gen = bumpAnim();
   return new Promise((resolve) => {
     let settled = false;
@@ -445,10 +491,12 @@ async function boot() {
   stopIdle(agent);
 
   const settingsDock = document.getElementById("settings-merlin-dock");
-  const docked = Boolean(settingsDock);
+  let docked = Boolean(settingsDock) && prefersDocked();
+  merlinDocked = docked;
   const MERLIN_FRAME = 128;
+  let dockObserver = null;
   const scaleDockedMerlin = () => {
-    if (!settingsDock || !agent._el) return;
+    if (!merlinDocked || !settingsDock || !agent._el) return;
     const box = settingsDock.getBoundingClientRect();
     const pad = 12;
     const scale = Math.min(
@@ -458,8 +506,9 @@ async function boot() {
     );
     agent._el.style.setProperty("--cc-wizard-dock-scale", String(Math.max(scale, 0.5)));
   };
-  if (docked) {
-    settingsDock.querySelector(".settings-merlin-empty")?.remove();
+  const applyDocked = () => {
+    if (!settingsDock || !agent._el) return;
+    showDockSection();
     settingsDock.appendChild(agent._el);
     agent._el.classList.add("cc-wizard--docked");
     agent._el.style.position = "relative";
@@ -467,7 +516,53 @@ async function boot() {
     agent._el.style.top = "";
     agent._el.style.visibility = "visible";
     scaleDockedMerlin();
-    new ResizeObserver(scaleDockedMerlin).observe(settingsDock);
+    if (!dockObserver) {
+      dockObserver = new ResizeObserver(scaleDockedMerlin);
+      dockObserver.observe(settingsDock);
+    }
+  };
+  const applyFloating = () => {
+    const el = agent._el;
+    const box = el.getBoundingClientRect();
+    const cx = box.left + box.width / 2;
+    const cy = box.top + box.height / 2;
+    hideDockSection();
+    el.classList.remove("cc-wizard--docked");
+    el.style.removeProperty("--cc-wizard-dock-scale");
+    el.style.position = "fixed";
+    document.body.appendChild(el);
+    const w = el.offsetWidth || MERLIN_FRAME;
+    const h = el.offsetHeight || MERLIN_FRAME;
+    const dest =
+      box.width > 2 && box.height > 2
+        ? agent._clampXY(cx - w / 2, cy - h / 2)
+        : savedPos();
+    el.style.left = `${dest.x}px`;
+    el.style.top = `${dest.y}px`;
+    el.style.visibility = "visible";
+    savePos(agent);
+  };
+  const dockMerlin = () => {
+    if (!settingsDock) return;
+    docked = true;
+    merlinDocked = true;
+    setDockPref(true);
+    applyDocked();
+    placeHelp();
+    speak("I am back in my section.", "Wave");
+  };
+  const undockMerlin = () => {
+    docked = false;
+    merlinDocked = false;
+    setDockPref(false);
+    applyFloating();
+    placeHelp();
+    speak("I can float now. Drag me if I am in the way.", "Pleased");
+  };
+  if (docked) {
+    applyDocked();
+  } else if (settingsDock) {
+    hideDockSection();
   }
 
   let tipIndex = 0;
@@ -489,7 +584,8 @@ async function boot() {
 
   const idlePool = () => {
     const page = pageKey();
-    const common = ["Blink", "Blink", "Pleased", "Wave"];
+    const common = ["Blink", "Blink", "Pleased"];
+    if (hasUnackedAlerts()) common.push("Wave");
     if (page.startsWith("settings") || page.startsWith("profile")) {
       return [...common, "Uncertain", "Explain"];
     }
@@ -717,7 +813,14 @@ async function boot() {
     if (item.action === "restart-container") {
       const name = item.name;
       if (!name) return;
-      if (!window.confirm(`Restart ${name}? It will be briefly offline.`)) return;
+      if (
+        !(await window.ccDialog.confirm(`Restart ${name}? It will be briefly offline.`, {
+          title: "Restart",
+          confirmLabel: "Restart",
+        }))
+      ) {
+        return;
+      }
       try {
         await postJson("/api/docker/restart/", { name });
         appendHelpLine("merlin", `Restarted ${name}.`);
@@ -735,6 +838,7 @@ async function boot() {
     const reply = matchHelpIntent(text, {
       isAdmin,
       muted: isMuted(),
+      page: document.body.dataset.wizardPage || "",
       containers: text.toLowerCase().includes("restart") ? await runningContainers() : [],
     });
     appendHelpLine("merlin", reply.text);
@@ -780,9 +884,7 @@ async function boot() {
       event.preventDefault();
       submitHelp();
     });
-    const intro = matchHelpIntent("help", { isAdmin, muted: isMuted(), containers: [] });
-    appendHelpLine("merlin", "Ask me about settings, alerts, USB, or restarts.");
-    appendHelpButtons(intro.buttons);
+    appendHelpLine("merlin", "Hello, how can I help?");
     placeHelp();
     helpInput?.focus();
   };
@@ -826,6 +928,13 @@ async function boot() {
       label: "Help",
       run: () => showHelp(),
     });
+    if (settingsDock) {
+      if (docked) {
+        actions.push({ id: "undock", label: "Undock", run: () => undockMerlin() });
+      } else {
+        actions.push({ id: "dock", label: "Dock", run: () => dockMerlin() });
+      }
+    }
     actions.push({
       id: "mute",
       label: isMuted() ? "Unmute" : "Mute",
@@ -908,7 +1017,7 @@ async function boot() {
     } else if (!greeted) {
       sessionStorage.setItem(GREETED_KEY, "1");
       await playAnim(agent, "Greet");
-      speak("Hi, I am Merlin. I stay in this section on Settings. Click me for Tips or Help.", "Wave");
+      speak("Hi, I am Merlin. I stay in this section when docked. Click me for Tips, Help, or Undock.", "Wave");
     } else {
       await playAnim(agent, pick(["Acknowledge", "Blink", "Pleased"]));
       resumeIdle();
@@ -923,7 +1032,12 @@ async function boot() {
     } else if (!greeted) {
       sessionStorage.setItem(GREETED_KEY, "1");
       await playAnim(agent, "Greet");
-      speak("Hi, I am Merlin. Click me for Tips, Help, or Mute. Double-click for a tip.", "Wave");
+      speak(
+        settingsDock
+          ? "Hi, I am Merlin. Click me for Tips, Help, Dock, or Mute. Double-click for a tip."
+          : "Hi, I am Merlin. Click me for Tips, Help, or Mute. Double-click for a tip.",
+        "Wave",
+      );
     } else {
       await playAnim(agent, pick(["Acknowledge", "Blink", "Pleased"]));
       resumeIdle();
@@ -943,7 +1057,7 @@ async function boot() {
     agent._el.style.left = `${dest.x}px`;
     agent._el.style.top = `${dest.y}px`;
     const finishReturn = async () => {
-      const entrance = pick(["Show", "GetAttention", "Surprised", "Congratulate"]);
+      const entrance = pick(["Show", "Surprised", "Congratulate"]);
       agent._el.classList.add("cc-wizard--teleport");
       agent._el.style.visibility = "visible";
       await playAnim(agent, entrance);

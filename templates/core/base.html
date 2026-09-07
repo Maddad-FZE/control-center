@@ -132,6 +132,9 @@
   {% if is_admin %}
   <script src="{% vstatic 'js/updates.js' %}" defer></script>
   {% endif %}
+  {% if user.is_authenticated %}
+  <script src="{% vstatic 'js/cc-dialog.js' %}"></script>
+  {% endif %}
   {% block extra_js %}{% endblock %}
   {% if messages and not wizard_notify %}
   <script src="{% vstatic 'js/toasts.js' %}" defer></script>

@@ -234,7 +234,9 @@ class CloudflareTunnelTests(TestCase):
         from library.cloudflare import is_control_center_target
 
         self.assertTrue(is_control_center_target(origin_url="http://192.168.0.40:8099/"))
+        self.assertTrue(is_control_center_target(origin_url="http://192.168.0.40/"))
         self.assertTrue(is_control_center_target(catalog_slug="cloudflare-tunnel"))
+        self.assertTrue(is_control_center_target(port=80))
         self.assertTrue(is_control_center_target(port=8099))
         self.assertFalse(is_control_center_target(origin_url="http://192.168.0.40:8080/"))
 
@@ -252,7 +254,7 @@ class CloudflareTunnelTests(TestCase):
         self.client.force_login(self.admin)
         resp = self.client.post(
             reverse("api_tunnel_publish"),
-            data='{"hostname":"cc.example.com","host_port":8099,"slug":"nextcloud"}',
+            data='{"hostname":"cc.example.com","host_port":80,"slug":"nextcloud"}',
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 400)
@@ -773,3 +775,49 @@ class CatalogApiTests(TestCase):
         resp = self.client.post(reverse("api_catalog_delete", args=["jellyfin"]))
         self.assertEqual(resp.status_code, 400)
         self.assertIn("Uninstall", resp.json()["error"])
+
+
+class PiholeInstallTests(TestCase):
+    def test_docker_spec_includes_config_volume(self):
+        spec = get_docker_spec(get_service_by_slug("pihole"))
+        self.assertIn("/etc/pihole", spec["volumes"])
+
+    def test_worker_sets_password_vault_and_widget_key(self):
+        from unittest.mock import MagicMock, patch
+
+        import docker as docker_sdk
+        from core.models import VaultEntry
+        from dashboard.models import Service
+        from library.installer import _install_worker
+        from library.models import InstalledService
+
+        admin = User.objects.create_user("boss", password="secret", is_superuser=True)
+        InstalledService.objects.create(
+            slug="pihole",
+            container_name="cc-pihole",
+            status=InstalledService.Status.INSTALLING,
+        )
+        client = MagicMock()
+        client.containers.list.return_value = []
+        client.containers.get.side_effect = docker_sdk.errors.NotFound("missing")
+        client.containers.run.return_value = MagicMock()
+        with patch("library.installer.get_docker_client", return_value=client), patch(
+            "library.installer.pick_host_port", return_value=8089
+        ), patch(
+            "library.installer.secrets.token_urlsafe", return_value="pihole-secret"
+        ), patch(
+            "library.installer._image_version", return_value="latest"
+        ):
+            _install_worker("pihole", {"user_id": admin.id})
+        kwargs = client.containers.run.call_args.kwargs
+        self.assertEqual(kwargs["name"], "cc-pihole")
+        self.assertEqual(
+            kwargs["environment"]["FTLCONF_webserver_api_password"], "pihole-secret"
+        )
+        binds = [row["bind"] for row in (kwargs["volumes"] or {}).values()]
+        self.assertIn("/etc/pihole", binds)
+        service = Service.objects.get(catalog_slug="pihole")
+        self.assertEqual(service.widget_api_key, "pihole-secret")
+        stored = VaultEntry.objects.get(user=admin, service=service)
+        self.assertEqual(stored.secret_ciphertext, "pihole-secret")
+        self.assertEqual(stored.label, "Pi-hole")

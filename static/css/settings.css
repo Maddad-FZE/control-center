@@ -33,6 +33,12 @@
   overflow: hidden;
 }
 
+.settings-group--merlin .group-title {
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+}
+
 .settings-group--info {
   grid-column: 2;
   grid-row: 1;
@@ -275,18 +281,12 @@
   overflow: hidden;
 }
 
-.settings-merlin-empty {
-  margin: 0;
-  padding: 0.85rem;
+.settings-group--merlin[hidden] {
+  display: none !important;
 }
 
-.cc-wizard.cc-wizard--docked {
-  position: relative !important;
-  z-index: 6 !important;
-  left: auto !important;
-  top: auto !important;
-  transform: scale(var(--cc-wizard-dock-scale, 1)) !important;
-  transform-origin: center center;
+.settings-rail:not(:has(#merlin-dock-section:not([hidden]))) {
+  grid-template-rows: 1fr;
 }
 
 .settings-mosaic {

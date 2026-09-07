@@ -39,9 +39,10 @@
       const file = input.files && input.files[0];
       if (!file) return;
       revoke();
-      objectUrl = URL.createObjectURL(file);
       if (clearBox) clearBox.checked = false;
-      show(objectUrl);
+      const reader = new FileReader();
+      reader.onload = () => show(reader.result);
+      reader.readAsDataURL(file);
     });
 
     clearBtn?.addEventListener("click", () => {

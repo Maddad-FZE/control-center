@@ -583,6 +583,13 @@ class UsersAccessTwoFAVaultTests(TestCase):
         self.assertEqual(resp.json()["secret"], "hunter2")
 
     def test_profile_board_chrome_and_password_change(self):
+        from core.models import SiteSettings
+        from core.site_settings import clear_site_settings_cache
+
+        site = SiteSettings.load()
+        site.wizard_enabled = True
+        site.save()
+        clear_site_settings_cache()
         self.client.force_login(self.member)
         resp = self.client.get("/profile/")
         self.assertContains(resp, "1 — Categories")
@@ -659,6 +666,95 @@ class UsersAccessTwoFAVaultTests(TestCase):
         self.assertNotIn("tab=security", resp["Location"])
 
 
+class FirstRunSetupTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
+    def test_setup_page_asks_for_branding(self):
+        resp = self.client.get("/setup/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Set up Control Center")
+        self.assertContains(resp, "Weather city")
+        self.assertContains(resp, "Logo")
+        self.assertContains(resp, "Browser icon")
+        self.assertContains(resp, "Enable Merlin for tutorials and help")
+        self.assertContains(resp, 'enctype="multipart/form-data"')
+        self.assertContains(resp, "image-upload.js")
+        form = resp.context["form"]
+        self.assertTrue(form.fields["wizard_enabled"].initial)
+        self.assertIn("checked", str(form["wizard_enabled"]))
+        csp = resp.headers.get("Content-Security-Policy", "")
+        self.assertIn("blob:", csp)
+        self.assertIn("data:", csp)
+        self.assertNotIn(
+            'class="image-upload__preview" src=""',
+            resp.content.decode(),
+        )
+        self.assertIn("blob:", settings.CONTENT_SECURITY_POLICY["DIRECTIVES"]["img-src"])
+
+    @patch("core.views.update_weather_coordinates")
+    def test_setup_creates_admin_and_site(self, mock_weather):
+        from io import BytesIO
+
+        from django.contrib.auth.models import User
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+
+        from core.models import SiteSettings
+
+        buf = BytesIO()
+        Image.new("RGB", (8, 8), (232, 119, 34)).save(buf, format="PNG")
+        logo = SimpleUploadedFile("logo.png", buf.getvalue(), content_type="image/png")
+        resp = self.client.post(
+            "/setup/",
+            {
+                "username": "boss",
+                "password1": "NewSecret123!",
+                "password2": "NewSecret123!",
+                "title": "Lab One",
+                "tagline": "Home rack",
+                "weather_location": "Dubai",
+                "wizard_enabled": "on",
+                "logo": logo,
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(User.objects.filter(username="boss", is_superuser=True).exists())
+        site = SiteSettings.load()
+        self.assertEqual(site.title, "Lab One")
+        self.assertEqual(site.tagline, "Home rack")
+        self.assertEqual(site.weather_location, "Dubai")
+        self.assertTrue(site.wizard_enabled)
+        self.assertTrue(site.logo)
+        mock_weather.assert_called_once()
+
+    def test_setup_merlin_off_when_unchecked(self):
+        from django.contrib.auth.models import User
+
+        from core.models import SiteSettings
+
+        resp = self.client.post(
+            "/setup/",
+            {
+                "username": "boss",
+                "password1": "NewSecret123!",
+                "password2": "NewSecret123!",
+                "title": "Lab One",
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        site = SiteSettings.load()
+        self.assertFalse(site.wizard_enabled)
+        self.assertTrue(User.objects.filter(username="boss").exists())
+
+    def test_setup_redirects_when_users_exist(self):
+        from django.contrib.auth.models import User
+
+        User.objects.create_user("taken", password="secret")
+        resp = self.client.get("/setup/")
+        self.assertEqual(resp.status_code, 302)
+
+
 class InstallScriptTests(SimpleTestCase):
     def test_host_bootstrap_script(self):
         script = Path(__file__).resolve().parents[1] / "scripts" / "install.sh"
@@ -669,6 +765,9 @@ class InstallScriptTests(SimpleTestCase):
         self.assertIn("SECRET_KEY", text)
         self.assertIn("SERVICES_HOST", text)
         self.assertIn("SESSION_COOKIE_SECURE=false", text)
+        self.assertIn('Open  http://${HOST_IP}/', text)
+        self.assertNotIn(":8099", text)
+        self.assertIn("collectstatic", Path(__file__).resolve().parents[1].joinpath("docker-compose.yml").read_text(encoding="utf-8"))
         self.assertNotIn("seed_homelab", text)
         self.assertNotIn("docker rm", text)
 

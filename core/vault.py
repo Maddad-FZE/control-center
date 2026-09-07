@@ -45,6 +45,22 @@ def get_credentials_by_id(user, entry_id) -> Credentials | None:
     return _as_credentials(entry)
 
 
+def upsert_for_service(user, service, *, label, username, secret, notes="", kind=None):
+    """Create or update the first vault row for this user and dashboard card."""
+    if kind is None:
+        kind = VaultEntry.Kind.PASSWORD
+    entry = list_for_service(user, service).first()
+    if entry is None:
+        entry = VaultEntry(user=user, service=service, label=label or service.name)
+    entry.username = username or ""
+    entry.secret_ciphertext = secret or ""
+    entry.kind = kind
+    if notes:
+        entry.notes = notes
+    entry.save()
+    return entry
+
+
 def _as_credentials(entry: VaultEntry) -> Credentials:
     return Credentials(
         username=entry.username,

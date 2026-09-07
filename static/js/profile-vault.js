@@ -89,7 +89,15 @@
       delBtn.className = "btn secondary";
       delBtn.textContent = "Delete";
       delBtn.addEventListener("click", async () => {
-        if (!confirm(`Delete ${entry.label}?`)) return;
+        if (
+          !(await window.ccDialog.confirm(`Delete ${entry.label}?`, {
+            title: "Delete credential",
+            confirmLabel: "Delete",
+            danger: true,
+          }))
+        ) {
+          return;
+        }
         await api(`/profile/api/vault/${entry.id}/`, { method: "DELETE" });
         await load();
       });

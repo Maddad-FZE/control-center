@@ -9,14 +9,14 @@
 <div
   class="service-overlay"
   data-service-id="{{ service.id }}"
-  data-external-href="{{ service_href }}"
+  data-external-href="{{ launch_href|default:service_href }}"
   data-open-new-tab="{% if open_in_new_tab %}1{% else %}0{% endif %}"
 >
   <div class="service-overlay__bar">
     <a href="{% url 'dashboard' %}" class="btn secondary service-overlay__back">Back</a>
     <h2 class="service-overlay__title">{{ service.name }}</h2>
     <a
-      href="{{ service_href }}"
+      href="{{ launch_href|default:service_href }}"
       class="btn secondary"
       target="_blank"
       rel="noopener"
@@ -39,7 +39,7 @@
   <p class="service-overlay__hint">If this pane is blank, the service blocks embedding. Use Open in a new tab.</p>
   <iframe
     class="service-overlay__frame"
-    src="{{ service_href }}"
+    src="{{ launch_href|default:service_href }}"
     title="{{ service.name }}"
     referrerpolicy="no-referrer-when-downgrade"
   ></iframe>

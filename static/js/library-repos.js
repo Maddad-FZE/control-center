@@ -110,7 +110,12 @@
   }
 
   async function removeItem(slug) {
-    if (!window.confirm(`Remove “${slug}” from the catalog?`)) return;
+    const ok = await window.ccDialog.confirm(`Remove “${slug}” from the catalog?`, {
+      title: "Remove catalog entry",
+      confirmLabel: "Remove",
+      danger: true,
+    });
+    if (!ok) return;
     setStatus("Deleting…");
     const resp = await fetch(`/library/api/catalog/${encodeURIComponent(slug)}/delete/`, {
       method: "POST",

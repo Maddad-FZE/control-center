@@ -485,8 +485,18 @@ def _install_worker(slug, install_options=None):
 
         host_port = pick_host_port(client, start_port)
 
+        volume_paths = list(spec.get("volumes") or [])
+        env = dict(spec.get("env") or {})
+        pihole_password = ""
+        if slug == "pihole":
+            from . import pihole as pihole_setup
+
+            volume_paths = pihole_setup.ensure_volume_paths(volume_paths)
+            pihole_password = secrets.token_urlsafe(18)
+            env = pihole_setup.apply_env(env, pihole_password)
+
         volume_map = {}
-        for idx, container_path in enumerate(spec.get("volumes") or []):
+        for idx, container_path in enumerate(volume_paths):
             clean_path = container_path.split(":")[0].strip()
             if not clean_path.startswith("/"):
                 continue
@@ -501,7 +511,6 @@ def _install_worker(slug, install_options=None):
             volume_map[vol_name] = {"bind": clean_path, "mode": "rw"}
 
         ports = {f"{container_port}/tcp": host_port}
-        env = spec.get("env") or {}
 
         client.containers.run(
             image,
@@ -522,7 +531,19 @@ def _install_worker(slug, install_options=None):
             error="",
         )
         if slug not in NO_CARD_ON_INSTALL:
-            create_dashboard_card(slug, entry, host_port)
+            service = create_dashboard_card(slug, entry, host_port)
+            if slug == "pihole" and pihole_password:
+                from . import pihole as pihole_setup
+
+                extra_user = None
+                user_id = (install_options or {}).get("user_id")
+                if user_id:
+                    from django.contrib.auth.models import User
+
+                    extra_user = User.objects.filter(pk=user_id).first()
+                pihole_setup.persist_credentials(
+                    service, pihole_password, extra_user=extra_user
+                )
         _clear_uptime_cache_if_kuma(slug)
     except Exception as exc:  # noqa: BLE001 - background worker must record failure
         logger.exception("Install failed for %s", slug)
@@ -547,6 +568,10 @@ def start_install(slug, request=None, install_options=None):
 
     detect_services_host(request)
 
+    options = dict(install_options or {})
+    if request is not None and getattr(request.user, "pk", None):
+        options["user_id"] = request.user.pk
+
     container_name = f"cc-{slug}"
     InstalledService.objects.update_or_create(
         slug=slug,
@@ -561,7 +586,7 @@ def start_install(slug, request=None, install_options=None):
     _clear_uptime_cache_if_kuma(slug)
     thread = threading.Thread(
         target=_install_worker,
-        args=(slug, install_options),
+        args=(slug, options),
         name=f"install-{slug}",
         daemon=True,
     )

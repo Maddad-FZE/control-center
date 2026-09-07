@@ -678,14 +678,18 @@ function bindDockerRestart(box) {
     btn.addEventListener("click", async () => {
       const name = btn.dataset.dockerRestart;
       if (!name) return;
-      if (!window.confirm(`Restart ${name}? It will be briefly offline.`)) return;
+      const ok = await window.ccDialog.confirm(
+        `Restart ${name}? It will be briefly offline.`,
+        { title: "Restart", confirmLabel: "Restart" },
+      );
+      if (!ok) return;
       btn.disabled = true;
       try {
         await postJson("/api/docker/restart/", { name });
         const data = await fetch("/api/docker/").then((r) => r.json());
         renderDocker(data);
       } catch (err) {
-        window.alert(err.message);
+        await window.ccDialog.alert(err.message, { title: "Restart" });
         btn.disabled = false;
       }
     });
@@ -697,14 +701,19 @@ function bindUsbUnmount(box) {
     btn.addEventListener("click", async () => {
       const path = btn.dataset.usbUnmount;
       if (!path) return;
-      if (!window.confirm(`Unmount ${path}?`)) return;
+      const ok = await window.ccDialog.confirm(`Unmount ${path}?`, {
+        title: "Unmount",
+        confirmLabel: "Unmount",
+        danger: true,
+      });
+      if (!ok) return;
       btn.disabled = true;
       try {
         await postJson("/api/system/usb/unmount/", { path });
         const data = await fetch("/api/system/usb/").then((r) => r.json());
         renderUsb(data);
       } catch (err) {
-        window.alert(err.message);
+        await window.ccDialog.alert(err.message, { title: "Unmount" });
         btn.disabled = false;
       }
     });
@@ -747,9 +756,9 @@ function initHostOps() {
     try {
       const data = await postJson("/api/system/reboot/", {});
       close();
-      window.alert(data.message || "Reboot scheduled.");
+      await window.ccDialog.alert(data.message || "Reboot scheduled.", { title: "Reboot" });
     } catch (err) {
-      window.alert(err.message);
+      await window.ccDialog.alert(err.message, { title: "Reboot" });
     } finally {
       confirmBtn.disabled = false;
     }
@@ -907,6 +916,10 @@ function refreshDashboard() {
 hydrateFromCache();
 initFilter();
 initStatusChips();
+window.addEventListener("cc-cards-changed", () => {
+  updateGroupTitles();
+  applyServiceFilter();
+});
 if (!IS_GUEST) {
   initCollapsiblePanels();
   initHostOps();
