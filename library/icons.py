@@ -38,6 +38,17 @@ _SIMPLEICONS_ALIASES = {
     "mealie": "mealie",
     "nextcloud": "nextcloud",
     "notes": "evernote",
+    "glances": "linux",
+    "changedetection": "rss",
+    "kavita": "bookstack",
+    "linkding": "bookmark",
+    "stirling-pdf": "adobeacrobatreader",
+    "it-tools": "toolbox",
+    "wallos": "cashapp",
+    "open-webui": "openai",
+    "bookstack": "bookstack",
+    "odysseus": "openai",
+    "securo": "actualbudget",
 }
 
 

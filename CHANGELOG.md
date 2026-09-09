@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Library apps: Glances (host process list), Linkding, Stirling-PDF, IT-Tools, Wallos, Kavita, Changedetection.io, Open WebUI, BookStack, Odysseus, and Securo
+- BookStack install creates a MariaDB sidecar and sets the public URL
+- Odysseus install builds from Git and starts Chroma, SearXNG, and ntfy
+- Securo install starts frontend, backend, Postgres, Redis, and Celery on a private network
+- Library installer honors `pid: host` and `extra_hosts` from compose
+- New builtin catalog slugs appear on boards that already have a seeded catalog
+
 ## [0.4.0] - 2026-09-07
 
 ### Added

@@ -11,39 +11,61 @@ from .models import CatalogItem, InstalledService
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 
 
+def _item_fields(entry, sort_order):
+    slug = entry["slug"]
+    return {
+        "slug": slug,
+        "name": entry["name"],
+        "tagline": entry.get("tagline", ""),
+        "description": LIBRARY_DESCRIPTIONS.get(slug, entry.get("tagline", "")),
+        "category": entry["category"],
+        "repo": entry.get("repo", ""),
+        "website": entry.get("website", ""),
+        "icon": entry.get("icon", ""),
+        "default_port": int(entry.get("default_port") or 8080),
+        "container_port": int(entry.get("container_port") or 0),
+        "path": entry.get("path", "/") or "/",
+        "widget_type": entry.get("widget_type", "none") or "none",
+        "compose": entry.get("compose", ""),
+        "install_options": entry.get("install_options", "") or "",
+        "is_builtin": True,
+        "sort_order": sort_order,
+    }
+
+
 def seed_builtin_catalog():
     if CatalogItem.objects.exists():
         return 0
-    rows = []
-    for idx, entry in enumerate(SERVICES):
-        slug = entry["slug"]
-        rows.append(
-            CatalogItem(
-                slug=slug,
-                name=entry["name"],
-                tagline=entry.get("tagline", ""),
-                description=LIBRARY_DESCRIPTIONS.get(slug, entry.get("tagline", "")),
-                category=entry["category"],
-                repo=entry.get("repo", ""),
-                website=entry.get("website", ""),
-                icon=entry.get("icon", ""),
-                default_port=int(entry.get("default_port") or 8080),
-                container_port=int(entry.get("container_port") or 0),
-                path=entry.get("path", "/") or "/",
-                widget_type=entry.get("widget_type", "none") or "none",
-                compose=entry.get("compose", ""),
-                install_options=entry.get("install_options", "") or "",
-                is_builtin=True,
-                sort_order=idx,
-            )
-        )
+    rows = [
+        CatalogItem(**_item_fields(entry, idx))
+        for idx, entry in enumerate(SERVICES)
+    ]
     CatalogItem.objects.bulk_create(rows)
+    return len(rows)
+
+
+def sync_missing_builtins():
+    existing = set(CatalogItem.objects.values_list("slug", flat=True))
+    max_order = (
+        CatalogItem.objects.order_by("-sort_order").values_list("sort_order", flat=True).first()
+        or 0
+    )
+    rows = []
+    for entry in SERVICES:
+        if entry["slug"] in existing:
+            continue
+        max_order += 1
+        rows.append(CatalogItem(**_item_fields(entry, max_order)))
+    if rows:
+        CatalogItem.objects.bulk_create(rows)
     return len(rows)
 
 
 def ensure_catalog_seeded():
     if not CatalogItem.objects.exists():
         seed_builtin_catalog()
+        return
+    sync_missing_builtins()
 
 
 def all_services():

@@ -15,7 +15,16 @@ ADDONS = [
     },
 ]
 
-def _compose(name, image, port, container_port=None, volumes=None, env=None):
+def _compose(
+    name,
+    image,
+    port,
+    container_port=None,
+    volumes=None,
+    env=None,
+    pid=None,
+    extra_hosts=None,
+):
     cp = container_port or port
     lines = [
         "services:",
@@ -25,6 +34,12 @@ def _compose(name, image, port, container_port=None, volumes=None, env=None):
         "    ports:",
         f"      - \"{port}:{cp}\"",
     ]
+    if pid:
+        lines.append(f"    pid: {pid}")
+    if extra_hosts:
+        lines.append("    extra_hosts:")
+        for host in extra_hosts:
+            lines.append(f"      - \"{host}\"")
     if volumes:
         lines.append("    volumes:")
         for vol in volumes:
@@ -270,6 +285,19 @@ SERVICES = [
         "compose": _compose("audiobookshelf", "ghcr.io/advplyr/audiobookshelf:latest", 13378, container_port=80, volumes=["./audiobooks:/audiobooks", "./podcasts:/podcasts", "./config:/config"]),
     },
     {
+        "slug": "kavita",
+        "name": "Kavita",
+        "tagline": "Comics, manga, and ebook server",
+        "category": "Media",
+        "repo": "Kareadita/Kavita",
+        "website": "https://www.kavitareader.com/",
+        "icon": "https://cdn.simpleicons.org/bookstack",
+        "default_port": 5000,
+        "path": "/",
+        "widget_type": "none",
+        "compose": _compose("kavita", "jvmilazz0/kavita:latest", 5000, volumes=["./config:/kavita/config"]),
+    },
+    {
         "slug": "sonarr",
         "name": "Sonarr",
         "tagline": "TV series collection manager",
@@ -386,6 +414,45 @@ SERVICES = [
         "path": "/",
         "widget_type": "none",
         "compose": _compose("beszel", "henrygd/beszel:latest", 8090, volumes=["./beszel_data:/beszel_data"]),
+    },
+    {
+        "slug": "glances",
+        "name": "Glances",
+        "tagline": "Linux process list, CPU, and RAM",
+        "category": "Monitoring",
+        "repo": "nicolargo/glances",
+        "website": "https://nicolargo.github.io/glances/",
+        "icon": "https://cdn.simpleicons.org/linux",
+        "default_port": 61208,
+        "path": "/",
+        "widget_type": "none",
+        "compose": _compose(
+            "glances",
+            "nicolargo/glances:latest-full",
+            61208,
+            env={"GLANCES_OPT": "-w"},
+            pid="host",
+        ),
+    },
+    {
+        "slug": "changedetection",
+        "name": "Changedetection.io",
+        "tagline": "Watch web pages for changes",
+        "category": "Monitoring",
+        "repo": "dgtlmoon/changedetection.io",
+        "website": "https://changedetection.io/",
+        "icon": "https://cdn.simpleicons.org/rss",
+        "default_port": 5001,
+        "container_port": 5000,
+        "path": "/",
+        "widget_type": "none",
+        "compose": _compose(
+            "changedetection",
+            "ghcr.io/dgtlmoon/changedetection.io:latest",
+            5001,
+            container_port=5000,
+            volumes=["./datastore:/datastore"],
+        ),
     },
     # Storage and Files
     {
@@ -562,6 +629,25 @@ SERVICES = [
         "compose": _compose("actual-server", "actualbudget/actual-server:latest", 5006, volumes=["./data:/data"]),
     },
     {
+        "slug": "securo",
+        "name": "Securo",
+        "tagline": "Privacy-first personal finance manager",
+        "category": "Productivity",
+        "repo": "securo-finance/securo",
+        "website": "https://usesecuro.com/",
+        "icon": "https://cdn.simpleicons.org/actualbudget",
+        "default_port": 3030,
+        "container_port": 8080,
+        "path": "/",
+        "widget_type": "none",
+        "compose": _compose(
+            "securo",
+            "ghcr.io/securo-finance/securo-frontend:latest",
+            3030,
+            container_port=8080,
+        ),
+    },
+    {
         "slug": "mealie",
         "name": "Mealie",
         "tagline": "Recipe manager and meal planner",
@@ -573,6 +659,135 @@ SERVICES = [
         "path": "/",
         "widget_type": "none",
         "compose": _compose("mealie", "ghcr.io/mealie-recipes/mealie:latest", 9925, container_port=9000, volumes=["./data:/app/data"]),
+    },
+    {
+        "slug": "linkding",
+        "name": "Linkding",
+        "tagline": "Self-hosted bookmark manager",
+        "category": "Productivity",
+        "repo": "sissbruecker/linkding",
+        "website": "https://github.com/sissbruecker/linkding",
+        "icon": "https://cdn.simpleicons.org/bookmark",
+        "default_port": 9090,
+        "path": "/",
+        "widget_type": "none",
+        "compose": _compose("linkding", "sissbruecker/linkding:latest", 9090, volumes=["./data:/etc/linkding/data"]),
+    },
+    {
+        "slug": "stirling-pdf",
+        "name": "Stirling-PDF",
+        "tagline": "Edit, merge, and convert PDFs locally",
+        "category": "Productivity",
+        "repo": "Stirling-Tools/Stirling-PDF",
+        "website": "https://www.stirlingpdf.com/",
+        "icon": "https://cdn.simpleicons.org/adobeacrobatreader",
+        "default_port": 8080,
+        "path": "/",
+        "widget_type": "none",
+        "compose": _compose(
+            "stirling-pdf",
+            "docker.stirlingpdf.com/stirlingtools/stirling-pdf:latest",
+            8080,
+            volumes=["./configs:/configs"],
+        ),
+    },
+    {
+        "slug": "it-tools",
+        "name": "IT-Tools",
+        "tagline": "Handy web tools for encoding, hashing, and text",
+        "category": "Productivity",
+        "repo": "CorentinTh/it-tools",
+        "website": "https://it-tools.tech/",
+        "icon": "https://cdn.simpleicons.org/toolbox",
+        "default_port": 8780,
+        "container_port": 80,
+        "path": "/",
+        "widget_type": "none",
+        "compose": _compose("it-tools", "ghcr.io/corentinth/it-tools:latest", 8780, container_port=80),
+    },
+    {
+        "slug": "wallos",
+        "name": "Wallos",
+        "tagline": "Subscription and recurring-expense tracker",
+        "category": "Productivity",
+        "repo": "ellite/Wallos",
+        "website": "https://github.com/ellite/Wallos",
+        "icon": "https://cdn.simpleicons.org/cashapp",
+        "default_port": 8282,
+        "container_port": 80,
+        "path": "/",
+        "widget_type": "none",
+        "compose": _compose(
+            "wallos",
+            "ghcr.io/ellite/wallos:latest",
+            8282,
+            container_port=80,
+            volumes=["./db:/var/www/html/db"],
+        ),
+    },
+    {
+        "slug": "open-webui",
+        "name": "Open WebUI",
+        "tagline": "Chat UI for local and remote AI models",
+        "category": "Productivity",
+        "repo": "open-webui/open-webui",
+        "website": "https://openwebui.com/",
+        "icon": "https://cdn.simpleicons.org/openai",
+        "default_port": 3000,
+        "container_port": 8080,
+        "path": "/",
+        "widget_type": "none",
+        "compose": _compose(
+            "open-webui",
+            "ghcr.io/open-webui/open-webui:main",
+            3000,
+            container_port=8080,
+            volumes=["./data:/app/backend/data"],
+            env={"OLLAMA_BASE_URL": "http://host.docker.internal:11434"},
+            extra_hosts=["host.docker.internal:host-gateway"],
+        ),
+    },
+    {
+        "slug": "bookstack",
+        "name": "BookStack",
+        "tagline": "Wiki and documentation platform",
+        "category": "Productivity",
+        "repo": "BookStackApp/BookStack",
+        "website": "https://www.bookstackapp.com/",
+        "icon": "https://cdn.simpleicons.org/bookstack",
+        "default_port": 6875,
+        "container_port": 80,
+        "path": "/",
+        "widget_type": "none",
+        "compose": _compose(
+            "bookstack",
+            "lscr.io/linuxserver/bookstack:latest",
+            6875,
+            container_port=80,
+            volumes=["./config:/config"],
+        ),
+    },
+    {
+        "slug": "odysseus",
+        "name": "Odysseus",
+        "tagline": "Self-hosted AI workspace for chat, agents, and research",
+        "category": "Productivity",
+        "repo": "odysseus-dev/odysseus",
+        "website": "https://github.com/odysseus-dev/odysseus",
+        "icon": "https://cdn.simpleicons.org/openai",
+        "default_port": 7000,
+        "path": "/",
+        "widget_type": "none",
+        "compose": (
+            "services:\n"
+            "  odysseus:\n"
+            "    image: cc-odysseus:local\n"
+            "    restart: unless-stopped\n"
+            "    ports:\n"
+            '      - "7000:7000"\n'
+            "    extra_hosts:\n"
+            '      - "host.docker.internal:host-gateway"\n'
+        ),
     },
 ]
 
@@ -631,14 +846,22 @@ def get_docker_spec(entry):
 
     volumes = []
     env = {}
+    extra_hosts = {}
+    pid_mode = ""
     section = None
     for line in compose.splitlines():
         stripped = line.strip()
+        if stripped.startswith("pid:"):
+            pid_mode = stripped.split(":", 1)[1].strip().strip('"').strip("'")
+            continue
         if stripped == "volumes:":
             section = "volumes"
             continue
         if stripped == "environment:":
             section = "environment"
+            continue
+        if stripped == "extra_hosts:":
+            section = "extra_hosts"
             continue
         if stripped.endswith(":") and not stripped.startswith("-"):
             section = None
@@ -653,6 +876,11 @@ def get_docker_spec(entry):
         if section == "environment" and ":" in stripped:
             key, _, value = stripped.partition(":")
             env[key.strip()] = value.strip().strip('"').strip("'")
+        if section == "extra_hosts" and stripped.startswith("-"):
+            item = stripped.lstrip("- ").strip().strip('"').strip("'")
+            if ":" in item:
+                hostname, _, addr = item.partition(":")
+                extra_hosts[hostname.strip()] = addr.strip()
 
     return {
         "image": image,
@@ -660,6 +888,8 @@ def get_docker_spec(entry):
         "host_port_hint": host_port_hint,
         "volumes": volumes,
         "env": env,
+        "pid_mode": pid_mode,
+        "extra_hosts": extra_hosts,
     }
 
 
@@ -775,6 +1005,7 @@ LIBRARY_DESCRIPTIONS = {
     "immich": "Self-hosted photo and video backup with mobile upload and a timeline. A private stand-in for Google Photos on your own disk.",
     "navidrome": "Lightweight Subsonic-compatible music server for a local library. Streams to web and mobile clients with a small memory footprint.",
     "audiobookshelf": "Audiobook and podcast server with progress sync across devices. Keeps libraries, series, and listening position on the LAN.",
+    "kavita": "Server for comics, manga, and ebooks with progress sync. Point it at a library folder and read in the browser or apps.",
     "sonarr": "Watches RSS and indexers to collect TV series into your library. Pairs with download clients and Prowlarr for a full *arr stack.",
     "radarr": "Movie collection manager that finds, grabs, and organizes films. Same workflow as Sonarr, aimed at a movie library.",
     "prowlarr": "One indexer manager for Sonarr, Radarr, and the rest of the *arr apps. Add indexers once and share them across the stack.",
@@ -784,6 +1015,8 @@ LIBRARY_DESCRIPTIONS = {
     "netdata": "Real-time per-second charts for CPU, disks, network, and containers. Fast health view of a single host without a big stack.",
     "speedtest-tracker": "Runs scheduled internet speed tests and keeps a history. Shows download, upload, and ping trends on the dashboard widget.",
     "beszel": "Lightweight hub for server and container stats across hosts. Smaller footprint than a full Prometheus stack when you just need basics.",
+    "glances": "Browser task list for this Linux host: CPU, RAM, and running processes. Install uses host PID so you see the machine, not only the container.",
+    "changedetection": "Watch URLs for text or visual changes and get notified. Useful for product pages, docs, and status posts you do not want to refresh by hand.",
     "nextcloud": "Self-hosted files, calendars, and collaboration in the browser. Dropbox-style sync that stays on your disks.",
     "syncthing": "Continuous peer-to-peer file sync with no central server. Folders stay in lockstep across PCs, NAS, and phones.",
     "paperless-ngx": "Scan, OCR, and archive documents into a searchable library. Tags, correspondents, and full-text search for household paper.",
@@ -797,5 +1030,13 @@ LIBRARY_DESCRIPTIONS = {
     "gitea": "Self-hosted Git with issues, PRs, and a web UI. A small GitHub stand-in for private repos on the LAN.",
     "n8n": "Workflow automation that connects APIs, webhooks, and schedules. Build integrations without writing a service for each one.",
     "actual-budget": "Local-first envelope budgeting that syncs through your own server. Money data stays on disk, not at a bank-adjacent SaaS.",
+    "securo": "Self-hosted personal finance: accounts, transactions, budgets, and optional bank sync. Install starts Postgres, Redis, and Celery; first login is Securo’s own setup screen.",
     "mealie": "Recipe manager and meal planner with import from the web. Shopping lists and household recipes in one place.",
+    "linkding": "Minimal bookmark manager with tags, search, and a browser extension. A private pinboard that stays on this host.",
+    "stirling-pdf": "Merge, split, OCR, and convert PDFs in the browser. Files stay on the LAN instead of a cloud editor.",
+    "it-tools": "A drawer of small utilities: Base64, hashes, UUID, lorem, and more. Stateless and light enough for a Pi.",
+    "wallos": "Track subscriptions and recurring costs with reminders. See where the monthly money goes without a spreadsheet.",
+    "open-webui": "Chat UI for Ollama and other OpenAI-compatible models. Does not install Ollama; run that on the host if you want local models.",
+    "bookstack": "Wiki organized as books, chapters, and pages. Install creates a MariaDB sidecar and sets the public URL for this host.",
+    "odysseus": "Self-hosted AI workspace for chat, agents, and research. Install builds from Git and starts Chroma, SearXNG, and ntfy. Point it at host Ollama if you have it.",
 }

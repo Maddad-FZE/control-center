@@ -17,6 +17,12 @@ EXPECTED_CONTAINER_PORTS = {
     "audiobookshelf": 80,
     "speedtest-tracker": 80,
     "mealie": 9000,
+    "it-tools": 80,
+    "wallos": 80,
+    "bookstack": 80,
+    "open-webui": 8080,
+    "changedetection": 5000,
+    "securo": 8080,
 }
 
 
@@ -821,3 +827,326 @@ class PiholeInstallTests(TestCase):
         stored = VaultEntry.objects.get(user=admin, service=service)
         self.assertEqual(stored.secret_ciphertext, "pihole-secret")
         self.assertEqual(stored.label, "Pi-hole")
+
+
+class NewCatalogAppTests(TestCase):
+    def test_glances_uses_host_pid(self):
+        spec = get_docker_spec(get_service_by_slug("glances"))
+        self.assertEqual(spec["pid_mode"], "host")
+        self.assertEqual(spec["container_port"], 61208)
+        self.assertEqual(spec["image"], "nicolargo/glances:latest-full")
+        self.assertEqual(spec["env"].get("GLANCES_OPT"), "-w")
+
+    def test_open_webui_uses_host_gateway(self):
+        spec = get_docker_spec(get_service_by_slug("open-webui"))
+        self.assertEqual(spec["container_port"], 8080)
+        self.assertEqual(spec["host_port_hint"], 3000)
+        self.assertEqual(spec["extra_hosts"].get("host.docker.internal"), "host-gateway")
+        self.assertIn("11434", spec["env"].get("OLLAMA_BASE_URL", ""))
+
+    def test_named_apps_are_in_the_catalog(self):
+        for slug, category in (
+            ("glances", "Monitoring"),
+            ("changedetection", "Monitoring"),
+            ("kavita", "Media"),
+            ("linkding", "Productivity"),
+            ("stirling-pdf", "Productivity"),
+            ("it-tools", "Productivity"),
+            ("wallos", "Productivity"),
+            ("open-webui", "Productivity"),
+            ("bookstack", "Productivity"),
+            ("odysseus", "Productivity"),
+            ("securo", "Productivity"),
+        ):
+            entry = get_service_by_slug(slug)
+            self.assertIsNotNone(entry, slug)
+            self.assertEqual(entry["category"], category, slug)
+
+    def test_sync_missing_builtins_inserts_new_slugs(self):
+        from library.catalog_store import ensure_catalog_seeded, sync_missing_builtins
+        from library.models import CatalogItem
+
+        ensure_catalog_seeded()
+        CatalogItem.objects.filter(slug="glances").delete()
+        self.assertFalse(CatalogItem.objects.filter(slug="glances").exists())
+        added = sync_missing_builtins()
+        self.assertGreaterEqual(added, 1)
+        self.assertTrue(CatalogItem.objects.filter(slug="glances").exists())
+
+    def test_glances_worker_passes_pid_mode(self):
+        from unittest.mock import MagicMock, patch
+
+        import docker as docker_sdk
+        from library.installer import _install_worker
+        from library.models import InstalledService
+
+        InstalledService.objects.create(
+            slug="glances",
+            container_name="cc-glances",
+            status=InstalledService.Status.INSTALLING,
+        )
+        client = MagicMock()
+        client.containers.list.return_value = []
+        client.containers.get.side_effect = docker_sdk.errors.NotFound("missing")
+        client.containers.run.return_value = MagicMock()
+        with patch("library.installer.get_docker_client", return_value=client), patch(
+            "library.installer.pick_host_port", return_value=61208
+        ), patch("library.installer._image_version", return_value="latest"):
+            _install_worker("glances")
+        kwargs = client.containers.run.call_args.kwargs
+        self.assertEqual(kwargs["pid_mode"], "host")
+        self.assertEqual(kwargs["name"], "cc-glances")
+
+
+class BookstackInstallTests(TestCase):
+    def _mock_docker(self):
+        from unittest.mock import MagicMock
+
+        import docker
+
+        client = MagicMock()
+        client.images.get.return_value.attrs = {"Config": {"Labels": {}}}
+        client.images.get.return_value.tags = ["lscr.io/linuxserver/bookstack:latest"]
+        client.containers.list.return_value = []
+        client.networks.get.side_effect = docker.errors.NotFound("missing")
+        db_container = MagicMock()
+        db_container.exec_run.return_value.exit_code = 0
+        client.containers.get.side_effect = docker.errors.NotFound("missing")
+        runs = []
+
+        def run(*args, **kwargs):
+            runs.append(kwargs)
+            if kwargs.get("name") == "cc-bookstack-db":
+                return db_container
+            return MagicMock()
+
+        client.containers.run.side_effect = run
+        client._runs = runs
+        return client
+
+    def test_worker_creates_app_and_mariadb(self):
+        from unittest.mock import patch
+
+        from dashboard.models import Service
+        from library.installer import BOOKSTACK_NETWORK, _install_worker
+        from library.models import InstalledService
+
+        InstalledService.objects.create(
+            slug="bookstack",
+            container_name="cc-bookstack",
+            status=InstalledService.Status.INSTALLING,
+        )
+        client = self._mock_docker()
+        with patch("library.installer.get_docker_client", return_value=client), patch(
+            "library.installer.pick_host_port", return_value=6875
+        ), patch("library.installer.secrets.token_urlsafe", return_value="db-secret"), patch(
+            "library.installer._bookstack_app_key", return_value="base64:test-key"
+        ):
+            _install_worker("bookstack")
+        runs = {row["name"]: row for row in client._runs}
+        self.assertEqual(set(runs), {"cc-bookstack", "cc-bookstack-db"})
+        db_run = runs["cc-bookstack-db"]
+        app_run = runs["cc-bookstack"]
+        self.assertEqual(db_run["network"], BOOKSTACK_NETWORK)
+        self.assertEqual(app_run["network"], BOOKSTACK_NETWORK)
+        self.assertEqual(app_run["ports"], {"80/tcp": 6875})
+        self.assertEqual(db_run["environment"]["MYSQL_PASSWORD"], "db-secret")
+        self.assertEqual(app_run["environment"]["DB_HOST"], "cc-bookstack-db")
+        self.assertEqual(app_run["environment"]["DB_PASSWORD"], "db-secret")
+        self.assertEqual(app_run["environment"]["APP_KEY"], "base64:test-key")
+        self.assertIn("APP_URL", app_run["environment"])
+        self.assertEqual(db_run["labels"]["control-center.role"], "db")
+        row = InstalledService.objects.get(slug="bookstack")
+        self.assertEqual(row.status, InstalledService.Status.RUNNING)
+        self.assertTrue(Service.objects.filter(catalog_slug="bookstack").exists())
+
+    def test_uninstall_removes_db_and_network(self):
+        from unittest.mock import MagicMock, patch
+
+        from library.installer import uninstall
+        from library.models import InstalledService
+
+        InstalledService.objects.create(
+            slug="bookstack",
+            container_name="cc-bookstack",
+            host_port=6875,
+            status=InstalledService.Status.RUNNING,
+        )
+        create_dashboard_card("bookstack", get_service_by_slug("bookstack"), 6875)
+        client = MagicMock()
+        client.volumes.list.return_value = []
+        net = MagicMock()
+        client.networks.get.return_value = net
+        with patch("library.installer.get_docker_client", return_value=client):
+            ok, message = uninstall("bookstack", remove_data=True)
+        self.assertTrue(ok)
+        names = [call.args[0] for call in client.containers.get.call_args_list]
+        self.assertIn("cc-bookstack", names)
+        self.assertIn("cc-bookstack-db", names)
+        client.networks.get.assert_called_with("cc-bookstack-net")
+        net.remove.assert_called()
+        self.assertEqual(message, "Uninstalled")
+
+
+class OdysseusInstallTests(TestCase):
+    def test_worker_builds_and_starts_sidecars(self):
+        from unittest.mock import MagicMock, patch
+
+        import docker as docker_sdk
+        from dashboard.models import Service
+        from library.installer import ODYSSEUS_NETWORK, _install_worker
+        from library.models import InstalledService
+
+        InstalledService.objects.create(
+            slug="odysseus",
+            container_name="cc-odysseus",
+            status=InstalledService.Status.INSTALLING,
+        )
+        client = MagicMock()
+        client.api.build.return_value = iter([{}])
+        client.containers.list.return_value = []
+        client.containers.get.side_effect = docker_sdk.errors.NotFound("missing")
+        client.networks.get.side_effect = docker_sdk.errors.NotFound("missing")
+        runs = []
+
+        def run(*args, **kwargs):
+            runs.append(kwargs)
+            return MagicMock()
+
+        client.containers.run.side_effect = run
+        with patch("library.installer.get_docker_client", return_value=client), patch(
+            "library.installer.pick_host_port", return_value=7000
+        ), patch("library.installer._image_version", return_value="local"):
+            _install_worker("odysseus")
+        names = {row["name"] for row in runs}
+        self.assertEqual(
+            names,
+            {
+                "cc-odysseus",
+                "cc-odysseus-chroma",
+                "cc-odysseus-searxng",
+                "cc-odysseus-ntfy",
+            },
+        )
+        app_run = next(row for row in runs if row["name"] == "cc-odysseus")
+        self.assertEqual(app_run["network"], ODYSSEUS_NETWORK)
+        self.assertEqual(app_run["ports"], {"7000/tcp": 7000})
+        self.assertEqual(app_run["extra_hosts"]["host.docker.internal"], "host-gateway")
+        self.assertEqual(app_run["environment"]["AUTH_ENABLED"], "true")
+        self.assertTrue(client.api.build.called)
+        self.assertEqual(client.api.build.call_args.kwargs["remote"].split("#")[0], "https://github.com/odysseus-dev/odysseus.git")
+        self.assertTrue(Service.objects.filter(catalog_slug="odysseus").exists())
+        row = InstalledService.objects.get(slug="odysseus")
+        self.assertEqual(row.status, InstalledService.Status.RUNNING)
+
+
+class SecuroInstallTests(TestCase):
+    def _mock_docker(self):
+        from unittest.mock import MagicMock
+
+        import docker
+
+        client = MagicMock()
+        client.images.get.return_value.attrs = {"Config": {"Labels": {}}}
+        client.images.get.return_value.tags = [
+            "ghcr.io/securo-finance/securo-frontend:latest"
+        ]
+        client.containers.list.return_value = []
+        client.networks.get.side_effect = docker.errors.NotFound("missing")
+        ready = MagicMock()
+        ready.exec_run.return_value.exit_code = 0
+        client.containers.get.side_effect = docker.errors.NotFound("missing")
+        runs = []
+
+        def run(*args, **kwargs):
+            runs.append(kwargs)
+            if kwargs.get("name") in ("cc-securo-db", "cc-securo-redis"):
+                return ready
+            return MagicMock()
+
+        client.containers.run.side_effect = run
+        client._runs = runs
+        return client
+
+    def test_frontend_spec_uses_nginx_port(self):
+        spec = get_docker_spec(get_service_by_slug("securo"))
+        self.assertEqual(spec["container_port"], 8080)
+        self.assertEqual(spec["host_port_hint"], 3030)
+        self.assertEqual(spec["image"], "ghcr.io/securo-finance/securo-frontend:latest")
+
+    def test_worker_starts_stack(self):
+        from unittest.mock import patch
+
+        from dashboard.models import Service
+        from library.installer import SECURO_NETWORK, _install_worker
+        from library.models import InstalledService
+
+        InstalledService.objects.create(
+            slug="securo",
+            container_name="cc-securo",
+            status=InstalledService.Status.INSTALLING,
+        )
+        client = self._mock_docker()
+        with patch("library.installer.get_docker_client", return_value=client), patch(
+            "library.installer.pick_host_port", return_value=3030
+        ), patch("library.installer.secrets.token_urlsafe", return_value="securo-secret"), patch(
+            "library.installer.services_host", return_value="192.168.1.10"
+        ):
+            _install_worker("securo")
+        runs = {row["name"]: row for row in client._runs}
+        self.assertEqual(
+            set(runs),
+            {
+                "cc-securo",
+                "cc-securo-backend",
+                "cc-securo-db",
+                "cc-securo-redis",
+                "cc-securo-worker",
+                "cc-securo-beat",
+            },
+        )
+        frontend = runs["cc-securo"]
+        backend = runs["cc-securo-backend"]
+        self.assertEqual(frontend["network"], SECURO_NETWORK)
+        self.assertEqual(frontend["ports"], {"8080/tcp": 3030})
+        self.assertEqual(frontend["environment"]["BACKEND_URL"], "http://cc-securo-backend:8000")
+        self.assertEqual(frontend["environment"]["FRONTEND_URL"], "http://192.168.1.10:3030")
+        self.assertEqual(backend["network"], SECURO_NETWORK)
+        self.assertEqual(backend["extra_hosts"]["host.docker.internal"], "host-gateway")
+        self.assertIn("securo-secret", backend["environment"]["DATABASE_URL"])
+        self.assertEqual(backend["environment"]["FRONTEND_URL"], "http://192.168.1.10:3030")
+        self.assertEqual(runs["cc-securo-db"]["labels"]["control-center.role"], "db")
+        self.assertEqual(runs["cc-securo-db"]["environment"]["POSTGRES_PASSWORD"], "securo-secret")
+        row = InstalledService.objects.get(slug="securo")
+        self.assertEqual(row.status, InstalledService.Status.RUNNING)
+        self.assertTrue(Service.objects.filter(catalog_slug="securo").exists())
+
+    def test_uninstall_removes_sidecars_and_network(self):
+        from unittest.mock import MagicMock, patch
+
+        from library.installer import uninstall
+        from library.models import InstalledService
+
+        InstalledService.objects.create(
+            slug="securo",
+            container_name="cc-securo",
+            host_port=3030,
+            status=InstalledService.Status.RUNNING,
+        )
+        create_dashboard_card("securo", get_service_by_slug("securo"), 3030)
+        client = MagicMock()
+        client.volumes.list.return_value = []
+        client.containers.list.return_value = []
+        net = MagicMock()
+        client.networks.get.return_value = net
+        with patch("library.installer.get_docker_client", return_value=client):
+            ok, message = uninstall("securo", remove_data=True)
+        self.assertTrue(ok)
+        names = [call.args[0] for call in client.containers.get.call_args_list]
+        self.assertIn("cc-securo", names)
+        self.assertIn("cc-securo-db", names)
+        self.assertIn("cc-securo-backend", names)
+        self.assertIn("cc-securo-redis", names)
+        client.networks.get.assert_called_with("cc-securo-net")
+        net.remove.assert_called()
+        self.assertEqual(message, "Uninstalled")

@@ -1,5 +1,6 @@
 """Docker install/uninstall and dashboard card sync for library services."""
 
+import base64
 import ipaddress
 import json
 import logging
@@ -37,6 +38,45 @@ NEXTCLOUD_DB_VOLUME = "cc-nextcloud-db-0"
 POSTGRES_WAIT_SECONDS = 60
 NEXTCLOUD_READY_SECONDS = 300
 ADMIN_USER_RE = re.compile(r"^[A-Za-z0-9._@-]+$")
+
+BOOKSTACK_SLUG = "bookstack"
+BOOKSTACK_IMAGE = "lscr.io/linuxserver/bookstack:latest"
+BOOKSTACK_DB_IMAGE = "mariadb:11"
+BOOKSTACK_DB_CONTAINER = "cc-bookstack-db"
+BOOKSTACK_NETWORK = "cc-bookstack-net"
+BOOKSTACK_DB_VOLUME = "cc-bookstack-db-0"
+MARIADB_WAIT_SECONDS = 60
+
+ODYSSEUS_SLUG = "odysseus"
+ODYSSEUS_IMAGE = "cc-odysseus:local"
+ODYSSEUS_NETWORK = "cc-odysseus-net"
+ODYSSEUS_CHROMA = "cc-odysseus-chroma"
+ODYSSEUS_SEARXNG = "cc-odysseus-searxng"
+ODYSSEUS_NTFY = "cc-odysseus-ntfy"
+ODYSSEUS_SIDECARS = (ODYSSEUS_CHROMA, ODYSSEUS_SEARXNG, ODYSSEUS_NTFY)
+ODYSSEUS_GIT_REFS = (
+    "https://github.com/odysseus-dev/odysseus.git#main",
+    "https://github.com/odysseus-dev/odysseus.git#dev",
+)
+HOST_GATEWAY = {"host.docker.internal": "host-gateway"}
+
+SECURO_SLUG = "securo"
+SECURO_FRONTEND_IMAGE = "ghcr.io/securo-finance/securo-frontend:latest"
+SECURO_BACKEND_IMAGE = "ghcr.io/securo-finance/securo-backend:latest"
+SECURO_DB_IMAGE = "pgvector/pgvector:pg16"
+SECURO_REDIS_IMAGE = "redis:8-alpine"
+SECURO_BACKEND = "cc-securo-backend"
+SECURO_DB = "cc-securo-db"
+SECURO_REDIS = "cc-securo-redis"
+SECURO_WORKER = "cc-securo-worker"
+SECURO_BEAT = "cc-securo-beat"
+SECURO_NETWORK = "cc-securo-net"
+SECURO_SIDECARS = (SECURO_BACKEND, SECURO_DB, SECURO_REDIS, SECURO_WORKER, SECURO_BEAT)
+SECURO_DB_VOLUME = "cc-securo-db-0"
+SECURO_ATTACHMENTS_VOLUME = "cc-securo-attachments"
+SECURO_KNOWLEDGE_VOLUME = "cc-securo-agent-knowledge"
+SECURO_EMBEDDINGS_VOLUME = "cc-securo-agent-embeddings"
+REDIS_WAIT_SECONDS = 60
 
 
 def _clear_uptime_cache_if_kuma(slug):
@@ -200,6 +240,20 @@ def _remove_container(client, name):
         pass
 
 
+def _remove_labeled_containers(client, slug):
+    label = f"{DOCKER_LABEL_SLUG}={slug}"
+    try:
+        containers = client.containers.list(all=True, filters={"label": label})
+    except docker.errors.DockerException:
+        return
+    for container in containers:
+        try:
+            container.stop(timeout=15)
+            container.remove(force=True)
+        except docker.errors.APIError as exc:
+            logger.warning("Could not remove container %s: %s", container.name, exc)
+
+
 def _collect_container_volume_names(client, container_name):
     try:
         container = client.containers.get(container_name)
@@ -262,13 +316,17 @@ def _env_value(env_list, key):
     return ""
 
 
-def _previous_postgres_password(client, container_name):
+def _previous_container_env(client, container_name, key):
     try:
         container = client.containers.get(container_name)
     except docker.errors.NotFound:
         return ""
     env = (container.attrs or {}).get("Config", {}).get("Env") or []
-    return _env_value(env, "POSTGRES_PASSWORD")
+    return _env_value(env, key)
+
+
+def _previous_postgres_password(client, container_name):
+    return _previous_container_env(client, container_name, "POSTGRES_PASSWORD")
 
 
 def validate_nextcloud_credentials(admin_user, admin_password):
@@ -287,17 +345,32 @@ def validate_nextcloud_credentials(admin_user, admin_password):
     return ""
 
 
-def _wait_for_postgres(container, timeout=POSTGRES_WAIT_SECONDS):
+def _wait_for_postgres(
+    container, timeout=POSTGRES_WAIT_SECONDS, *, user="nextcloud", database="nextcloud"
+):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            result = container.exec_run(["pg_isready", "-U", "nextcloud", "-d", "nextcloud"])
+            result = container.exec_run(["pg_isready", "-U", user, "-d", database])
             if getattr(result, "exit_code", 1) == 0:
                 return
         except docker.errors.APIError:
             pass
         time.sleep(1)
     raise RuntimeError("Postgres did not become ready")
+
+
+def _wait_for_redis(container, timeout=REDIS_WAIT_SECONDS):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            result = container.exec_run(["redis-cli", "ping"])
+            if getattr(result, "exit_code", 1) == 0:
+                return
+        except docker.errors.APIError:
+            pass
+        time.sleep(1)
+    raise RuntimeError("Redis did not become ready")
 
 
 def _wait_for_nextcloud(url, timeout=NEXTCLOUD_READY_SECONDS):
@@ -391,6 +464,363 @@ def _install_nextcloud(client, entry, spec, options):
     create_dashboard_card(NEXTCLOUD_SLUG, entry, host_port)
 
 
+def _bookstack_app_key():
+    return "base64:" + base64.b64encode(secrets.token_bytes(32)).decode("ascii")
+
+
+def _wait_for_mariadb(container, root_password, timeout=MARIADB_WAIT_SECONDS):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            result = container.exec_run(
+                [
+                    "mysqladmin",
+                    "ping",
+                    "-h",
+                    "127.0.0.1",
+                    "-uroot",
+                    f"-p{root_password}",
+                    "--silent",
+                ]
+            )
+            if getattr(result, "exit_code", 1) == 0:
+                return
+        except docker.errors.APIError:
+            pass
+        time.sleep(1)
+    raise RuntimeError("MariaDB did not become ready")
+
+
+def _install_bookstack(client, entry, spec):
+    image = spec.get("image", "").strip() or BOOKSTACK_IMAGE
+    client.images.pull(image)
+    client.images.pull(BOOKSTACK_DB_IMAGE)
+
+    db_password = _previous_container_env(client, BOOKSTACK_DB_CONTAINER, "MYSQL_PASSWORD")
+    root_password = _previous_container_env(
+        client, BOOKSTACK_DB_CONTAINER, "MYSQL_ROOT_PASSWORD"
+    )
+    app_key = _previous_container_env(client, f"cc-{BOOKSTACK_SLUG}", "APP_KEY")
+    if not db_password:
+        db_password = secrets.token_urlsafe(32)
+    if not root_password:
+        root_password = secrets.token_urlsafe(32)
+    if not app_key:
+        app_key = _bookstack_app_key()
+
+    _remove_container(client, f"cc-{BOOKSTACK_SLUG}")
+    _remove_container(client, BOOKSTACK_DB_CONTAINER)
+
+    labels = {DOCKER_LABEL_SLUG: BOOKSTACK_SLUG}
+    _ensure_network(client, BOOKSTACK_NETWORK, labels)
+    _ensure_volume(client, f"cc-{BOOKSTACK_SLUG}-0", labels)
+    _ensure_volume(client, BOOKSTACK_DB_VOLUME, labels)
+
+    db_container = client.containers.run(
+        BOOKSTACK_DB_IMAGE,
+        name=BOOKSTACK_DB_CONTAINER,
+        detach=True,
+        network=BOOKSTACK_NETWORK,
+        volumes={BOOKSTACK_DB_VOLUME: {"bind": "/var/lib/mysql", "mode": "rw"}},
+        environment={
+            "MYSQL_DATABASE": "bookstack",
+            "MYSQL_USER": "bookstack",
+            "MYSQL_PASSWORD": db_password,
+            "MYSQL_ROOT_PASSWORD": root_password,
+        },
+        labels={**labels, DOCKER_LABEL_ROLE: "db"},
+        restart_policy={"Name": "unless-stopped"},
+    )
+    _wait_for_mariadb(db_container, root_password)
+
+    host_port = pick_host_port(client, int(spec.get("host_port_hint") or 6875))
+    host = services_host()
+    client.containers.run(
+        image,
+        name=f"cc-{BOOKSTACK_SLUG}",
+        detach=True,
+        network=BOOKSTACK_NETWORK,
+        ports={"80/tcp": host_port},
+        volumes={f"cc-{BOOKSTACK_SLUG}-0": {"bind": "/config", "mode": "rw"}},
+        environment={
+            "PUID": "1000",
+            "PGID": "1000",
+            "APP_URL": f"http://{host}:{host_port}",
+            "APP_KEY": app_key,
+            "DB_HOST": BOOKSTACK_DB_CONTAINER,
+            "DB_PORT": "3306",
+            "DB_DATABASE": "bookstack",
+            "DB_USERNAME": "bookstack",
+            "DB_PASSWORD": db_password,
+        },
+        labels=labels,
+        restart_policy={"Name": "unless-stopped"},
+    )
+
+    installed_version = _image_version(client, image)
+    InstalledService.objects.filter(slug=BOOKSTACK_SLUG).update(
+        host_port=host_port,
+        installed_version=installed_version,
+        status=InstalledService.Status.RUNNING,
+        error="",
+    )
+    create_dashboard_card(BOOKSTACK_SLUG, entry, host_port)
+
+
+def _build_odysseus_image(client):
+    errors = []
+    for remote in ODYSSEUS_GIT_REFS:
+        try:
+            stream = client.api.build(
+                remote=remote,
+                tag=ODYSSEUS_IMAGE,
+                rm=True,
+                decode=True,
+            )
+            error = ""
+            for chunk in stream or []:
+                if isinstance(chunk, dict) and chunk.get("error"):
+                    error = chunk["error"]
+                    break
+            if error:
+                errors.append(f"{remote}: {error}")
+                continue
+            return ODYSSEUS_IMAGE
+        except Exception as exc:  # noqa: BLE001 - try the next git ref
+            errors.append(f"{remote}: {exc}")
+    detail = "; ".join(errors) if errors else "unknown error"
+    raise RuntimeError(f"Could not build Odysseus from Git. {detail}")
+
+
+def _install_odysseus(client, entry, spec):
+    labels = {DOCKER_LABEL_SLUG: ODYSSEUS_SLUG}
+    _remove_labeled_containers(client, ODYSSEUS_SLUG)
+    for name in (f"cc-{ODYSSEUS_SLUG}", *ODYSSEUS_SIDECARS):
+        _remove_container(client, name)
+
+    image = _build_odysseus_image(client)
+    client.images.pull("chromadb/chroma:latest")
+    client.images.pull("searxng/searxng:latest")
+    client.images.pull("binwiederhier/ntfy:latest")
+
+    _ensure_network(client, ODYSSEUS_NETWORK, labels)
+    _ensure_volume(client, f"cc-{ODYSSEUS_SLUG}-0", labels)
+    _ensure_volume(client, f"cc-{ODYSSEUS_SLUG}-chroma", labels)
+    _ensure_volume(client, f"cc-{ODYSSEUS_SLUG}-searxng", labels)
+    _ensure_volume(client, f"cc-{ODYSSEUS_SLUG}-ntfy", labels)
+
+    client.containers.run(
+        "chromadb/chroma:latest",
+        name=ODYSSEUS_CHROMA,
+        detach=True,
+        network=ODYSSEUS_NETWORK,
+        volumes={f"cc-{ODYSSEUS_SLUG}-chroma": {"bind": "/chroma/chroma", "mode": "rw"}},
+        labels={**labels, DOCKER_LABEL_ROLE: "chroma"},
+        restart_policy={"Name": "unless-stopped"},
+    )
+    client.containers.run(
+        "searxng/searxng:latest",
+        name=ODYSSEUS_SEARXNG,
+        detach=True,
+        network=ODYSSEUS_NETWORK,
+        volumes={f"cc-{ODYSSEUS_SLUG}-searxng": {"bind": "/etc/searxng", "mode": "rw"}},
+        labels={**labels, DOCKER_LABEL_ROLE: "searxng"},
+        restart_policy={"Name": "unless-stopped"},
+    )
+    client.containers.run(
+        "binwiederhier/ntfy:latest",
+        name=ODYSSEUS_NTFY,
+        detach=True,
+        network=ODYSSEUS_NETWORK,
+        command=["serve"],
+        volumes={f"cc-{ODYSSEUS_SLUG}-ntfy": {"bind": "/var/lib/ntfy", "mode": "rw"}},
+        labels={**labels, DOCKER_LABEL_ROLE: "ntfy"},
+        restart_policy={"Name": "unless-stopped"},
+    )
+
+    host_port = pick_host_port(client, int(spec.get("host_port_hint") or 7000))
+    client.containers.run(
+        image,
+        name=f"cc-{ODYSSEUS_SLUG}",
+        detach=True,
+        network=ODYSSEUS_NETWORK,
+        ports={"7000/tcp": host_port},
+        extra_hosts=HOST_GATEWAY,
+        volumes={f"cc-{ODYSSEUS_SLUG}-0": {"bind": "/data", "mode": "rw"}},
+        environment={
+            "AUTH_ENABLED": "true",
+            "APP_BIND": "0.0.0.0",
+            "APP_PORT": "7000",
+            "CHROMA_HOST": ODYSSEUS_CHROMA,
+            "CHROMA_PORT": "8000",
+            "SEARXNG_BASE_URL": f"http://{ODYSSEUS_SEARXNG}:8080",
+            "NTFY_BASE_URL": f"http://{ODYSSEUS_NTFY}",
+            "OLLAMA_BASE_URL": "http://host.docker.internal:11434/v1",
+        },
+        labels=labels,
+        restart_policy={"Name": "unless-stopped"},
+    )
+
+    installed_version = _image_version(client, image)
+    InstalledService.objects.filter(slug=ODYSSEUS_SLUG).update(
+        host_port=host_port,
+        installed_version=installed_version,
+        status=InstalledService.Status.RUNNING,
+        error="",
+    )
+    create_dashboard_card(ODYSSEUS_SLUG, entry, host_port)
+
+
+def _securo_backend_env(db_password, secret_key, frontend_url, mcp_secret):
+    return {
+        "DATABASE_URL": f"postgresql+asyncpg://securo:{db_password}@{SECURO_DB}:5432/securo",
+        "SECRET_KEY": secret_key,
+        "DEBUG": "false",
+        "FRONTEND_URL": frontend_url,
+        "REDIS_URL": f"redis://{SECURO_REDIS}:6379/0",
+        "STORAGE_LOCAL_PATH": "/app/data/attachments",
+        "AGENTS_KNOWLEDGE_STORAGE_PATH": "/app/data/agent_knowledge",
+        "AGENTS_ENABLED": "false",
+        "LOCAL_AUTH_ENABLED": "true",
+        "TRUSTED_PROXY_HOPS": "1",
+        "AGENTS_OLLAMA_BASE_URL": "http://host.docker.internal:11434",
+        "AGENTS_MCP_JWT_SECRET": mcp_secret,
+    }
+
+
+def _securo_backend_volumes():
+    return {
+        SECURO_ATTACHMENTS_VOLUME: {"bind": "/app/data/attachments", "mode": "rw"},
+        SECURO_KNOWLEDGE_VOLUME: {"bind": "/app/data/agent_knowledge", "mode": "rw"},
+        SECURO_EMBEDDINGS_VOLUME: {"bind": "/app/data/embedding_models", "mode": "rw"},
+    }
+
+
+def _run_securo_backend(client, labels, env, role, name, command):
+    return client.containers.run(
+        SECURO_BACKEND_IMAGE,
+        name=name,
+        detach=True,
+        network=SECURO_NETWORK,
+        extra_hosts=HOST_GATEWAY,
+        volumes=_securo_backend_volumes(),
+        environment=env,
+        command=command,
+        labels={**labels, DOCKER_LABEL_ROLE: role},
+        restart_policy={"Name": "unless-stopped"},
+    )
+
+
+def _install_securo(client, entry, spec):
+    frontend_image = spec.get("image", "").strip() or SECURO_FRONTEND_IMAGE
+    client.images.pull(frontend_image)
+    client.images.pull(SECURO_BACKEND_IMAGE)
+    client.images.pull(SECURO_DB_IMAGE)
+    client.images.pull(SECURO_REDIS_IMAGE)
+
+    db_password = _previous_container_env(client, SECURO_DB, "POSTGRES_PASSWORD")
+    secret_key = _previous_container_env(client, SECURO_BACKEND, "SECRET_KEY")
+    mcp_secret = _previous_container_env(client, SECURO_BACKEND, "AGENTS_MCP_JWT_SECRET")
+    if not db_password:
+        db_password = secrets.token_urlsafe(32)
+    if not secret_key:
+        secret_key = secrets.token_urlsafe(48)
+    if not mcp_secret:
+        mcp_secret = secrets.token_urlsafe(32)
+
+    _remove_labeled_containers(client, SECURO_SLUG)
+    _remove_container(client, f"cc-{SECURO_SLUG}")
+    for name in SECURO_SIDECARS:
+        _remove_container(client, name)
+
+    labels = {DOCKER_LABEL_SLUG: SECURO_SLUG}
+    _ensure_network(client, SECURO_NETWORK, labels)
+    for volume in (
+        SECURO_DB_VOLUME,
+        SECURO_ATTACHMENTS_VOLUME,
+        SECURO_KNOWLEDGE_VOLUME,
+        SECURO_EMBEDDINGS_VOLUME,
+    ):
+        _ensure_volume(client, volume, labels)
+
+    db_container = client.containers.run(
+        SECURO_DB_IMAGE,
+        name=SECURO_DB,
+        detach=True,
+        network=SECURO_NETWORK,
+        volumes={SECURO_DB_VOLUME: {"bind": "/var/lib/postgresql/data", "mode": "rw"}},
+        environment={
+            "POSTGRES_USER": "securo",
+            "POSTGRES_PASSWORD": db_password,
+            "POSTGRES_DB": "securo",
+        },
+        labels={**labels, DOCKER_LABEL_ROLE: "db"},
+        restart_policy={"Name": "unless-stopped"},
+    )
+    redis_container = client.containers.run(
+        SECURO_REDIS_IMAGE,
+        name=SECURO_REDIS,
+        detach=True,
+        network=SECURO_NETWORK,
+        labels={**labels, DOCKER_LABEL_ROLE: "redis"},
+        restart_policy={"Name": "unless-stopped"},
+    )
+    _wait_for_postgres(db_container, user="securo", database="securo")
+    _wait_for_redis(redis_container)
+
+    host_port = pick_host_port(client, int(spec.get("host_port_hint") or 3030))
+    host = services_host()
+    frontend_url = f"http://{host}:{host_port}"
+    backend_env = _securo_backend_env(db_password, secret_key, frontend_url, mcp_secret)
+
+    _run_securo_backend(
+        client,
+        labels,
+        backend_env,
+        "backend",
+        SECURO_BACKEND,
+        'sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"',
+    )
+    _run_securo_backend(
+        client,
+        labels,
+        backend_env,
+        "worker",
+        SECURO_WORKER,
+        "celery -A app.worker worker --loglevel=info --concurrency=2",
+    )
+    _run_securo_backend(
+        client,
+        labels,
+        backend_env,
+        "beat",
+        SECURO_BEAT,
+        "celery -A app.worker beat --loglevel=info",
+    )
+    client.containers.run(
+        frontend_image,
+        name=f"cc-{SECURO_SLUG}",
+        detach=True,
+        network=SECURO_NETWORK,
+        ports={"8080/tcp": host_port},
+        environment={
+            "BACKEND_URL": f"http://{SECURO_BACKEND}:8000",
+            "FRONTEND_URL": frontend_url,
+        },
+        labels=labels,
+        restart_policy={"Name": "unless-stopped"},
+    )
+
+    installed_version = _image_version(client, frontend_image)
+    InstalledService.objects.filter(slug=SECURO_SLUG).update(
+        host_port=host_port,
+        installed_version=installed_version,
+        status=InstalledService.Status.RUNNING,
+        error="",
+    )
+    create_dashboard_card(SECURO_SLUG, entry, host_port)
+
+
 def create_dashboard_card(slug, entry, host_port):
     host = services_host()
     category_name = entry.get("category", "Services")
@@ -470,6 +900,15 @@ def _install_worker(slug, install_options=None):
         if slug == NEXTCLOUD_SLUG:
             _install_nextcloud(client, entry, spec, install_options or {})
             return
+        if slug == BOOKSTACK_SLUG:
+            _install_bookstack(client, entry, spec)
+            return
+        if slug == ODYSSEUS_SLUG:
+            _install_odysseus(client, entry, spec)
+            return
+        if slug == SECURO_SLUG:
+            _install_securo(client, entry, spec)
+            return
         client.images.pull(image)
         _remove_container(client, container_name)
 
@@ -512,16 +951,21 @@ def _install_worker(slug, install_options=None):
 
         ports = {f"{container_port}/tcp": host_port}
 
-        client.containers.run(
-            image,
-            name=container_name,
-            detach=True,
-            ports=ports,
-            volumes=volume_map or None,
-            environment=env or None,
-            labels={DOCKER_LABEL_SLUG: slug},
-            restart_policy={"Name": "unless-stopped"},
-        )
+        run_kwargs = {
+            "name": container_name,
+            "detach": True,
+            "ports": ports,
+            "volumes": volume_map or None,
+            "environment": env or None,
+            "labels": {DOCKER_LABEL_SLUG: slug},
+            "restart_policy": {"Name": "unless-stopped"},
+        }
+        if spec.get("pid_mode"):
+            run_kwargs["pid_mode"] = spec["pid_mode"]
+        extra_hosts = spec.get("extra_hosts") or {}
+        if extra_hosts:
+            run_kwargs["extra_hosts"] = extra_hosts
+        client.containers.run(image, **run_kwargs)
 
         installed_version = _image_version(client, image)
         InstalledService.objects.filter(slug=slug).update(
@@ -605,6 +1049,16 @@ def uninstall(slug, remove_data=False):
         _remove_container(client, container_name)
         if slug == NEXTCLOUD_SLUG:
             _remove_container(client, NEXTCLOUD_DB_CONTAINER)
+        elif slug == BOOKSTACK_SLUG:
+            _remove_container(client, BOOKSTACK_DB_CONTAINER)
+        elif slug == ODYSSEUS_SLUG:
+            _remove_labeled_containers(client, ODYSSEUS_SLUG)
+            for name in ODYSSEUS_SIDECARS:
+                _remove_container(client, name)
+        elif slug == SECURO_SLUG:
+            _remove_labeled_containers(client, SECURO_SLUG)
+            for name in SECURO_SIDECARS:
+                _remove_container(client, name)
         _remove_service_volumes(
             client,
             slug,
@@ -613,6 +1067,12 @@ def uninstall(slug, remove_data=False):
         )
         if slug == NEXTCLOUD_SLUG:
             _remove_network(client, NEXTCLOUD_NETWORK)
+        elif slug == BOOKSTACK_SLUG:
+            _remove_network(client, BOOKSTACK_NETWORK)
+        elif slug == ODYSSEUS_SLUG:
+            _remove_network(client, ODYSSEUS_NETWORK)
+        elif slug == SECURO_SLUG:
+            _remove_network(client, SECURO_NETWORK)
     except docker.errors.DockerException as exc:
         logger.warning("Docker uninstall issue for %s: %s", slug, exc)
         InstalledService.objects.filter(slug=slug).update(
