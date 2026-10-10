@@ -52,6 +52,11 @@ urlpatterns = [
         name="api_service_file_content",
     ),
     path(
+        "api/services/<int:service_id>/files/save/",
+        views.api_service_file_save,
+        name="api_service_file_save",
+    ),
+    path(
         "api/services/<int:service_id>/troubleshoot/",
         views.api_service_troubleshoot_start,
         name="api_service_troubleshoot_start",

@@ -652,6 +652,14 @@ def api_service_file_content(request, service_id):
         safe_name = result["name"].replace('"', "").replace("\\", "").replace("\n", "").replace("\r", "")
         response["Content-Disposition"] = f'inline; filename="{safe_name}"'
         return response
+    if result["kind"] == "binary":
+        return JsonResponse(
+            {
+                "kind": "binary",
+                "name": result["name"],
+                "error": "This file is not text, so it cannot be edited.",
+            }
+        )
     return JsonResponse(
         {
             "kind": "text",
@@ -659,6 +667,25 @@ def api_service_file_content(request, service_id):
             "text": result["body"].decode("utf-8", errors="replace"),
         }
     )
+
+
+@login_required
+@require_POST
+def api_service_file_save(request, service_id):
+    from . import explore
+
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Forbidden"}, status=403)
+    service = get_object_or_404(Service, pk=service_id, enabled=True)
+    try:
+        payload = json.loads(request.body.decode() or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    try:
+        result = explore.write_service_file(service, payload.get("path") or "", payload.get("text"))
+    except explore.ExploreError as exc:
+        return JsonResponse({"error": exc.message}, status=exc.status)
+    return JsonResponse(result)
 
 
 def _troubleshoot_service(request, service_id):

@@ -1317,7 +1317,8 @@ class ExploreFilesTests(TestCase):
         self.assertEqual(preview_kind("readme.md"), "text")
         self.assertEqual(preview_kind("shot.png"), "image")
         self.assertEqual(preview_kind("shot.jpg"), "image")
-        self.assertEqual(preview_kind("blob.bin"), "")
+        self.assertEqual(preview_kind("config"), "text")
+        self.assertEqual(preview_kind("blob.bin"), "text")
 
         container = MagicMock()
         container.attrs = {"Mounts": [{"Destination": "/data"}]}
@@ -1368,6 +1369,30 @@ class ExploreFilesTests(TestCase):
         self.assertEqual(image.status_code, 200)
         self.assertEqual(image["Content-Type"], "image/png")
         self.assertEqual(image.content, png)
+
+    def test_member_cannot_save_and_admin_save_writes_text(self):
+        self.client.force_login(self.member)
+        denied = self.client.post(
+            reverse("api_service_file_save", args=[self.svc.id]),
+            data='{"path":"/data/.env","text":"KEY=2\\n"}',
+            content_type="application/json",
+        )
+        self.assertEqual(denied.status_code, 403)
+
+        self.client.force_login(self.admin)
+        container = MagicMock()
+        container.put_archive.return_value = True
+        with patch("dashboard.explore.open_container", return_value=container):
+            saved = self.client.post(
+                reverse("api_service_file_save", args=[self.svc.id]),
+                data='{"path":"/data/.env","text":"KEY=2\\n"}',
+                content_type="application/json",
+            )
+        self.assertEqual(saved.status_code, 200)
+        self.assertTrue(saved.json()["ok"])
+        directory, archive = container.put_archive.call_args.args
+        self.assertEqual(directory, "/data")
+        self.assertIn(b"KEY=2", archive)
 
     def test_admin_menu_includes_explore_files(self):
         self.client.force_login(self.admin)

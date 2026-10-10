@@ -1,8 +1,9 @@
-"""Read-only file browser for one installed app's container."""
+"""File browser for one installed app's container. Text files can be saved back."""
 
 import io
 import posixpath
 import tarfile
+import time
 
 import docker
 
@@ -11,26 +12,6 @@ from library.installer import get_docker_client
 
 TEXT_MAX = 512 * 1024
 IMAGE_MAX = 8 * 1024 * 1024
-TEXT_EXTENSIONS = {
-    "cfg",
-    "conf",
-    "css",
-    "csv",
-    "env",
-    "html",
-    "ini",
-    "js",
-    "json",
-    "log",
-    "md",
-    "py",
-    "sh",
-    "toml",
-    "txt",
-    "xml",
-    "yaml",
-    "yml",
-}
 IMAGE_TYPES = {
     "gif": "image/gif",
     "ico": "image/x-icon",
@@ -70,11 +51,9 @@ def preview_kind(name):
     ext = ""
     if "." in (name or ""):
         ext = name.rsplit(".", 1)[-1].lower()
-    if ext in TEXT_EXTENSIONS:
-        return "text"
     if ext in IMAGE_TYPES:
         return "image"
-    return ""
+    return "text"
 
 
 def content_type_for(name):
@@ -236,9 +215,49 @@ def read_service_file(service, raw_path):
     container = open_container(container_name)
     limit = TEXT_MAX if kind == "text" else IMAGE_MAX
     body = fetch_file(container, path, limit)
+    if kind == "text" and b"\0" in body:
+        kind = "binary"
     return {
         "kind": kind,
         "name": name,
         "body": body,
         "content_type": content_type_for(name),
     }
+
+
+def write_file(container, path, body):
+    directory = posixpath.dirname(path) or "/"
+    filename = posixpath.basename(path)
+    if not filename or filename in (".", ".."):
+        raise ExploreError("That path is not a file.")
+    blob = io.BytesIO()
+    with tarfile.open(fileobj=blob, mode="w") as archive:
+        info = tarfile.TarInfo(name=filename)
+        info.size = len(body)
+        info.mode = 0o644
+        info.mtime = int(time.time())
+        archive.addfile(info, io.BytesIO(body))
+    try:
+        ok = container.put_archive(directory, blob.getvalue())
+    except docker.errors.APIError as exc:
+        raise ExploreError("Could not save this file.", 502) from exc
+    if not ok:
+        raise ExploreError("Could not save this file.", 502)
+
+
+def write_service_file(service, raw_path, text):
+    path = jail_path(raw_path)
+    name = posixpath.basename(path)
+    if preview_kind(name) == "image":
+        raise ExploreError("Images cannot be edited.", 415)
+    if not isinstance(text, str):
+        raise ExploreError("Missing file text.")
+    body = text.encode("utf-8")
+    if len(body) > TEXT_MAX:
+        raise ExploreError("This file is too large to save.", 413)
+    container_name = _container_name(service)
+    if not container_name:
+        raise ExploreError("This app is not a container on this server, so there are no files to open.", 404)
+    container = open_container(container_name)
+    write_file(container, path, body)
+    return {"ok": True, "path": path}

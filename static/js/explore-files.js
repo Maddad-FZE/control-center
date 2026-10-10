@@ -84,6 +84,11 @@
     parent.appendChild(p);
   }
 
+  function csrfToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.content : "";
+  }
+
   async function readError(resp) {
     const data = await resp.json().catch(() => ({}));
     return data.error || "Could not open that file.";
@@ -110,10 +115,45 @@
         return resp.json();
       })
       .then((data) => {
-        const pre = document.createElement("pre");
-        pre.className = "cc-win__pre";
-        pre.textContent = data.text || "";
-        view.body.replaceChildren(pre);
+        if (data.kind === "binary") {
+          note(view.body, data.error || "This file is not text, so it cannot be edited.");
+          return;
+        }
+        const editor = document.createElement("textarea");
+        editor.className = "cc-win__editor";
+        editor.value = data.text || "";
+        editor.setAttribute("aria-label", fileName);
+        const save = document.createElement("button");
+        save.type = "button";
+        save.className = "cc-win__save";
+        save.textContent = "Save";
+        const status = document.createElement("p");
+        status.className = "cc-explore-note";
+        status.hidden = true;
+        save.addEventListener("click", () => {
+          status.hidden = false;
+          status.textContent = "Saving…";
+          fetch(`/api/services/${serviceId}/files/save/`, {
+            method: "POST",
+            headers: {
+              "X-CSRFToken": csrfToken(),
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ path: filePath, text: editor.value }),
+          })
+            .then(async (resp) => {
+              const payload = await resp.json().catch(() => ({}));
+              if (!resp.ok) throw new Error(payload.error || "Could not save this file.");
+              status.textContent = "Saved";
+            })
+            .catch((err) => {
+              status.textContent = err.message || "Could not save this file.";
+            });
+        });
+        const bar = document.createElement("div");
+        bar.className = "cc-win__editbar";
+        bar.append(save, status);
+        view.body.replaceChildren(editor, bar);
       })
       .catch((err) => note(view.body, err.message || "Could not open that file."));
   }
@@ -163,10 +203,7 @@
           load(serviceId, next, body, tools);
           return;
         }
-        if (entry.preview === "text" || entry.preview === "image") {
-          openViewer(serviceId, next, entry.name, entry.preview);
-          return;
-        }
+        openViewer(serviceId, next, entry.name, entry.preview === "image" ? "image" : "text");
       });
       body.appendChild(row);
     });
