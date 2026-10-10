@@ -467,6 +467,7 @@ function noticeLevel(index) {
 async function boot() {
   const body = document.body;
   if (body.dataset.wizard !== "1") return;
+  if (body.dataset.helper === "hidden") return;
 
   const indexUrl = body.dataset.clippyIndex;
   const merlinUrl = body.dataset.clippyMerlin;
@@ -490,8 +491,21 @@ async function boot() {
   agent.show(true);
   stopIdle(agent);
 
-  const settingsDock = document.getElementById("settings-merlin-dock");
-  let docked = Boolean(settingsDock) && prefersDocked();
+  const settingsDock =
+    document.querySelector(".settings-merlin-dock[data-helper-dock]") ||
+    document.querySelector(".shell-helper[data-helper-dock]") ||
+    document.getElementById("settings-merlin-dock") ||
+    document.getElementById("dashboard-merlin");
+  const helperTip = settingsDock?.dataset.helperTip;
+  if (helperTip) {
+    for (const key of ["settings", "profile"]) {
+      const item = (TIPS[key] || []).find((row) => row.target === "#settings-merlin-dock");
+      if (item) item.text = helperTip;
+    }
+  }
+  let docked =
+    Boolean(settingsDock) &&
+    (document.body.dataset.helper === "docked" || prefersDocked());
   merlinDocked = docked;
   const MERLIN_FRAME = 128;
   let dockObserver = null;

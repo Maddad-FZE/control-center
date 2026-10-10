@@ -1,0 +1,15 @@
+@layer theme {
+  html,
+  body {
+    background-color: var(--tva-wood-deep);
+    background-image:
+      radial-gradient(ellipse at 20% 0%, rgba(148, 163, 184, 0.15), transparent 55%),
+      radial-gradient(ellipse at 80% 100%, rgba(51, 65, 85, 0.45), transparent 50%),
+      linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+  }
+
+  .user-chip-avatar {
+    background: #64748b;
+    color: #f8fafc;
+  }
+}

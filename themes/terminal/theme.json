@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "slug": "terminal",
+  "name": "Green Terminal",
+  "extends": "wood",
+  "tokens": {
+    "--tva-orange": "#22c55e",
+    "--tva-orange-hot": "#4ade80",
+    "--tva-amber": "#86efac",
+    "--tva-cream": "#d1fae5",
+    "--tva-paper": "#a7f3d0",
+    "--tva-wood": "#14532d",
+    "--tva-wood-deep": "#052e16",
+    "--tva-walnut": "#166534",
+    "--tva-ink": "#022c22",
+    "--tva-muted": "#6ee7b7",
+    "--tva-border": "#15803d",
+    "--tva-shadow": "rgba(0, 20, 10, 0.55)",
+    "--phosphor": "rgba(34, 197, 94, 0.45)",
+    "--phosphor-soft": "rgba(74, 222, 128, 0.2)"
+  },
+  "supports_crt": true,
+  "assets": {"css": ["skin.css"], "js": []}
+}

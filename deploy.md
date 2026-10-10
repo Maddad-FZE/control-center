@@ -53,7 +53,20 @@ Add public hostname:
 ## Releases and updates
 
 The app reports the version in the `VERSION` file and compares it against the
-latest GitHub release of `GITHUB_REPO`.
+latest GitHub release of `GITHUB_REPO` on the Stable channel. Dev follows the
+tip of `UPDATE_DEV_BRANCH` (default `main`) and offers an update on every commit.
+
+### Update channels
+
+Settings → Updates → Channel is site-wide.
+
+- **Stable** (default): newest GitHub release tag, including prereleases.
+- **Dev**: tip of `UPDATE_DEV_BRANCH`. The running commit is remembered after
+  install, because the archive copy does not move git HEAD. Dev builds are
+  untested.
+
+Switching from Dev back to Stable shows "up to date" until a release tag is
+newer than the `VERSION` file that the dev build carries.
 
 ### Cutting a release
 

@@ -1,0 +1,26 @@
+  <div class="settings-rail">
+    <section class="settings-group settings-group--nav">
+      <h2 class="group-title">1 — Categories</h2>
+      <nav class="settings-nav" aria-label="Settings sections">
+        <a href="?section=appearance" class="settings-nav__item{% if active_section == 'appearance' %} is-active{% endif %}" data-section="appearance" data-label="Appearance">Appearance</a>
+        <a href="?section=site" class="settings-nav__item{% if active_section == 'site' %} is-active{% endif %}" data-section="site" data-label="Site">Site</a>
+        <a href="?section=tunnel" class="settings-nav__item{% if active_section == 'tunnel' %} is-active{% endif %}" data-section="tunnel" data-label="Tunnel">Tunnel</a>
+        <a href="?section=users" class="settings-nav__item{% if active_section == 'users' %} is-active{% endif %}" data-section="users" data-label="Users">Users</a>
+        <a href="?section=updates" class="settings-nav__item{% if active_section == 'updates' %} is-active{% endif %}" data-section="updates" data-label="Updates">
+          Updates
+          {% if update_ready %}<span class="settings-nav__badge" title="Update available"></span>{% endif %}
+        </a>
+        <a href="?section=platform" class="settings-nav__item{% if active_section == 'platform' %} is-active{% endif %}" data-section="platform" data-label="Platform">Platform</a>
+        <a href="?section=audit" class="settings-nav__item{% if active_section == 'audit' %} is-active{% endif %}" data-section="audit" data-label="Audit">Audit</a>
+        <a href="?section=logs" class="settings-nav__item{% if active_section == 'logs' %} is-active{% endif %}" data-section="logs" data-label="Logs">Logs</a>
+        {% if console_enabled %}
+        <a href="?section=console" class="settings-nav__item{% if active_section == 'console' %} is-active{% endif %}" data-section="console" data-label="Console">Console</a>
+        {% endif %}
+      </nav>
+    </section>
+
+    {% if wizard_enabled %}
+    {% include "core/_merlin_dock.html" %}
+    {% endif %}
+  </div>
+

@@ -1,5 +1,7 @@
 from django.conf import settings
 
+from core.themes.middleware import get_active_theme
+
 from .site_settings import get_site_settings
 from .version import get_current_version
 
@@ -7,9 +9,9 @@ from .version import get_current_version
 def site(request):
     site_settings = get_site_settings()
     crt_enabled = site_settings.crt_enabled
-    user_theme = "wood"
-    if request.user.is_authenticated and hasattr(request.user, "profile"):
-        user_theme = request.user.profile.theme
+    theme = getattr(request, "theme", None) or get_active_theme()
+    if theme.supports_crt is False:
+        crt_enabled = False
     logo_url = None
     favicon_url = None
     if site_settings.logo:
@@ -51,7 +53,8 @@ def site(request):
         "wizard_enabled": wizard_enabled,
         "wizard_notify": wizard_notify and wizard_enabled,
         "wizard_page": url_name,
-        "user_theme": user_theme,
+        "theme": theme,
+        "user_theme": theme.slug,
         "site_logo_url": logo_url,
         "site_favicon_url": favicon_url,
         "weather_configured": bool(

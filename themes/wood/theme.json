@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "slug": "wood",
+  "name": "Wood & Orange",
+  "extends": null,
+  "layout": {"chrome": "topbar", "pinned": true, "show_clock": true, "footer": "visible"},
+  "helper": {"mode": "floating", "dock": "rail"},
+  "dashboard": {"arrangement": "board", "stats": "sidebar"},
+  "supports_crt": true,
+  "assets": {"css": ["skin.css"], "js": []}
+}

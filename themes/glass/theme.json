@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "slug": "glass",
+  "name": "Liquid Glass",
+  "extends": null,
+  "min_app_version": "0.4.0",
+  "tokens": {
+    "--cc-radius": "14px",
+    "--cc-radius-lg": "18px",
+    "--cc-blur": "18px",
+    "--cc-accent": "#5ac8fa",
+    "--tva-orange": "#5ac8fa",
+    "--tva-orange-hot": "#7dd3fc",
+    "--tva-amber": "#bae6fd",
+    "--tva-cream": "#f8fafc",
+    "--tva-paper": "#e2e8f0",
+    "--tva-wood": "#1e293b",
+    "--tva-wood-deep": "#0b1220",
+    "--tva-walnut": "#334155",
+    "--tva-ink": "#020617",
+    "--tva-muted": "#94a3b8",
+    "--tva-border": "rgba(255, 255, 255, 0.35)",
+    "--cc-helper-paper": "rgba(255, 255, 255, 0.72)",
+    "--cc-helper-ink": "#0f172a"
+  },
+  "layout": {"chrome": "sidebar", "pinned": true, "show_clock": false, "footer": "hidden"},
+  "helper": {"mode": "docked", "dock": "bottom"},
+  "dashboard": {"arrangement": "launcher", "stats": "drawer"},
+  "supports_crt": false,
+  "assets": {"css": ["skin.css"], "js": []}
+}

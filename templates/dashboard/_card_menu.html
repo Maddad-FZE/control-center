@@ -10,6 +10,9 @@
     {% if service.published_hostname %}
     <a href="{{ service.lan_href }}" class="service-card-dropdown__item" target="_blank" rel="noopener" role="menuitem">Open using IP</a>
     {% endif %}
+    {% if user.is_authenticated %}
+    <button type="button" class="service-card-dropdown__item" data-action="troubleshoot" data-name="{{ service.name }}" role="menuitem">Troubleshoot</button>
+    {% endif %}
     {% if is_admin and service.container_name %}
     <button type="button" class="service-card-dropdown__item" data-action="restart" data-container="{{ service.container_name }}" role="menuitem">Restart service</button>
     {% endif %}

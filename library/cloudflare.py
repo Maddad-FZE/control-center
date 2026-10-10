@@ -405,10 +405,11 @@ def ingress_origin(origin_url, catalog_slug=""):
             catalog_port = int((entry or {}).get("default_port") or 0)
         except (TypeError, ValueError):
             catalog_port = 0
-        if catalog_port:
-            port = catalog_port
-        elif port in (80, 443):
-            return ""
+        if port in (80, 443) or port is None:
+            if catalog_port:
+                port = catalog_port
+            elif port in (80, 443):
+                return ""
     return f"{scheme}://{host}:{int(port)}"
 
 

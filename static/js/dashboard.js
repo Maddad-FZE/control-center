@@ -10,6 +10,7 @@ let offlineMode = false;
 let lastLiveAt = null;
 const BASE_TITLE = document.title.replace(/^\(\d+ DOWN\) /, "");
 const PANEL_STORAGE_KEY = "tva-panel-collapse";
+const STATS_STORAGE_KEY = "tva-stats-collapsed";
 
 function getCsrfToken() {
   const meta = document.querySelector('meta[name="csrf-token"]');
@@ -624,6 +625,44 @@ function savePanelState(state) {
   localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(state));
 }
 
+function loadStatsCollapsed() {
+  try {
+    const stored = localStorage.getItem(STATS_STORAGE_KEY);
+    if (stored === null) return true;
+    return stored !== "0";
+  } catch {
+    return true;
+  }
+}
+
+function applyStatsCollapsed(collapsed) {
+  const stack = el("ops-stack");
+  const toggle = el("stats-toggle");
+  if (!stack) return;
+  stack.classList.toggle("ops-stack--collapsed", collapsed);
+  stack.classList.toggle("ops-stack--expanded", !collapsed);
+  if (toggle) {
+    toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    toggle.title = collapsed ? "Expand Stats" : "Collapse Stats";
+  }
+}
+
+function initStatsRail() {
+  const stack = el("ops-stack");
+  const toggle = el("stats-toggle");
+  if (!stack || !toggle) return;
+  applyStatsCollapsed(loadStatsCollapsed());
+  toggle.addEventListener("click", () => {
+    const collapsed = !stack.classList.contains("ops-stack--collapsed");
+    applyStatsCollapsed(collapsed);
+    try {
+      localStorage.setItem(STATS_STORAGE_KEY, collapsed ? "1" : "0");
+    } catch {
+      /* ignore quota / private mode */
+    }
+  });
+}
+
 function togglePanel(panel, expand) {
   const panelId = panel.dataset.panelId;
   const body = panel.querySelector(".panel-body");
@@ -921,6 +960,7 @@ window.addEventListener("cc-cards-changed", () => {
   applyServiceFilter();
 });
 if (!IS_GUEST) {
+  initStatsRail();
   initCollapsiblePanels();
   initHostOps();
   updateGroupTitles();

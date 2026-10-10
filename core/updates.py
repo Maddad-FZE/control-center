@@ -22,7 +22,8 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from .models import UpdateStatus, log_audit
-from .version import clear_version_cache, get_current_version
+from .models import SiteSettings
+from .version import clear_version_cache, get_current_version, get_git_revision
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ STALE_INSTALL_GRACE_SECONDS = 120
 LOCK_HEARTBEAT_SECONDS = 15
 REQUEST_TIMEOUT = 10
 TAG_PATTERN = re.compile(r"^v?\d+(\.\d+){0,3}$")
+SHA_PATTERN = re.compile(r"^[0-9a-f]{7,40}$")
 REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 NO_RELEASES_MESSAGE = "No releases published yet."
 DOWNLOAD_TIMEOUT = 300
@@ -102,9 +104,20 @@ def is_newer(latest, current):
     return latest_parsed > current_parsed
 
 
+def _sha_prefix_match(left, right):
+    a = (left or "").strip().lower()
+    b = (right or "").strip().lower()
+    if not SHA_PATTERN.match(a) or not SHA_PATTERN.match(b):
+        return False
+    short, long_ = (a, b) if len(a) <= len(b) else (b, a)
+    return long_.startswith(short)
+
+
 def _same_version(left, right):
     a = (left or "").strip().lstrip("vV")
     b = (right or "").strip().lstrip("vV")
+    if _sha_prefix_match(a, b):
+        return True
     return bool(a) and a == b
 
 
@@ -177,28 +190,86 @@ def _fetch_latest_release(repo):
     return None, NO_RELEASES_MESSAGE
 
 
+def _update_channel():
+    channel = (SiteSettings.load().update_channel or "stable").strip()
+    return channel if channel in {"stable", "dev"} else "stable"
+
+
+def _dev_branch():
+    return getattr(settings, "UPDATE_DEV_BRANCH", "main") or "main"
+
+
+def _fetch_branch_tip(repo, branch):
+    """Return (commit payload, error) for the tip of a branch."""
+    headers = _github_headers()
+    url = f"{GITHUB_API_ROOT}/repos/{repo}/commits/{branch}"
+    try:
+        resp, payload = _github_json(url, headers)
+    except requests.RequestException as exc:
+        logger.warning("Dev channel check failed: %s", exc)
+        return None, str(exc)[:255]
+    if resp.status_code == 404:
+        return None, f"Branch {branch} was not found."
+    if not resp.ok:
+        return None, f"GitHub returned {resp.status_code}"
+    if not isinstance(payload, dict) or not (payload.get("sha") or "").strip():
+        return None, "Malformed response from GitHub"
+    return payload, ""
+
+
+def _clear_latest(status, channel, error):
+    status.check_error = error
+    status.latest_channel = channel
+    status.latest_version = ""
+    status.release_url = ""
+    status.release_notes = ""
+    status.release_published_at = None
+    status.last_checked_at = timezone.now()
+    status.save()
+    return status
+
+
 def check_for_update():
-    """Fetch the latest release from GitHub and persist the result."""
+    """Fetch the latest release or branch tip and persist the result."""
     status = UpdateStatus.load()
     repo = settings.GITHUB_REPO
+    channel = _update_channel()
     if not repo:
         status.check_error = "No GitHub repository configured."
+        status.latest_channel = channel
         status.last_checked_at = timezone.now()
         status.save()
         return status
+
+    if channel == "dev":
+        branch = _dev_branch()
+        payload, error = _fetch_branch_tip(repo, branch)
+        if error or not payload:
+            return _clear_latest(status, "dev", error or "Could not read the branch tip.")
+        commit = payload.get("commit") or {}
+        status.latest_version = (payload.get("sha") or "").strip()[:12]
+        status.latest_channel = "dev"
+        status.release_url = payload.get("html_url") or ""
+        status.release_notes = (commit.get("message") or "").strip()
+        committer = commit.get("committer") or {}
+        status.release_published_at = _parse_published_at(committer.get("date"))
+        status.check_error = ""
+        status.last_checked_at = timezone.now()
+        status.save()
+        if update_available(status):
+            logger.info(
+                "Dev update available: %s on %s",
+                status.latest_version,
+                branch,
+            )
+        return clear_stale_install_progress(status)
 
     payload, error = _fetch_latest_release(repo)
     if error or not payload:
-        status.check_error = error or NO_RELEASES_MESSAGE
-        status.latest_version = ""
-        status.release_url = ""
-        status.release_notes = ""
-        status.release_published_at = None
-        status.last_checked_at = timezone.now()
-        status.save()
-        return status
+        return _clear_latest(status, "stable", error or NO_RELEASES_MESSAGE)
 
     status.latest_version = (payload.get("tag_name") or "").strip()[:32]
+    status.latest_channel = "stable"
     status.release_url = payload.get("html_url") or ""
     status.release_notes = (payload.get("body") or "").strip()
     status.release_published_at = _parse_published_at(payload.get("published_at"))
@@ -230,8 +301,24 @@ def maybe_check_for_update(force=False):
         cache.delete(CHECK_LOCK_KEY)
 
 
+def current_revision():
+    """Commit the running tree came from. Survives a tarball install."""
+    stored = (UpdateStatus.load().installed_revision or "").strip()
+    if stored:
+        return stored
+    return get_git_revision()
+
+
 def update_available(status=None):
     status = status or UpdateStatus.load()
+    if (status.latest_channel or "stable") == "dev":
+        latest = (status.latest_version or "").strip().lower()
+        if not SHA_PATTERN.match(latest):
+            return False
+        current = (current_revision() or "").strip().lower()
+        if not current:
+            return True
+        return not _sha_prefix_match(latest, current)
     return is_newer(status.latest_version, get_current_version())
 
 
@@ -535,6 +622,15 @@ def archive_url(repo, tag):
     return f"https://github.com/{repo}/archive/refs/tags/{tag}.tar.gz"
 
 
+def archive_url_for_commit(repo, sha):
+    if not REPO_PATTERN.match(repo or ""):
+        raise ValueError("Invalid GitHub repository.")
+    cleaned = (sha or "").strip().lower()
+    if not SHA_PATTERN.match(cleaned):
+        raise ValueError("Invalid commit.")
+    return f"https://github.com/{repo}/archive/{cleaned}.tar.gz"
+
+
 def _host_allowed(url):
     host = (urlparse(url).hostname or "").lower()
     return host in ALLOWED_ARCHIVE_HOSTS
@@ -644,6 +740,15 @@ def verify_installed_version(dest_root, target_tag):
     return actual
 
 
+def verify_commit_archive(src_root, sha):
+    """GitHub names the archive folder ``<repo>-<full sha>``."""
+    tail = src_root.name.rsplit("-", 1)[-1].lower()
+    expected = (sha or "").strip().lower()
+    if not SHA_PATTERN.match(tail) or not tail.startswith(expected):
+        raise ValueError(f"Archive folder {src_root.name} does not match commit {sha}.")
+    return tail
+
+
 def _fail_install(status, log, target_tag, username, label):
     _finish(status, UpdateStatus.InstallState.FAILED, log)
     log_audit(
@@ -654,8 +759,9 @@ def _fail_install(status, log, target_tag, username, label):
     _notify(f"Update to {target_tag} failed", label)
 
 
-def run_install(target_tag, username=""):
-    """Apply a release. Called from `manage.py install_update`, not the web worker."""
+def run_install(target_tag, username="", ref_type="tag"):
+    """Apply a release or commit. Called from `manage.py install_update`, not the web worker."""
+    ref_type = "commit" if ref_type == "commit" else "tag"
     dest_root = Path(settings.BASE_DIR)
     base_dir = str(dest_root)
     acquire_install_lock()
@@ -680,12 +786,16 @@ def run_install(target_tag, username=""):
             _fail_install(status, log, target_tag, username, "Prepare")
             return
         try:
-            url = archive_url(repo, target_tag)
+            if ref_type == "commit":
+                url = archive_url_for_commit(repo, target_tag)
+            else:
+                url = archive_url(repo, target_tag)
         except ValueError as exc:
             log.append(str(exc))
             _fail_install(status, log, target_tag, username, "Prepare")
             return
 
+        installed_sha = ""
         with tempfile.TemporaryDirectory(prefix="cc-update-") as tmp:
             tmp_path = Path(tmp)
             archive_path = tmp_path / "release.tar.gz"
@@ -702,9 +812,12 @@ def run_install(target_tag, username=""):
             _progress(status, log, 3, "Apply")
             try:
                 src_root = extract_release_tarball(archive_path, extract_dir)
+                if ref_type == "commit":
+                    installed_sha = verify_commit_archive(src_root, target_tag)
                 apply_release_tree(src_root, dest_root, log)
-                installed = verify_installed_version(dest_root, target_tag)
-                log.append(f"Release tree is {installed}")
+                if ref_type != "commit":
+                    installed = verify_installed_version(dest_root, target_tag)
+                    log.append(f"Release tree is {installed}")
             except Exception as exc:  # noqa: BLE001 - surface apply errors in the log
                 log.append(f"Apply failed: {exc}")
                 _fail_install(status, log, target_tag, username, "Apply")
@@ -737,7 +850,12 @@ def run_install(target_tag, username=""):
         _progress(status, log, 7, "Restart")
         clear_version_cache()
         new_version = get_current_version()
-        log.append(f"Updated to {new_version}")
+        if ref_type == "commit" and installed_sha:
+            log.append(
+                f"Updated to {_dev_branch()}@{installed_sha[:12]} (VERSION {new_version})"
+            )
+        else:
+            log.append(f"Updated to {new_version}")
         log.append("Saving status, then reloading the app…")
         _finish(
             status,
@@ -746,6 +864,9 @@ def run_install(target_tag, username=""):
             installed_version=new_version,
             restart_required=False,
         )
+        if installed_sha:
+            status.installed_revision = installed_sha
+            status.save(update_fields=["installed_revision"])
         log_audit(
             "admin",
             message=f"Installed update {target_tag}",
@@ -775,15 +896,19 @@ def _notify(title, message):
         logger.debug("Update notification failed: %s", exc)
 
 
-def start_install(target_tag, username=""):
+def start_install(target_tag, username="", ref_type="tag"):
     """Queue an update in a detached process so gunicorn can keep serving.
 
     Returns ``(started, message)``.
     """
+    ref_type = "commit" if ref_type == "commit" else "tag"
     recover_stale_install()
     if not settings.UPDATES_ALLOW_INSTALL:
         return False, "In-app updates are disabled."
-    if not target_tag or not TAG_PATTERN.match(target_tag):
+    if ref_type == "commit":
+        if not SHA_PATTERN.match((target_tag or "").strip().lower()):
+            return False, "Invalid commit."
+    elif not target_tag or not TAG_PATTERN.match(target_tag):
         return False, "Invalid release tag."
     if not cache.add(INSTALL_LOCK_KEY, "1", INSTALL_LOCK_TTL):
         return False, "An update is already running."
@@ -808,7 +933,16 @@ def start_install(target_tag, username=""):
     status.save()
 
     manage = Path(settings.BASE_DIR) / "manage.py"
-    args = [sys.executable, str(manage), "install_update", target_tag, "--username", username or ""]
+    args = [
+        sys.executable,
+        str(manage),
+        "install_update",
+        target_tag,
+        "--ref-type",
+        ref_type,
+        "--username",
+        username or "",
+    ]
     try:
         proc = subprocess.Popen(
             args,
@@ -873,4 +1007,8 @@ def status_payload(status=None):
         ),
         "install_steps": [{"id": sid, "label": label} for sid, label in INSTALL_STEPS],
         "install_percent": percent,
+        "channel": _update_channel(),
+        "latest_channel": status.latest_channel or "stable",
+        "current_revision": current_revision(),
+        "dev_branch": _dev_branch(),
     }

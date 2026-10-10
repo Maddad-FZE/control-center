@@ -342,4 +342,30 @@
       pollInstall(slug);
     }
   });
+
+  const refreshBtn = document.getElementById("catalog-refresh-btn");
+  const refreshStatus = document.getElementById("catalog-refresh-status");
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", async () => {
+      refreshBtn.disabled = true;
+      if (refreshStatus) refreshStatus.textContent = "Updating…";
+      try {
+        const resp = await fetch("/library/api/catalog/refresh/", {
+          method: "POST",
+          headers: {
+            "X-CSRFToken": getCsrfToken(),
+            "Content-Type": "application/json",
+          },
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.ok) {
+          throw new Error(data.error || "Update failed");
+        }
+        window.location.reload();
+      } catch (err) {
+        refreshBtn.disabled = false;
+        if (refreshStatus) refreshStatus.textContent = err.message || "Update failed";
+      }
+    });
+  }
 })();

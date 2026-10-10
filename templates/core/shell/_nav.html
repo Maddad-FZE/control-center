@@ -1,0 +1,7 @@
+{% if user.is_authenticated %}
+<nav class="nav" aria-label="Main navigation">
+  {% for app in nav_apps %}
+    <a href="{% url app.url_name %}" {% if request.resolver_match.url_name == app.url_name %}class="active"{% endif %}>{{ app.name }}</a>
+  {% endfor %}
+</nav>
+{% endif %}

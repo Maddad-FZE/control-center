@@ -100,6 +100,15 @@
         const action = actionBtn.dataset.action;
         closeAllMenus();
 
+        if (action === "troubleshoot") {
+          if (typeof window.ccOpenServiceTroubleshoot === "function") {
+            window.ccOpenServiceTroubleshoot({
+              serviceId,
+              name: actionBtn.dataset.name || "",
+            });
+          }
+        }
+
         if (action === "visibility") {
           try {
             const resp = await fetch(`/api/services/${serviceId}/visibility/`, {

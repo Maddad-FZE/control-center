@@ -256,6 +256,57 @@ def restart_container(name):
     return True, f"Restarted {name}."
 
 
+def start_container(name):
+    name = (name or "").strip().lstrip("/")
+    if not CONTAINER_NAME_RE.match(name):
+        return False, "Invalid container name."
+    try:
+        client = _docker_client()
+        container = client.containers.get(name)
+        container.start()
+    except docker.errors.NotFound:
+        return False, "Container not found."
+    except Exception as exc:
+        logger.warning("Container start failed for %s: %s", name, exc)
+        return False, str(exc)[:200]
+    cache.delete("docker:containers")
+    return True, f"Started {name}."
+
+
+def unpause_container(name):
+    name = (name or "").strip().lstrip("/")
+    if not CONTAINER_NAME_RE.match(name):
+        return False, "Invalid container name."
+    try:
+        client = _docker_client()
+        container = client.containers.get(name)
+        container.unpause()
+    except docker.errors.NotFound:
+        return False, "Container not found."
+    except Exception as exc:
+        logger.warning("Container unpause failed for %s: %s", name, exc)
+        return False, str(exc)[:200]
+    cache.delete("docker:containers")
+    return True, f"Unpaused {name}."
+
+
+def restore_restart_policy(name, policy="unless-stopped"):
+    name = (name or "").strip().lstrip("/")
+    if not CONTAINER_NAME_RE.match(name):
+        return False, "Invalid container name."
+    try:
+        client = _docker_client()
+        container = client.containers.get(name)
+        container.update(restart_policy={"Name": policy})
+    except docker.errors.NotFound:
+        return False, "Container not found."
+    except Exception as exc:
+        logger.warning("Restart policy update failed for %s: %s", name, exc)
+        return False, str(exc)[:200]
+    cache.delete("docker:containers")
+    return True, f"Set restart policy on {name} to {policy}."
+
+
 def _spawn_command(command):
     try:
         if isinstance(command, (list, tuple)):

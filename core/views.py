@@ -12,15 +12,15 @@ from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db.models import Q
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.decorators import method_decorator
 from django.views.decorators.http import require_GET, require_POST
 
 from . import updates
-from .forms import AppearanceForm, ProfileForm, SetupAdminForm, SiteSettingsForm
-from .models import AuditEvent, SettingsNote, UpdateStatus, log_audit
+from .forms import ProfileForm, SetupAdminForm, SiteSettingsForm, SiteThemeForm
+from .models import AuditEvent, SettingsNote, SiteSettings, UpdateStatus, log_audit
 from .notes import sanitize_note_html
 from .site_settings import clear_site_settings_cache, get_site_settings, update_weather_coordinates
 from .totp import twofa_enabled
@@ -88,6 +88,7 @@ def setup_view(request):
                     form.cleaned_data.get("weather_location") or ""
                 ).strip()
                 site.wizard_enabled = bool(form.cleaned_data.get("wizard_enabled"))
+                site.default_theme = form.cleaned_data.get("theme") or "wood"
                 if form.cleaned_data.get("logo"):
                     site.logo = form.cleaned_data["logo"]
                 if form.cleaned_data.get("favicon"):
@@ -206,9 +207,8 @@ def settings_view(request):
         messages.info(request, "Settings are available to admins only.")
         return redirect("profile")
 
-    profile = request.user.profile
-    site_settings = get_site_settings()
-    appearance_form = AppearanceForm(instance=profile)
+    site_settings = SiteSettings.load()
+    appearance_form = SiteThemeForm(site_theme=site_settings.default_theme)
     site_form = SiteSettingsForm(instance=site_settings)
     users = User.objects.order_by("username").select_related("profile")
     active_section = request.GET.get("section", "appearance")
@@ -217,10 +217,28 @@ def settings_view(request):
         form_type = request.POST.get("form")
         active_section = request.POST.get("section", active_section)
         if form_type == "appearance":
-            appearance_form = AppearanceForm(request.POST, instance=profile)
+            if not request.user.is_superuser:
+                return HttpResponseForbidden("Only an admin can change the site theme.")
+            appearance_form = SiteThemeForm(
+                request.POST, site_theme=site_settings.default_theme
+            )
             if appearance_form.is_valid():
-                appearance_form.save()
-                messages.success(request, "Appearance saved.")
+                slug = appearance_form.cleaned_data["theme"]
+                if request.POST.get("action") == "preview":
+                    request.session["theme_preview"] = slug
+                    messages.success(request, "Previewing this theme for you only.")
+                else:
+                    site_settings.default_theme = slug
+                    site_settings.save(update_fields=["default_theme"])
+                    request.session.pop("theme_preview", None)
+                    clear_site_settings_cache()
+                    log_audit(
+                        "admin",
+                        request=request,
+                        user=request.user,
+                        message=f"Site theme set to {slug}",
+                    )
+                    messages.success(request, "Theme applied for everyone.")
                 return redirect(reverse("settings") + "?section=appearance")
         elif form_type == "site":
             site_form = SiteSettingsForm(
@@ -233,6 +251,31 @@ def settings_view(request):
                 clear_site_settings_cache()
                 messages.success(request, "Site settings saved.")
                 return redirect(reverse("settings") + "?section=site")
+        elif form_type == "update_channel":
+            channel = (request.POST.get("update_channel") or "").strip()
+            if channel not in {"stable", "dev"}:
+                messages.error(request, "Unknown update channel.")
+                return redirect(reverse("settings") + "?section=updates")
+            site_settings.update_channel = channel
+            site_settings.save(update_fields=["update_channel"])
+            clear_site_settings_cache()
+            status = UpdateStatus.load()
+            status.latest_version = ""
+            status.latest_channel = channel
+            status.release_url = ""
+            status.release_notes = ""
+            status.release_published_at = None
+            status.last_checked_at = None
+            status.check_error = ""
+            status.save()
+            log_audit(
+                "admin",
+                request=request,
+                user=request.user,
+                message=f"Update channel set to {channel}",
+            )
+            messages.success(request, "Update channel saved.")
+            return redirect(reverse("settings") + "?section=updates")
 
     platform = {
         "site_title": (site_settings.title or "").strip() or django_settings.SITE_TITLE,
@@ -258,6 +301,9 @@ def settings_view(request):
         "github_repo": django_settings.GITHUB_REPO,
         "install_allowed": django_settings.UPDATES_ALLOW_INSTALL,
         "check_interval_hours": django_settings.UPDATE_CHECK_INTERVAL_HOURS,
+        "update_channel": site_settings.update_channel or "stable",
+        "dev_branch": django_settings.UPDATE_DEV_BRANCH,
+        "current_revision": updates.current_revision(),
         "settings_note": SettingsNote.load(),
         "console_enabled": django_settings.CONSOLE_ENABLED,
         "console_host_enabled": django_settings.CONSOLE_HOST_ENABLED,
@@ -321,8 +367,9 @@ def api_update_install(request):
     status = UpdateStatus.load()
     if not updates.update_available(status):
         return JsonResponse({"error": "Already up to date."}, status=400)
+    ref_type = "commit" if status.latest_channel == "dev" else "tag"
     started, message = updates.start_install(
-        status.latest_version, username=request.user.username
+        status.latest_version, username=request.user.username, ref_type=ref_type
     )
     if not started:
         return JsonResponse({"error": message}, status=409)

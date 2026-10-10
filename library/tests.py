@@ -730,6 +730,162 @@ class CatalogApiTests(TestCase):
         items = resp.json()["items"]
         self.assertTrue(any(row["slug"] == "jellyfin" for row in items))
 
+    def test_apply_keeps_manual_and_installed_apps(self):
+        from unittest.mock import patch
+
+        from library.catalog_store import apply_catalog
+        from library.models import CatalogItem, InstalledService
+
+        CatalogItem.objects.filter(slug="jellyfin").update(name="Old Jellyfin")
+        InstalledService.objects.create(
+            slug="pihole",
+            container_name="cc-pihole",
+            host_port=80,
+            status="running",
+        )
+        CatalogItem.objects.create(
+            slug="my-app",
+            name="Mine",
+            category="Custom",
+            compose="services:\n  app:\n    image: demo:latest\n",
+            default_port=9,
+            is_builtin=False,
+        )
+        apps = [
+            {
+                "slug": "jellyfin",
+                "name": "Jellyfin Remote",
+                "tagline": "Media",
+                "description": "Updated blurb",
+                "category": "Media",
+                "repo": "jellyfin/jellyfin",
+                "website": "https://jellyfin.org/",
+                "icon": "",
+                "default_port": 8096,
+                "container_port": 0,
+                "path": "/",
+                "widget_type": "none",
+                "compose": "services:\n  jellyfin:\n    image: jellyfin/jellyfin\n",
+                "install_options": "",
+                "is_builtin": True,
+                "sort_order": 1,
+            },
+            {
+                "slug": "my-app",
+                "name": "Remote copy",
+                "tagline": "",
+                "description": "should not win",
+                "category": "Custom",
+                "repo": "example/my-app",
+                "website": "",
+                "icon": "",
+                "default_port": 9,
+                "container_port": 0,
+                "path": "/",
+                "widget_type": "none",
+                "compose": "services:\n  app:\n    image: other:latest\n",
+                "install_options": "",
+                "is_builtin": True,
+                "sort_order": 2,
+            },
+            {
+                "slug": "remote-only",
+                "name": "Remote Only",
+                "tagline": "",
+                "description": "New",
+                "category": "Tools",
+                "repo": "example/remote",
+                "website": "",
+                "icon": "",
+                "default_port": 8080,
+                "container_port": 0,
+                "path": "/",
+                "widget_type": "none",
+                "compose": "services:\n  app:\n    image: remote:latest\n",
+                "install_options": "",
+                "is_builtin": True,
+                "sort_order": 3,
+            },
+        ]
+        with patch("library.catalog_store._slug_has_data_volumes", return_value=False):
+            counts = apply_catalog(apps)
+        self.assertEqual(CatalogItem.objects.get(slug="jellyfin").name, "Jellyfin Remote")
+        self.assertFalse(CatalogItem.objects.filter(slug="glances").exists())
+        self.assertTrue(CatalogItem.objects.filter(slug="pihole").exists())
+        mine = CatalogItem.objects.get(slug="my-app")
+        self.assertEqual(mine.name, "Mine")
+        self.assertFalse(mine.is_builtin)
+        self.assertTrue(CatalogItem.objects.filter(slug="remote-only", is_builtin=True).exists())
+        self.assertGreaterEqual(counts["updated"], 1)
+        self.assertEqual(counts["added"], 1)
+        self.assertGreaterEqual(counts["removed"], 1)
+        self.assertEqual(counts["kept_manual"], 1)
+        self.assertGreaterEqual(counts["kept_installed"], 1)
+
+    def test_fetch_rejects_bad_host_schema_and_invalid_app(self):
+        from unittest.mock import MagicMock, patch
+
+        from library.catalog_store import fetch_catalog
+        from library.models import CatalogItem
+
+        before = CatalogItem.objects.count()
+        apps, error = fetch_catalog("https://evil.example/apps.json")
+        self.assertIsNone(apps)
+        self.assertIn("raw.githubusercontent.com", error)
+
+        def fake_response(payload):
+            resp = MagicMock()
+            resp.ok = True
+            resp.status_code = 200
+            resp.url = "https://raw.githubusercontent.com/Maddad-FZE/control-center/main/catalog/apps.json"
+            resp.content = b"{}"
+            resp.json.return_value = payload
+            return resp
+
+        url = "https://raw.githubusercontent.com/Maddad-FZE/control-center/main/catalog/apps.json"
+        with patch("library.catalog_store.requests.get", return_value=fake_response({"schema": 2, "apps": []})):
+            apps, error = fetch_catalog(url)
+        self.assertIsNone(apps)
+        self.assertIn("schema", error)
+        with patch(
+            "library.catalog_store.requests.get",
+            return_value=fake_response(
+                {
+                    "schema": 1,
+                    "apps": [
+                        {
+                            "slug": "nope",
+                            "name": "",
+                            "category": "Tools",
+                            "compose": "services:\n  a:\n    image: a\n",
+                            "default_port": 80,
+                        }
+                    ],
+                }
+            ),
+        ):
+            apps, error = fetch_catalog(url)
+        self.assertIsNone(apps)
+        self.assertIn("Name", error)
+        self.assertEqual(CatalogItem.objects.count(), before)
+
+    def test_empty_database_seeds_from_bundled_file(self):
+        from library.catalog_store import ensure_catalog_seeded
+        from library.models import CatalogItem
+
+        CatalogItem.objects.all().delete()
+        ensure_catalog_seeded()
+        jellyfin = CatalogItem.objects.get(slug="jellyfin")
+        self.assertTrue(jellyfin.is_builtin)
+        self.assertTrue(jellyfin.description)
+        self.assertIn("image:", jellyfin.compose)
+
+    def test_member_cannot_refresh_catalog(self):
+        member = User.objects.create_user("member", password="x")
+        self.client.force_login(member)
+        resp = self.client.post(reverse("api_catalog_refresh"))
+        self.assertEqual(resp.status_code, 403)
+
     def test_create_update_and_delete_custom_entry(self):
         compose = (
             "services:\n  demo:\n    image: demo:latest\n    ports:\n"
@@ -862,16 +1018,14 @@ class NewCatalogAppTests(TestCase):
             self.assertIsNotNone(entry, slug)
             self.assertEqual(entry["category"], category, slug)
 
-    def test_sync_missing_builtins_inserts_new_slugs(self):
-        from library.catalog_store import ensure_catalog_seeded, sync_missing_builtins
+    def test_page_load_does_not_restore_deleted_builtins(self):
+        from library.catalog_store import ensure_catalog_seeded
         from library.models import CatalogItem
 
         ensure_catalog_seeded()
         CatalogItem.objects.filter(slug="glances").delete()
+        ensure_catalog_seeded()
         self.assertFalse(CatalogItem.objects.filter(slug="glances").exists())
-        added = sync_missing_builtins()
-        self.assertGreaterEqual(added, 1)
-        self.assertTrue(CatalogItem.objects.filter(slug="glances").exists())
 
     def test_glances_worker_passes_pid_mode(self):
         from unittest.mock import MagicMock, patch
@@ -896,6 +1050,76 @@ class NewCatalogAppTests(TestCase):
         kwargs = client.containers.run.call_args.kwargs
         self.assertEqual(kwargs["pid_mode"], "host")
         self.assertEqual(kwargs["name"], "cc-glances")
+
+
+class ActualBudgetInstallTests(TestCase):
+    def test_spec_sets_listen_port(self):
+        spec = get_docker_spec(get_service_by_slug("actual-budget"))
+        self.assertEqual(spec["container_port"], 5006)
+        self.assertEqual(spec["env"].get("ACTUAL_PORT"), "5006")
+        self.assertEqual(spec["image"], "actualbudget/actual-server:latest")
+
+    def test_worker_sets_port_and_waits_for_listen(self):
+        from unittest.mock import MagicMock, patch
+
+        import docker as docker_sdk
+        from dashboard.models import Service
+        from library.installer import _install_worker
+        from library.models import InstalledService
+
+        InstalledService.objects.create(
+            slug="actual-budget",
+            container_name="cc-actual-budget",
+            status=InstalledService.Status.INSTALLING,
+        )
+        client = MagicMock()
+        client.containers.list.return_value = []
+        client.containers.get.side_effect = docker_sdk.errors.NotFound("missing")
+        container = MagicMock()
+        container.status = "running"
+        container.logs.return_value = b"Listening on :::5006...\n"
+        client.containers.run.return_value = container
+        with patch("library.installer.get_docker_client", return_value=client), patch(
+            "library.installer.pick_host_port", return_value=5006
+        ), patch("library.installer._image_version", return_value="latest"):
+            _install_worker("actual-budget")
+        kwargs = client.containers.run.call_args.kwargs
+        self.assertEqual(kwargs["name"], "cc-actual-budget")
+        self.assertEqual(kwargs["environment"]["ACTUAL_PORT"], "5006")
+        self.assertEqual(kwargs["environment"]["ACTUAL_HOSTNAME"], "::")
+        self.assertEqual(kwargs["ports"], {"5006/tcp": 5006})
+        container.reload.assert_called()
+        row = InstalledService.objects.get(slug="actual-budget")
+        self.assertEqual(row.status, InstalledService.Status.RUNNING)
+        self.assertTrue(Service.objects.filter(catalog_slug="actual-budget").exists())
+
+    def test_worker_surfaces_container_logs_when_process_exits(self):
+        from unittest.mock import MagicMock, patch
+
+        import docker as docker_sdk
+        from library.installer import _install_worker
+        from library.models import InstalledService
+
+        InstalledService.objects.create(
+            slug="actual-budget",
+            container_name="cc-actual-budget",
+            status=InstalledService.Status.INSTALLING,
+        )
+        client = MagicMock()
+        client.containers.list.return_value = []
+        client.containers.get.side_effect = docker_sdk.errors.NotFound("missing")
+        container = MagicMock()
+        container.status = "exited"
+        container.logs.return_value = b"EACCES: permission denied, open '/data/.migrate'\n"
+        client.containers.run.return_value = container
+        with patch("library.installer.get_docker_client", return_value=client), patch(
+            "library.installer.pick_host_port", return_value=5006
+        ):
+            _install_worker("actual-budget")
+        row = InstalledService.objects.get(slug="actual-budget")
+        self.assertEqual(row.status, InstalledService.Status.ERROR)
+        self.assertIn("EACCES", row.error)
+        self.assertIn("exited", row.error.lower())
 
 
 class BookstackInstallTests(TestCase):
@@ -1150,3 +1374,79 @@ class SecuroInstallTests(TestCase):
         client.networks.get.assert_called_with("cc-securo-net")
         net.remove.assert_called()
         self.assertEqual(message, "Uninstalled")
+
+
+class DebugPortReconcileTests(TestCase):
+    def test_detect_imports_get_docker_spec(self):
+        import library.detect as detect
+        from library.catalog import get_docker_spec
+
+        self.assertIs(detect.get_docker_spec, get_docker_spec)
+
+    def test_apply_address_sync_preserves_custom_widget_url(self):
+        from dashboard.models import Service, ServiceCategory
+        from library.debug_ports import AddressSnapshot, apply_address_sync
+        from library.models import InstalledService
+
+        cat = ServiceCategory.objects.create(name="Apps")
+        service = Service.objects.create(
+            category=cat,
+            name="Jellyfin",
+            host="192.168.0.40",
+            port=8096,
+            path="/",
+            href="http://192.168.0.40:8096/",
+            catalog_slug="jellyfin",
+            enabled=True,
+        )
+        Service.objects.filter(pk=service.pk).update(
+            widget_url="https://metrics.example.com/api",
+            href="http://192.168.0.40:8096/",
+            health_check_url="http://192.168.0.40:8096/",
+        )
+        service.refresh_from_db()
+        InstalledService.objects.create(
+            slug="jellyfin",
+            container_name="cc-jellyfin",
+            host_port=8096,
+            status=InstalledService.Status.RUNNING,
+        )
+        snap = AddressSnapshot(
+            host="192.168.0.40",
+            port=9096,
+            source="docker",
+            confidence="high",
+        )
+        result = apply_address_sync(service, snap, update_kuma=False, update_tunnel=False)
+        service.refresh_from_db()
+        self.assertTrue(result.ok)
+        self.assertEqual(service.port, 9096)
+        self.assertEqual(service.href, "http://192.168.0.40:9096/")
+        self.assertEqual(service.widget_url, "https://metrics.example.com/api")
+        self.assertEqual(
+            InstalledService.objects.get(slug="jellyfin").host_port,
+            9096,
+        )
+
+    def test_ingress_origin_keeps_non_default_port_on_public_host(self):
+        from core.models import SiteSettings
+        from library.cloudflare import ingress_origin
+
+        site = SiteSettings.load()
+        site.cf_zone_name = "thezaidan.family"
+        site.services_host = "192.168.0.40"
+        site.save()
+        self.assertEqual(
+            ingress_origin(
+                "http://jellyfin.thezaidan.family:9999/",
+                catalog_slug="jellyfin",
+            ),
+            "http://192.168.0.40:9999",
+        )
+        self.assertNotEqual(
+            ingress_origin(
+                "http://jellyfin.thezaidan.family:9999/",
+                catalog_slug="jellyfin",
+            ),
+            "http://192.168.0.40:8096",
+        )

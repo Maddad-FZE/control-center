@@ -54,7 +54,7 @@ Mark views public with `@login_not_required` where needed.
 
 ## Theme
 
-Design-only retro palette (no roleplay copy). CSS variables use `--tva-*` names internally. CRT overlay is user-toggleable.
+One theme for the whole site, stored on `SiteSettings.default_theme`. First-run setup writes it. A superuser changes it in Settings → Appearance. Packs live in `themes/<slug>/` (shipped) and `data/themes/<slug>/` (kept across updates). See `docs/themes/README.md`. `--tva-*` names remain; `--cc-*` aliases them. CRT is a site setting.
 
 ## Database
 

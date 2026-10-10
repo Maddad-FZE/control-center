@@ -1,0 +1,12 @@
+{% load static %}
+<div class="brand">
+  {% if site_logo_url %}
+  <img class="brand-logo" src="{{ site_logo_url }}" alt="Logo">
+  {% else %}
+  <img class="brand-logo" src="{% static 'img/logo.png' %}" alt="Logo" onerror="this.style.display='none'">
+  {% endif %}
+  <div class="brand-copy">
+    <h1>{{ site_title }}</h1>
+    {% if site_tagline %}<p class="brand-tagline">{{ site_tagline }}</p>{% endif %}
+  </div>
+</div>

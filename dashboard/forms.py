@@ -2,7 +2,7 @@ from urllib.parse import urlparse
 
 from django import forms
 
-from library.catalog import LIBRARY_DESCRIPTIONS, all_services, get_service_by_slug
+from library.catalog import all_services, get_service_by_slug
 from library.icons import icon_url_for_entry
 from library.models import InstalledService
 
@@ -97,7 +97,7 @@ def _meta_for_entry(entry, installed):
         "custom": False,
         "slug": slug,
         "name": (entry or {}).get("name") or slug,
-        "description": LIBRARY_DESCRIPTIONS.get(slug) or (entry or {}).get("tagline", ""),
+        "description": (entry or {}).get("description") or (entry or {}).get("tagline", ""),
         "icon": icon_url_for_entry(slug, (entry or {}).get("icon", "")),
         "category_id": category.id if category else "",
         "path": (entry or {}).get("path", "/") or "/",

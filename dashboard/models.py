@@ -152,18 +152,16 @@ class Service(models.Model):
 
     @property
     def display_description(self):
-        from library.catalog import LIBRARY_DESCRIPTIONS, all_services, get_service_by_slug
+        from library.catalog import all_services, get_service_by_slug
 
         if self.catalog_slug:
-            blurb = LIBRARY_DESCRIPTIONS.get(self.catalog_slug)
-            if blurb:
-                return blurb
+            entry = get_service_by_slug(self.catalog_slug)
+            if entry and entry.get("description"):
+                return entry["description"]
         name = (self.name or "").strip().lower()
         for entry in all_services():
-            if entry["name"].lower() == name:
-                blurb = LIBRARY_DESCRIPTIONS.get(entry["slug"])
-                if blurb:
-                    return blurb
+            if entry["name"].lower() == name and entry.get("description"):
+                return entry["description"]
         return self.description
 
 
@@ -223,3 +221,35 @@ class Alert(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class DebugIncident(models.Model):
+    class Status(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        RUNNING = "running", "Running"
+        HEALTHY = "healthy", "Healthy"
+        NEEDS_ACTION = "needs_action", "Needs action"
+        MANUAL_ONLY = "manual_only", "Manual only"
+        FAILED = "failed", "Failed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    incident_id = models.CharField(max_length=32, unique=True, db_index=True)
+    service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name="debug_incidents")
+    actor = models.ForeignKey(
+        "auth.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="debug_incidents"
+    )
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.QUEUED)
+    findings_json = models.JSONField(default=list, blank=True)
+    actions_json = models.JSONField(default=list, blank=True)
+    snapshot_json = models.JSONField(default=dict, blank=True)
+    report_text = models.TextField(blank=True)
+    cancel_requested = models.BooleanField(default=False)
+    repair_jobs = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.incident_id

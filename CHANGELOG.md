@@ -9,12 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Site-wide theme packs. Wood stays the default. Settings → Appearance sets the theme for everyone, with a session preview
+- New builtin apps ship in `catalog/apps.json`. Library → **Update list** reads `Maddad-FZE/alef-app-catalog` and leaves Settings → Add app entries, plus any installed app the file no longer lists
+- Settings → Updates channel: Stable stays on GitHub releases; Dev follows every commit on `UPDATE_DEV_BRANCH`
+- Card menu **Troubleshoot**: check a service, offer one-button repairs for admins, and copy a redacted technical report
+- Dashboard Stats starts collapsed to a right rail after sign-in; Tracked, Apps, and Misc stay expanded
 - Library apps: Glances (host process list), Linkding, Stirling-PDF, IT-Tools, Wallos, Kavita, Changedetection.io, Open WebUI, BookStack, Odysseus, and Securo
 - BookStack install creates a MariaDB sidecar and sets the public URL
 - Odysseus install builds from Git and starts Chroma, SearXNG, and ntfy
 - Securo install starts frontend, backend, Postgres, Redis, and Celery on a private network
 - Library installer honors `pid: host` and `extra_hosts` from compose
-- New builtin catalog slugs appear on boards that already have a seeded catalog
+
+### Fixed
+
+- Wood dashboard keeps the footer at a fixed height and scrolls Stats inside the page. Merlin sits in his dock
+- Actual Budget install sets the listen port, waits until the server is up, and falls back to GHCR if Docker Hub pull fails
 
 ## [0.4.0] - 2026-09-07
 

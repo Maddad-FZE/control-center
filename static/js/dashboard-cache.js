@@ -37,5 +37,14 @@
       });
       return out;
     },
+    clear() {
+      try {
+        Object.keys(localStorage)
+          .filter((key) => key.startsWith(CACHE_PREFIX))
+          .forEach((key) => localStorage.removeItem(key));
+      } catch (e) {
+        console.warn("dashboard cache clear failed", e);
+      }
+    },
   };
 })();

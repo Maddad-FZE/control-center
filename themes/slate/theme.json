@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "slug": "slate",
+  "name": "Cool Slate",
+  "extends": "wood",
+  "tokens": {
+    "--tva-orange": "#94a3b8",
+    "--tva-orange-hot": "#cbd5e1",
+    "--tva-amber": "#e2e8f0",
+    "--tva-cream": "#f1f5f9",
+    "--tva-paper": "#cbd5e1",
+    "--tva-wood": "#334155",
+    "--tva-wood-deep": "#0f172a",
+    "--tva-walnut": "#475569",
+    "--tva-ink": "#020617",
+    "--tva-muted": "#94a3b8",
+    "--tva-border": "#64748b",
+    "--tva-shadow": "rgba(2, 6, 23, 0.55)",
+    "--phosphor": "rgba(148, 163, 184, 0.45)",
+    "--phosphor-soft": "rgba(226, 232, 240, 0.2)"
+  },
+  "supports_crt": true,
+  "assets": {"css": ["skin.css"], "js": []}
+}

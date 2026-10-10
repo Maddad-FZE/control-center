@@ -15,13 +15,14 @@ import urllib.request
 
 import docker
 from django.conf import settings
+from django.db import close_old_connections
 
 from core.models import SiteSettings
 from core.site_settings import clear_site_settings_cache, get_site_settings
 from dashboard.models import Service, ServiceCategory
 from dashboard.presets import apply_preset_metrics
 
-from .catalog import LIBRARY_DESCRIPTIONS, get_docker_spec, get_service_by_slug
+from .catalog import get_docker_spec, get_service_by_slug
 from .icons import icon_url_for_entry
 from .models import InstalledService
 
@@ -78,6 +79,15 @@ SECURO_KNOWLEDGE_VOLUME = "cc-securo-agent-knowledge"
 SECURO_EMBEDDINGS_VOLUME = "cc-securo-agent-embeddings"
 REDIS_WAIT_SECONDS = 60
 
+ACTUAL_SLUG = "actual-budget"
+ACTUAL_IMAGES = (
+    "actualbudget/actual-server:latest",
+    "docker.io/actualbudget/actual-server:latest",
+    "ghcr.io/actualbudget/actual-server:latest",
+)
+ACTUAL_READY_SECONDS = 90
+DOCKER_PULL_TIMEOUT = 600
+
 
 def _clear_uptime_cache_if_kuma(slug):
     if slug != "uptime-kuma":
@@ -89,6 +99,30 @@ def _clear_uptime_cache_if_kuma(slug):
 
 TUNNEL_SLUG = "cloudflare-tunnel"
 NO_CARD_ON_INSTALL = frozenset({"uptime-kuma", TUNNEL_SLUG})
+
+
+def stack_restart_order(slug):
+    """Dependency-first container names for known managed stacks."""
+    slug = (slug or "").strip()
+    if slug == NEXTCLOUD_SLUG:
+        return [NEXTCLOUD_DB_CONTAINER, f"cc-{NEXTCLOUD_SLUG}"]
+    if slug == BOOKSTACK_SLUG:
+        return [BOOKSTACK_DB_CONTAINER, f"cc-{BOOKSTACK_SLUG}"]
+    if slug == ODYSSEUS_SLUG:
+        return list(ODYSSEUS_SIDECARS) + [f"cc-{ODYSSEUS_SLUG}"]
+    if slug == SECURO_SLUG:
+        return [
+            SECURO_DB,
+            SECURO_REDIS,
+            SECURO_BACKEND,
+            SECURO_WORKER,
+            SECURO_BEAT,
+            f"cc-{SECURO_SLUG}",
+        ]
+    if slug:
+        return [f"cc-{slug}"]
+    return []
+
 
 PRIVATE_NETS = (
     ipaddress.ip_network("10.0.0.0/8"),
@@ -103,8 +137,74 @@ DOCKER_NETS = (
 )
 
 
-def get_docker_client():
-    return docker.DockerClient(base_url=settings.DOCKER_HOST)
+def get_docker_client(timeout=None):
+    kwargs = {"base_url": settings.DOCKER_HOST}
+    if timeout is not None:
+        kwargs["timeout"] = timeout
+    return docker.DockerClient(**kwargs)
+
+
+def _container_log_tail(container, lines=80):
+    try:
+        raw = container.logs(tail=lines)
+    except (docker.errors.APIError, docker.errors.NotFound, TypeError, AttributeError):
+        return ""
+    if isinstance(raw, bytes):
+        return raw.decode("utf-8", errors="replace").strip()
+    return str(raw or "").strip()
+
+
+def _pull_image(client, image, fallbacks=()):
+    candidates = []
+    for name in (image, *fallbacks):
+        if name and name not in candidates:
+            candidates.append(name)
+    errors = []
+    for name in candidates:
+        try:
+            client.images.pull(name)
+            return name
+        except Exception as exc:  # noqa: BLE001 - try the next tag or a local copy
+            errors.append(f"{name}: {exc}")
+            try:
+                client.images.get(name)
+                logger.warning("Using local image %s after pull failed: %s", name, exc)
+                return name
+            except docker.errors.ImageNotFound:
+                continue
+    detail = "; ".join(errors) if errors else "unknown error"
+    raise RuntimeError(f"Could not pull image {image}. {detail}")
+
+
+def _wait_for_actual(container, timeout=ACTUAL_READY_SECONDS):
+    deadline = time.monotonic() + timeout
+    last_logs = ""
+    while time.monotonic() < deadline:
+        try:
+            container.reload()
+        except docker.errors.NotFound as exc:
+            raise RuntimeError("Actual Budget container disappeared during start") from exc
+        status = (container.status or "").lower()
+        last_logs = _container_log_tail(container)
+        if status in ("exited", "dead", "removing"):
+            raise RuntimeError(
+                "Actual Budget exited during start."
+                + (f" Logs:\n{last_logs}" if last_logs else "")
+            )
+        if status == "running":
+            if "Listening on" in last_logs or "Migrations: DONE" in last_logs:
+                return
+            try:
+                result = container.exec_run(["node", "src/scripts/health-check.js"])
+                if getattr(result, "exit_code", 1) == 0:
+                    return
+            except docker.errors.APIError:
+                pass
+        time.sleep(1)
+    raise RuntimeError(
+        "Actual Budget did not become ready."
+        + (f" Logs:\n{last_logs}" if last_logs else "")
+    )
 
 
 def _is_usable_lan_host(value):
@@ -835,7 +935,7 @@ def create_dashboard_card(slug, entry, host_port):
     service = Service(
         category=category,
         name=entry["name"],
-        description=LIBRARY_DESCRIPTIONS.get(slug) or entry.get("tagline", ""),
+        description=entry.get("description") or entry.get("tagline", ""),
         host=host,
         port=host_port,
         path=entry.get("path", "/") or "/",
@@ -896,7 +996,8 @@ def _install_worker(slug, install_options=None):
     start_port = int(spec.get("host_port_hint") or entry.get("default_port") or container_port)
 
     try:
-        client = get_docker_client()
+        close_old_connections()
+        client = get_docker_client(timeout=DOCKER_PULL_TIMEOUT)
         if slug == NEXTCLOUD_SLUG:
             _install_nextcloud(client, entry, spec, install_options or {})
             return
@@ -909,7 +1010,11 @@ def _install_worker(slug, install_options=None):
         if slug == SECURO_SLUG:
             _install_securo(client, entry, spec)
             return
-        client.images.pull(image)
+        image = _pull_image(
+            client,
+            image,
+            fallbacks=ACTUAL_IMAGES if slug == ACTUAL_SLUG else (),
+        )
         _remove_container(client, container_name)
 
         if slug == TUNNEL_SLUG:
@@ -926,6 +1031,9 @@ def _install_worker(slug, install_options=None):
 
         volume_paths = list(spec.get("volumes") or [])
         env = dict(spec.get("env") or {})
+        if slug == ACTUAL_SLUG:
+            env["ACTUAL_PORT"] = str(container_port)
+            env.setdefault("ACTUAL_HOSTNAME", "::")
         pihole_password = ""
         if slug == "pihole":
             from . import pihole as pihole_setup
@@ -965,7 +1073,9 @@ def _install_worker(slug, install_options=None):
         extra_hosts = spec.get("extra_hosts") or {}
         if extra_hosts:
             run_kwargs["extra_hosts"] = extra_hosts
-        client.containers.run(image, **run_kwargs)
+        container = client.containers.run(image, **run_kwargs)
+        if slug == ACTUAL_SLUG:
+            _wait_for_actual(container)
 
         installed_version = _image_version(client, image)
         InstalledService.objects.filter(slug=slug).update(
@@ -991,6 +1101,7 @@ def _install_worker(slug, install_options=None):
         _clear_uptime_cache_if_kuma(slug)
     except Exception as exc:  # noqa: BLE001 - background worker must record failure
         logger.exception("Install failed for %s", slug)
+        close_old_connections()
         InstalledService.objects.filter(slug=slug).update(
             status=InstalledService.Status.ERROR,
             error=str(exc)[:500],

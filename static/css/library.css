@@ -51,6 +51,12 @@
   gap: 0.55rem 1rem;
 }
 
+.library-apps-title {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
 .library-apps-head::after,
 .library-notes .panel-head::after {
   display: none;

@@ -1,0 +1,26 @@
+<div class="status-strip" id="status-strip" role="status" aria-live="polite">
+  <div class="status-strip__metrics">
+    <span class="sync-chip" id="refresh-indicator" data-state="sync" title="Last live sync">
+      <span class="sync-chip__dot" aria-hidden="true"></span>
+      <span class="sync-chip__label">Sync</span>
+      <time class="sync-chip__time" datetime="">––:––:––</time>
+    </span>
+    <button type="button" class="status-chip status-chip--up status-chip--clickable" id="stat-up" aria-pressed="false">{{ services_up|default:0 }} up</button>
+    <button type="button" class="status-chip status-chip--down status-chip--clickable" id="stat-down" aria-pressed="false">{{ services_down|default:0 }} down</button>
+    {% if services_unknown %}<span class="status-chip status-chip--unknown" id="stat-unknown">{{ services_unknown }} unknown</span>{% endif %}
+    {% if not is_guest %}
+    <span class="status-divider" aria-hidden="true">·</span>
+    <span class="status-chip" id="stat-uptime-24h">24H —</span>
+    <span class="status-divider" aria-hidden="true">·</span>
+    <span class="status-chip" id="stat-host-uptime">Host uptime —</span>
+    {% endif %}
+  </div>
+  <div class="status-strip__actions">
+    <label class="filter-label" for="service-filter">Filter</label>
+    <input type="search" id="service-filter" class="service-filter" placeholder="Filter" autocomplete="off" spellcheck="false">
+    {% if is_admin %}
+    <a href="{% url 'service_create' %}" class="btn status-strip__add">+ Add card</a>
+    {% endif %}
+  </div>
+</div>
+

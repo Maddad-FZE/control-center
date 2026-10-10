@@ -1,0 +1,53 @@
+<div class="topbar-actions">
+  {% if is_admin %}
+  <button type="button" class="update-chip" id="header-update-btn"{% if not update_available %} hidden{% endif %} aria-label="Update available">
+    <span class="update-chip__dot" aria-hidden="true"></span>
+    <span class="update-chip__label">Update</span>
+  </button>
+  {% endif %}
+  {% if weather_configured %}
+  <span class="weather-chip" id="weather-chip" hidden aria-live="polite"></span>
+  {% endif %}
+  {% if theme.layout.show_clock %}
+  <time class="tva-clock" id="tva-clock" datetime="" data-timezone="{{ server_timezone }}"></time>
+  {% endif %}
+  {% if user.is_authenticated %}
+  <div class="alerts-menu" id="alerts-menu">
+    <button type="button" class="alerts-bell" id="alerts-bell" aria-haspopup="true" aria-expanded="false" aria-controls="alerts-dropdown" aria-label="Alerts">
+      <svg class="alerts-bell__icon" viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M8 1.6c-1.7 0-3.1 1.4-3.1 3.1v1.4c0 1.3-.5 2.5-1.3 3.4l-.4.5h9.6l-.4-.5c-.8-.9-1.3-2.1-1.3-3.4V4.7C11.1 3 9.7 1.6 8 1.6z"/>
+        <path d="M6.2 12.6a1.8 1.8 0 0 0 3.6 0"/>
+      </svg>
+      <span class="alerts-bell__badge" id="alerts-badge"{% if not unack_alerts %} hidden{% endif %}>{{ unack_alerts|default:0 }}</span>
+    </button>
+    <div class="alerts-dropdown" id="alerts-dropdown" hidden>
+      <div class="alerts-dropdown__head">
+        <span>Alerts</span>
+        <button type="button" class="btn secondary btn-ack" id="ack-all-btn">ACK ALL</button>
+      </div>
+      <div class="alerts-dropdown__list" id="alerts-panel">
+        <div class="stat-label">No recent alerts.</div>
+      </div>
+    </div>
+  </div>
+  <div class="user-menu" id="user-menu">
+    <button type="button" class="user-chip" id="user-menu-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="user-menu-dropdown">
+      <span class="user-chip-avatar" aria-hidden="true">{{ user.username|slice:":1"|upper }}</span>
+      <span class="user-chip-name">{{ user.username }}</span>
+      <span class="user-chip-chevron" aria-hidden="true">▾</span>
+    </button>
+    <div class="user-menu-dropdown" id="user-menu-dropdown" role="menu" hidden>
+      <a href="{% url 'profile' %}" class="user-menu-item" role="menuitem">Profile</a>
+      {% if is_admin %}
+      <a href="{% url 'settings' %}" class="user-menu-item" role="menuitem">Settings</a>
+      {% endif %}
+      <form method="post" action="{% url 'logout' %}" class="user-menu-logout">
+        {% csrf_token %}
+        <button type="submit" class="user-menu-item user-menu-signout" role="menuitem">Sign Out</button>
+      </form>
+    </div>
+  </div>
+  {% else %}
+  <a href="{% url 'login' %}" class="btn secondary">Sign in</a>
+  {% endif %}
+</div>

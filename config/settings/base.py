@@ -48,6 +48,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "core.themes.middleware.ThemeMiddleware",
     "core.middleware.AddonEnabledMiddleware",
     "django.contrib.auth.middleware.LoginRequiredMiddleware",
     "core.middleware.AccountGuardMiddleware",
@@ -64,13 +65,29 @@ TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
         "DIRS": [BASE_DIR / "templates"],
-        "APP_DIRS": True,
+        "APP_DIRS": False,
         "OPTIONS": {
             "context_processors": [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "core.context_processors.site",
+            ],
+            "loaders": [
+                (
+                    "core.themes.loaders.ThemeCachedLoader",
+                    [
+                        "core.themes.loaders.ThemeLoader",
+                        "django.template.loaders.filesystem.Loader",
+                        "django.template.loaders.app_directories.Loader",
+                    ],
+                )
+            ]
+            if not DEBUG
+            else [
+                "core.themes.loaders.ThemeLoader",
+                "django.template.loaders.filesystem.Loader",
+                "django.template.loaders.app_directories.Loader",
             ],
         },
     },
@@ -106,6 +123,17 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
+STATICFILES_FINDERS = [
+    "django.contrib.staticfiles.finders.FileSystemFinder",
+    "django.contrib.staticfiles.finders.AppDirectoriesFinder",
+    "core.themes.finders.ThemeFinder",
+]
+_theme_dirs = os.environ.get("THEME_DIRS", "")
+THEME_DIRS = (
+    [Path(part.strip()) for part in _theme_dirs.split(os.pathsep) if part.strip()]
+    if _theme_dirs.strip()
+    else [BASE_DIR / "themes", BASE_DIR / "data" / "themes"]
+)
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 STORAGES = {
@@ -181,6 +209,11 @@ NTFY_PASSWORD = os.environ.get("NTFY_PASSWORD", "")
 # Self-update via GitHub releases
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "Maddad-FZE/control-center")
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+CATALOG_URL = os.environ.get(
+    "CATALOG_URL",
+    "https://raw.githubusercontent.com/Maddad-FZE/alef-app-catalog/main/apps.json",
+)
+UPDATE_DEV_BRANCH = os.environ.get("UPDATE_DEV_BRANCH", "main")
 UPDATE_CHECK_INTERVAL_HOURS = float(
     os.environ.get("UPDATE_CHECK_INTERVAL_HOURS", "12")
 )

@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 
-from .models import SiteSettings, UserProfile
+from .models import SiteSettings
 from .widgets import ImageUploadWidget
 
 
@@ -18,11 +18,27 @@ class ProfileForm(forms.ModelForm):
         }
 
 
-class AppearanceForm(forms.ModelForm):
-    class Meta:
-        model = UserProfile
-        fields = ("theme",)
-        widgets = {"theme": forms.Select()}
+class SiteThemeForm(forms.Form):
+    theme = forms.ChoiceField(required=True, choices=(), label="Theme")
+
+    def __init__(self, *args, site_theme="wood", **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.themes.registry import get_packs
+
+        packs = list(get_packs().values())
+        self.packs = packs
+        self.fields["theme"].choices = [(pack.slug, pack.name) for pack in packs] or [
+            ("wood", "Wood & Orange")
+        ]
+        self.fields["theme"].initial = site_theme
+
+    def clean_theme(self):
+        from core.themes.registry import get_theme
+
+        slug = (self.cleaned_data.get("theme") or "").strip()
+        if get_theme(slug) is None:
+            raise ValidationError("Choose a theme that is installed.")
+        return slug
 
 
 class SiteSettingsForm(forms.ModelForm):
@@ -111,6 +127,31 @@ class SetupAdminForm(forms.Form):
         label="Enable Merlin for tutorials and help",
         widget=forms.CheckboxInput(),
     )
+    theme = forms.ChoiceField(
+        required=False,
+        choices=(),
+        label="Theme",
+        widget=forms.Select(),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.themes.registry import get_packs
+
+        packs = get_packs()
+        choices = [(pack.slug, pack.name) for pack in packs.values()] or [
+            ("wood", "Wood & Orange")
+        ]
+        self.fields["theme"].choices = choices
+        self.fields["theme"].initial = "wood" if "wood" in packs or not packs else choices[0][0]
+
+    def clean_theme(self):
+        from core.themes.registry import get_theme
+
+        slug = (self.cleaned_data.get("theme") or "wood").strip()
+        if get_theme(slug) is None:
+            return "wood"
+        return slug
 
     def clean_password1(self):
         password = self.cleaned_data.get("password1", "")

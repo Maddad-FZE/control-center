@@ -13,6 +13,12 @@ class SiteSettings(models.Model):
     weather_lat = models.FloatField(null=True, blank=True)
     weather_lon = models.FloatField(null=True, blank=True)
     crt_enabled = models.BooleanField(default=True)
+    default_theme = models.CharField(max_length=48, default="wood")
+    update_channel = models.CharField(
+        max_length=8,
+        choices=(("stable", "Stable"), ("dev", "Dev")),
+        default="stable",
+    )
     wizard_enabled = models.BooleanField(default=False)
     wizard_notify = models.BooleanField(default=True)
     services_host = models.CharField(
@@ -59,6 +65,12 @@ class UpdateStatus(models.Model):
 
     last_checked_at = models.DateTimeField(null=True, blank=True)
     latest_version = models.CharField(max_length=32, blank=True)
+    latest_channel = models.CharField(
+        max_length=8,
+        choices=(("stable", "Stable"), ("dev", "Dev")),
+        default="stable",
+    )
+    installed_revision = models.CharField(max_length=40, blank=True)
     release_url = models.URLField(blank=True)
     release_notes = models.TextField(blank=True)
     release_published_at = models.DateTimeField(null=True, blank=True)
@@ -96,19 +108,12 @@ class UpdateStatus(models.Model):
 
 
 class UserProfile(models.Model):
-    class Theme(models.TextChoices):
-        WOOD = "wood", "Wood & Orange"
-        SLATE = "slate", "Cool Slate"
-        TERMINAL = "terminal", "Green Terminal"
-
     class Role(models.TextChoices):
         ADMIN = "admin", "Admin"
         MEMBER = "member", "Member"
         VIEWER = "viewer", "Viewer"
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
-    crt_enabled = models.BooleanField(default=True)
-    theme = models.CharField(max_length=16, choices=Theme.choices, default=Theme.WOOD)
     logo_url = models.URLField(blank=True, default="/static/img/logo.png")
     open_in_new_tab_ids = models.JSONField(
         default=list,

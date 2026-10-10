@@ -41,4 +41,39 @@ urlpatterns = [
     path("api/widgets/", views.api_widgets, name="api_widgets"),
     path("api/weather/", views.api_weather, name="api_weather"),
     path("api/icons/", views.api_icons, name="api_icons"),
+    path(
+        "api/services/<int:service_id>/troubleshoot/",
+        views.api_service_troubleshoot_start,
+        name="api_service_troubleshoot_start",
+    ),
+    path(
+        "api/services/<int:service_id>/troubleshoot/<str:incident_id>/",
+        views.api_service_troubleshoot_poll,
+        name="api_service_troubleshoot_poll",
+    ),
+    path(
+        "api/services/<int:service_id>/troubleshoot/<str:incident_id>/repair/",
+        views.api_service_troubleshoot_repair,
+        name="api_service_troubleshoot_repair",
+    ),
+    path(
+        "api/services/<int:service_id>/troubleshoot/<str:incident_id>/repair/<str:job_id>/",
+        views.api_service_troubleshoot_repair_poll,
+        name="api_service_troubleshoot_repair_poll",
+    ),
+    path(
+        "api/services/<int:service_id>/troubleshoot/<str:incident_id>/cancel/",
+        views.api_service_troubleshoot_cancel,
+        name="api_service_troubleshoot_cancel",
+    ),
+    path(
+        "api/services/<int:service_id>/troubleshoot/<str:incident_id>/report.txt",
+        views.api_service_troubleshoot_report_txt,
+        name="api_service_troubleshoot_report_txt",
+    ),
+    path(
+        "api/services/<int:service_id>/troubleshoot/<str:incident_id>/report.json",
+        views.api_service_troubleshoot_report_json,
+        name="api_service_troubleshoot_report_json",
+    ),
 ]

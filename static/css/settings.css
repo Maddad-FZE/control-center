@@ -281,6 +281,11 @@
   overflow: hidden;
 }
 
+.wrap--settings .settings-merlin-dock .cc-wizard.cc-wizard--docked,
+.wrap--profile .settings-merlin-dock .cc-wizard.cc-wizard--docked {
+  transform: translateY(36px) scale(var(--cc-wizard-dock-scale, 1)) !important;
+}
+
 .settings-group--merlin[hidden] {
   display: none !important;
 }
@@ -410,21 +415,6 @@
 }
 
 @media (min-width: 1101px) {
-  body:has(.wrap--settings),
-  body:has(.wrap--profile) {
-    height: 100dvh;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-  }
-
-  body:has(.wrap--settings) .topbar,
-  body:has(.wrap--settings) .footer,
-  body:has(.wrap--profile) .topbar,
-  body:has(.wrap--profile) .footer {
-    flex-shrink: 0;
-  }
-
   .wrap.wrap--settings,
   .wrap.wrap--profile {
     flex: 1;
@@ -693,10 +683,43 @@
   letter-spacing: 0;
 }
 
+.theme-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.theme-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 7rem;
+  color: var(--tva-cream);
+  font-family: var(--font-mono);
+}
+
+.theme-card input {
+  accent-color: var(--tva-orange);
+}
+
 .generated-secret {
   margin-top: 0.65rem;
   padding: 0.55rem;
   border: 1px solid var(--tva-orange);
   border-radius: 2px;
   background: rgba(20, 12, 8, 0.7);
+}
+
+.update-channel-chip {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid var(--tva-orange);
+  border-radius: 2px;
+  color: var(--tva-orange);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  vertical-align: 1px;
 }

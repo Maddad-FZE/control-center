@@ -1,0 +1,7 @@
+<div class="footer-brand">
+  Homelab Control Center
+  <span class="footer-version">v{{ app_version }}</span>
+  {% if is_admin %}
+  <button type="button" class="footer-update" id="footer-update-btn"{% if not update_available %} hidden{% endif %}>Update available</button>
+  {% endif %}
+</div>

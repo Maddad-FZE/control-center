@@ -352,6 +352,28 @@ def api_catalog_save(request, slug=""):
 
 @login_required
 @require_POST
+def api_catalog_refresh(request):
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Forbidden"}, status=403)
+    from .catalog_store import refresh_catalog
+
+    counts, error = refresh_catalog()
+    if error:
+        return JsonResponse({"error": error}, status=400)
+    log_audit(
+        "admin",
+        request=request,
+        user=request.user,
+        message=(
+            "Refreshed library catalog "
+            f"(+{counts['added']} ~{counts['updated']} -{counts['removed']})"
+        ),
+    )
+    return JsonResponse({"ok": True, **counts})
+
+
+@login_required
+@require_POST
 def api_catalog_delete(request, slug):
     if not request.user.is_superuser:
         return JsonResponse({"error": "Forbidden"}, status=403)

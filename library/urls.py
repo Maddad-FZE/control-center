@@ -11,6 +11,7 @@ urlpatterns = [
     path("api/services/<slug:slug>/restart/", views.api_service_restart, name="api_service_restart"),
     path("api/notes/", views.api_library_notes, name="api_library_notes"),
     path("api/catalog/", views.api_catalog_list, name="api_catalog_list"),
+    path("api/catalog/refresh/", views.api_catalog_refresh, name="api_catalog_refresh"),
     path("api/catalog/create/", views.api_catalog_save, name="api_catalog_create"),
     path("api/catalog/<slug:slug>/", views.api_catalog_save, name="api_catalog_save"),
     path("api/catalog/<slug:slug>/delete/", views.api_catalog_delete, name="api_catalog_delete"),

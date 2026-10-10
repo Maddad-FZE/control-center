@@ -551,6 +551,54 @@ class KumaHealthTests(TestCase):
         SiteSettings.objects.filter(pk=1).update(kuma_username="", kuma_password="")
         self.assertIsNone(kuma.connect_kuma("http://192.168.0.40:3001"))
 
+    def test_stats_rail_starts_collapsed(self):
+        source = Path(__file__).resolve().parents[1] / "static" / "js" / "dashboard.js"
+        text = source.read_text(encoding="utf-8")
+        self.assertIn("STATS_STORAGE_KEY", text)
+        self.assertIn("initStatsRail", text)
+        self.assertIn("ops-stack--collapsed", text)
+        html = (
+            Path(__file__).resolve().parents[1]
+            / "templates"
+            / "dashboard"
+            / "_ops_stack.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn("ops-stack ops-stack--collapsed", html)
+        self.assertIn('id="stats-toggle"', html)
+        self.assertIn('aria-expanded="false"', html)
+        admin = User.objects.create_user("admin", password="x", is_superuser=True)
+        self.client.force_login(admin)
+        resp = self.client.get(reverse("dashboard"))
+        self.assertContains(resp, "ops-stack ops-stack--collapsed")
+        self.assertContains(resp, ">1 — Tracked</h2>")
+        self.assertContains(resp, ">2 — Apps</h2>")
+        self.assertContains(resp, ">3 — Misc</h2>")
+        css = (Path(__file__).resolve().parents[1] / "static" / "css" / "dashboard.css").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("minmax(0, 1fr) 2.5rem", css)
+        self.assertIn("text-orientation: mixed", css)
+        self.assertIn(".ops-stack--collapsed .stats-toggle__label", css)
+        self.assertRegex(
+            css,
+            r"\.dashboard-page:has\(\.ops-stack--collapsed\) \{[^}]*grid-template-rows: auto auto auto;",
+        )
+        self.assertRegex(
+            css,
+            r"\.ops-stack--collapsed \.services-group--stats \{[^}]*padding: 0;",
+        )
+        self.assertRegex(
+            css,
+            r"\.service-grid--tracked \.section-empty \{[^}]*min-width: 300px;",
+        )
+        self.assertRegex(
+            css,
+            r"\.service-grid--apps \.section-empty \{[^}]*width: 10.5rem;",
+        )
+        self.assertIn("auto auto auto minmax(0, 1fr)", css)
+        self.assertIn('". . stats"', css)
+        self.assertIn("overflow-y: auto", css)
+
     def test_uptime_panel_copy(self):
         source = Path(__file__).resolve().parents[1] / "static" / "js" / "dashboard.js"
         text = source.read_text(encoding="utf-8")
@@ -912,3 +960,311 @@ class PiholeLaunchTests(TestCase):
         resp = self.client.get(reverse("service_launch", args=[self.pihole.id]))
         self.assertEqual(resp.status_code, 302)
         self.assertNotIn("sid", resp.cookies)
+
+
+class ImmediateThread:
+    def __init__(self, target=None, args=(), kwargs=None, daemon=None, name=None):
+        self._target = target
+        self._args = args or ()
+        self._kwargs = kwargs or {}
+
+    def start(self):
+        if self._target:
+            self._target(*self._args, **self._kwargs)
+
+
+def _fake_diagnose(service, cancel=None, *, status=200, issue_id="ISSUE_HEALTHY", actions=None):
+    from library.debug_ports import AddressSnapshot
+
+    snap = AddressSnapshot(
+        host=service.host or "127.0.0.1",
+        port=service.port or 80,
+        source="card",
+    )
+    if actions is None:
+        actions = ["ACTION_RECHECK"]
+    http_ok = isinstance(status, int) and status < 400
+    return (
+        snap,
+        {
+            "address": {"host": snap.host, "port": snap.port, "source": "card"},
+            "http": {"status": status, "ok": http_ok},
+            "tcp": {"ok": True},
+            "docker": {},
+        },
+        [
+            {
+                "issue_id": issue_id,
+                "severity": "info" if issue_id == "ISSUE_HEALTHY" else "medium",
+                "confidence": 0.8,
+                "title": issue_id,
+                "plain_language": "Diagnosis result",
+                "actions": actions,
+            }
+        ],
+    )
+
+
+class DebugServiceTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.cat = ServiceCategory.objects.create(name="Apps")
+        self.public = Service.objects.create(
+            category=self.cat,
+            name="Public App",
+            href="http://127.0.0.1:8082/",
+            host="127.0.0.1",
+            port=8082,
+            enabled=True,
+            is_public=True,
+        )
+        self.private = Service.objects.create(
+            category=self.cat,
+            name="Private App",
+            href="http://127.0.0.1:8096/",
+            host="127.0.0.1",
+            port=8096,
+            enabled=True,
+            is_public=False,
+        )
+        self.admin = User.objects.create_user("admin", password="x", is_superuser=True)
+        self.member = User.objects.create_user("member", password="x")
+        self.viewer = User.objects.create_user("viewer", password="x")
+        self.viewer.profile.role = "viewer"
+        self.viewer.profile.save()
+
+    def _start(self, service, diagnose=None):
+        diagnose = diagnose or (lambda svc, cancel=None: _fake_diagnose(svc, cancel))
+        with (
+            patch("dashboard.debug.diagnose_service", side_effect=diagnose),
+            patch("dashboard.debug.threading.Thread", ImmediateThread),
+        ):
+            return self.client.post(reverse("api_service_troubleshoot_start", args=[service.id]))
+
+    def test_guest_cannot_start_debug(self):
+        resp = self.client.post(reverse("api_service_troubleshoot_start", args=[self.public.id]))
+        self.assertEqual(resp.status_code, 302)
+
+    def test_member_can_diagnose_public_card(self):
+        self.client.force_login(self.member)
+        resp = self._start(self.public)
+        self.assertEqual(resp.status_code, 202)
+        payload = resp.json()
+        self.assertFalse(payload["can_repair"])
+        self.assertTrue(payload["incident_id"])
+        action_ids = [row["action_id"] for row in payload["actions"]]
+        self.assertIn("ACTION_RECHECK", action_ids)
+        self.assertNotIn("ACTION_CLEAR_CACHES", action_ids)
+
+    def test_member_cannot_debug_private_card(self):
+        self.client.force_login(self.member)
+        resp = self._start(self.private)
+        self.assertEqual(resp.status_code, 404)
+
+    def test_admin_sees_troubleshoot_in_card_menu(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse("dashboard"))
+        self.assertContains(resp, 'data-action="troubleshoot"')
+        self.assertContains(resp, ">Troubleshoot<")
+        self.assertContains(resp, "troubleshoot-service.js")
+        self.assertContains(resp, 'id="service-troubleshoot-modal"')
+        self.assertNotContains(resp, "debug-service.js")
+
+    def test_guest_dashboard_hides_troubleshoot(self):
+        resp = self.client.get(reverse("dashboard"))
+        self.assertNotContains(resp, 'data-action="troubleshoot"')
+        self.assertNotContains(resp, "troubleshoot-service.js")
+
+    def test_member_cannot_run_repairs(self):
+        self.client.force_login(self.admin)
+        started = self._start(
+            self.public,
+            lambda svc, cancel=None: _fake_diagnose(
+                svc,
+                cancel,
+                status=401,
+                issue_id="ISSUE_HTTP_AUTH",
+                actions=["ACTION_CLEAR_CACHES", "ACTION_RECHECK"],
+            ),
+        )
+        incident_id = started.json()["incident_id"]
+        self.client.force_login(self.member)
+        resp = self.client.post(
+            reverse("api_service_troubleshoot_repair", args=[self.public.id, incident_id]),
+            data='{"action_id":"ACTION_CLEAR_CACHES","confirmed":true}',
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_admin_repair_rejects_uninstall(self):
+        self.client.force_login(self.admin)
+        started = self._start(self.public)
+        incident_id = started.json()["incident_id"]
+        resp = self.client.post(
+            reverse("api_service_troubleshoot_repair", args=[self.public.id, incident_id]),
+            data='{"action_id":"ACTION_UNINSTALL","confirmed":true}',
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 422)
+
+    def test_admin_repair_rejects_unknown_action(self):
+        self.client.force_login(self.admin)
+        started = self._start(self.public)
+        incident_id = started.json()["incident_id"]
+        resp = self.client.post(
+            reverse("api_service_troubleshoot_repair", args=[self.public.id, incident_id]),
+            data='{"action_id":"ACTION_SYNC_CARD_PORT","confirmed":true}',
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.json()["error"], "stale_diagnosis")
+
+    def test_admin_can_clear_caches(self):
+        self.client.force_login(self.admin)
+        started = self._start(
+            self.public,
+            lambda svc, cancel=None: _fake_diagnose(
+                svc,
+                cancel,
+                status=401,
+                issue_id="ISSUE_HTTP_AUTH",
+                actions=["ACTION_CLEAR_CACHES", "ACTION_RECHECK"],
+            ),
+        )
+        incident_id = started.json()["incident_id"]
+        with (
+            patch("dashboard.debug.diagnose_service", side_effect=_fake_diagnose),
+            patch("dashboard.debug_actions.threading.Thread", ImmediateThread),
+        ):
+            resp = self.client.post(
+                reverse("api_service_troubleshoot_repair", args=[self.public.id, incident_id]),
+                data='{"action_id":"ACTION_CLEAR_CACHES","confirmed":true}',
+                content_type="application/json",
+            )
+        self.assertEqual(resp.status_code, 202)
+        job_id = resp.json()["job_id"]
+        poll = self.client.get(
+            reverse("api_service_troubleshoot_repair_poll", args=[self.public.id, incident_id, job_id])
+        )
+        self.assertEqual(poll.status_code, 200)
+        self.assertEqual(poll.json()["status"], "succeeded")
+
+    def test_http_401_is_auth_not_down(self):
+        from dashboard.debug import _classify
+        from library.debug_ports import AddressSnapshot
+
+        snap = AddressSnapshot(host="127.0.0.1", port=8082, source="card")
+        findings = _classify(
+            self.public,
+            snap,
+            {"http": {"status": 401, "ok": False}, "tcp": {"ok": True}, "docker": {}},
+        )
+        ids = [row["issue_id"] for row in findings]
+        self.assertIn("ISSUE_HTTP_AUTH", ids)
+        self.assertNotIn("ISSUE_HTTP_5XX", ids)
+
+    def test_tcp_timeout_without_container_offers_editor_not_start(self):
+        from dashboard.debug import _classify
+        from library.debug_ports import AddressSnapshot
+
+        snap = AddressSnapshot(host="192.168.0.1", port=80, source="card")
+        findings = _classify(
+            self.public,
+            snap,
+            {
+                "http": {},
+                "tcp": {"ok": False, "error": "timeout"},
+                "docker": {},
+            },
+        )
+        actions = []
+        for row in findings:
+            if row["issue_id"] == "ISSUE_TCP_TIMEOUT":
+                actions = row["actions"]
+        self.assertIn("ACTION_OPEN_EDITOR", actions)
+        self.assertNotIn("ACTION_START", actions)
+        self.assertNotIn("ACTION_RESTART", actions)
+
+    def test_port_drift_uses_plain_title(self):
+        from dashboard.debug import FINDING_TITLES, _classify
+        from library.debug_ports import AddressSnapshot
+
+        snap = AddressSnapshot(host="127.0.0.1", port=9096, source="docker")
+        self.public.catalog_slug = "jellyfin"
+        findings = _classify(
+            self.public,
+            snap,
+            {"http": {}, "tcp": {"ok": True}, "docker": {}},
+        )
+        drift = next(row for row in findings if row["issue_id"] == "ISSUE_PORT_CARD_DRIFT")
+        self.assertEqual(drift["title"], FINDING_TITLES["ISSUE_PORT_CARD_DRIFT"])
+        self.assertNotIn("Port Card Drift", drift["title"])
+
+    def test_healthy_payload_offers_check_again_only(self):
+        self.client.force_login(self.admin)
+        resp = self._start(self.public)
+        payload = resp.json()
+        self.assertEqual(payload["summary"], "Looks good from here.")
+        action_ids = [row["action_id"] for row in payload["actions"]]
+        self.assertEqual(action_ids, ["ACTION_RECHECK"])
+        self.assertEqual(payload["actions"][0]["title"], "Check again")
+        self.assertNotIn("ACTION_OPEN_LOGS", action_ids)
+
+    def test_report_redacts_secrets(self):
+        from dashboard.debug_report import redact_text, redact_url
+
+        self.assertIn("token=***", redact_url("http://127.0.0.1:8082/?token=super-secret"))
+        redacted = redact_text("DB_PASSWORD=hunter2 TOKEN=abc")
+        self.assertIn("DB_PASSWORD=***", redacted)
+        self.assertIn("TOKEN=***", redacted)
+        self.assertNotIn("hunter2", redacted)
+        self.assertNotIn("password=hunter2", redact_text("password=hunter2"))
+
+    def test_prune_old_debug_incidents(self):
+        from dashboard.debug import prune_incidents
+        from dashboard.models import DebugIncident
+
+        old = DebugIncident.objects.create(
+            incident_id="dbg_old",
+            service=self.public,
+            status=DebugIncident.Status.HEALTHY,
+        )
+        DebugIncident.objects.filter(pk=old.pk).update(
+            created_at=timezone.now() - timezone.timedelta(days=20)
+        )
+        fresh = DebugIncident.objects.create(
+            incident_id="dbg_new",
+            service=self.public,
+            status=DebugIncident.Status.HEALTHY,
+        )
+        deleted = prune_incidents()
+        self.assertGreaterEqual(deleted, 1)
+        self.assertFalse(DebugIncident.objects.filter(pk=old.pk).exists())
+        self.assertTrue(DebugIncident.objects.filter(pk=fresh.pk).exists())
+
+    def test_viewer_gets_report_without_repairs(self):
+        self.client.force_login(self.admin)
+        started = self._start(
+            self.public,
+            lambda svc, cancel=None: _fake_diagnose(
+                svc,
+                cancel,
+                status=401,
+                issue_id="ISSUE_HTTP_AUTH",
+                actions=["ACTION_CLEAR_CACHES", "ACTION_RECHECK"],
+            ),
+        )
+        incident_id = started.json()["incident_id"]
+        self.client.force_login(self.viewer)
+        resp = self.client.get(
+            reverse("api_service_troubleshoot_poll", args=[self.public.id, incident_id])
+        )
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertFalse(payload["can_repair"])
+        self.assertNotIn("ACTION_CLEAR_CACHES", [row["action_id"] for row in payload["actions"]])
+        report = self.client.get(
+            reverse("api_service_troubleshoot_report_json", args=[self.public.id, incident_id])
+        )
+        self.assertEqual(report.status_code, 200)
+        self.assertIn("report_text", report.json())

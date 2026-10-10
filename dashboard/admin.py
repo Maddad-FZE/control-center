@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Alert, Bookmark, Service, ServiceCategory, ServiceCheck, ServiceMetric
+from .models import Alert, Bookmark, DebugIncident, Service, ServiceCategory, ServiceCheck, ServiceMetric
 
 
 class ServiceMetricInline(admin.TabularInline):
@@ -84,3 +84,24 @@ class ServiceCheckAdmin(admin.ModelAdmin):
 class AlertAdmin(admin.ModelAdmin):
     list_display = ("created_at", "level", "title", "service", "acknowledged")
     list_filter = ("level", "acknowledged")
+
+
+@admin.register(DebugIncident)
+class DebugIncidentAdmin(admin.ModelAdmin):
+    list_display = ("incident_id", "service", "status", "actor", "created_at", "finished_at")
+    list_filter = ("status",)
+    search_fields = ("incident_id", "service__name")
+    readonly_fields = (
+        "incident_id",
+        "service",
+        "actor",
+        "status",
+        "findings_json",
+        "actions_json",
+        "snapshot_json",
+        "report_text",
+        "cancel_requested",
+        "repair_jobs",
+        "created_at",
+        "finished_at",
+    )

@@ -10,38 +10,14 @@
 {% block content %}
 <meta name="csrf-token" content="{{ csrf_token }}">
 <div class="settings-board">
-  <div class="settings-rail">
-    <section class="settings-group settings-group--nav">
-      <h2 class="group-title">1 — Categories</h2>
-      <nav class="settings-nav" aria-label="Settings sections">
-        <a href="?section=appearance" class="settings-nav__item{% if active_section == 'appearance' %} is-active{% endif %}" data-section="appearance" data-label="Appearance">Appearance</a>
-        <a href="?section=site" class="settings-nav__item{% if active_section == 'site' %} is-active{% endif %}" data-section="site" data-label="Site">Site</a>
-        <a href="?section=tunnel" class="settings-nav__item{% if active_section == 'tunnel' %} is-active{% endif %}" data-section="tunnel" data-label="Tunnel">Tunnel</a>
-        <a href="?section=users" class="settings-nav__item{% if active_section == 'users' %} is-active{% endif %}" data-section="users" data-label="Users">Users</a>
-        <a href="?section=updates" class="settings-nav__item{% if active_section == 'updates' %} is-active{% endif %}" data-section="updates" data-label="Updates">
-          Updates
-          {% if update_ready %}<span class="settings-nav__badge" title="Update available"></span>{% endif %}
-        </a>
-        <a href="?section=platform" class="settings-nav__item{% if active_section == 'platform' %} is-active{% endif %}" data-section="platform" data-label="Platform">Platform</a>
-        <a href="?section=audit" class="settings-nav__item{% if active_section == 'audit' %} is-active{% endif %}" data-section="audit" data-label="Audit">Audit</a>
-        <a href="?section=logs" class="settings-nav__item{% if active_section == 'logs' %} is-active{% endif %}" data-section="logs" data-label="Logs">Logs</a>
-        {% if console_enabled %}
-        <a href="?section=console" class="settings-nav__item{% if active_section == 'console' %} is-active{% endif %}" data-section="console" data-label="Console">Console</a>
-        {% endif %}
-      </nav>
-    </section>
-
-    {% if wizard_enabled %}
-    {% include "core/_merlin_dock.html" %}
-    {% endif %}
-  </div>
+  {% include "core/shell/_rail.html" %}
 
   <section class="settings-group settings-group--info">
       <h2 class="group-title">3 — Information</h2>
       <div class="panel">
         <div class="panel-body">
           <div class="settings-briefing{% if active_section == 'appearance' %} is-active{% endif %}" data-section="appearance">
-            <p>Color theme is personal. It only changes your account, not anyone else on this board.</p>
+            <p>The theme is for everyone on this Control Center. Preview tries it in your session first. Apply saves it for the whole site.</p>
             <p>CRT scanlines and Merlin’s on/off switches are under Site. He stands under Categories on this page.</p>
           </div>
           <div class="settings-briefing{% if active_section == 'site' %} is-active{% endif %}" data-section="site">
@@ -57,8 +33,8 @@
             <p>Each person can turn on 2FA and store their own service passwords in Profile → Vault.</p>
           </div>
           <div class="settings-briefing{% if active_section == 'updates' %} is-active{% endif %}" data-section="updates">
-            <p>Releases are read from <code>{{ github_repo }}</code> on GitHub, including prereleases, at most once every {{ check_interval_hours|floatformat:"-1" }} hours.</p>
-            <p>Install downloads that release and applies it in place. Your database, <code>.env</code>, and media stay put. On Docker, Install reloads gunicorn in the running container. If the project is not bind-mounted (<code>.:/app</code>), rebuild the image for a lasting upgrade.</p>
+            <p>Stable reads tagged releases from <code>{{ github_repo }}</code>, including prereleases, at most once every {{ check_interval_hours|floatformat:"-1" }} hours. Dev follows every commit on <code>{{ dev_branch }}</code>.</p>
+            <p>Install downloads that archive and applies it in place. Your database, <code>.env</code>, and media stay put. On Docker, Install reloads gunicorn in the running container. If the project is not bind-mounted (<code>.:/app</code>), rebuild the image for a lasting upgrade.</p>
           </div>
           <div class="settings-briefing{% if active_section == 'platform' %} is-active{% endif %}" data-section="platform">
             <p>Runtime snapshot of this install: version, health checks, and push alerts.</p>
@@ -122,22 +98,21 @@
           <div class="panel">
             <div class="panel-head">Theme</div>
             <div class="panel-body">
-              <div class="form-group">
-                <div class="field-head">
-                  <label for="{{ appearance_form.theme.id_for_label }}">Color theme{% include "core/_help_tip.html" with tip_id="tip-theme" tip_text="Personal color theme for your account. Other people keep their own." %}</label>
-                </div>
-                {{ appearance_form.theme }}
-              </div>
-              <div class="theme-preview" aria-hidden="true">
-                <span class="theme-swatch theme-swatch--wood" title="Wood"></span>
-                <span class="theme-swatch theme-swatch--slate" title="Slate"></span>
-                <span class="theme-swatch theme-swatch--terminal" title="Terminal"></span>
+              <div class="theme-picker">
+                {% for pack in appearance_form.packs %}
+                <label class="theme-card">
+                  <input type="radio" name="theme" value="{{ pack.slug }}" {% if appearance_form.theme.value|default:site_settings.default_theme == pack.slug %}checked{% endif %}>
+                  <span class="theme-swatch theme-swatch--{{ pack.slug }}" title="{{ pack.name }}"></span>
+                  <span class="theme-card__name">{{ pack.name }}</span>
+                </label>
+                {% endfor %}
               </div>
             </div>
           </div>
         </div>
         <div class="settings-save">
-          <button type="submit" class="btn">Save appearance</button>
+          <button type="submit" class="btn secondary" name="action" value="preview">Preview</button>
+          <button type="submit" class="btn" name="action" value="apply">Apply to site</button>
         </div>
       </form>
     </section>
@@ -407,22 +382,43 @@
     <section class="settings-pane{% if active_section == 'updates' %} is-active{% endif %}" id="settings-updates" data-section="updates">
       <div class="settings-mosaic">
         <div class="panel">
+          <div class="panel-head">Channel</div>
+          <div class="panel-body">
+            <form method="post" action="{% url 'settings' %}">
+              {% csrf_token %}
+              <input type="hidden" name="form" value="update_channel">
+              <input type="hidden" name="section" value="updates">
+              <div class="form-group">
+                <label for="update-channel">Update channel</label>
+                <select id="update-channel" name="update_channel">
+                  <option value="stable"{% if update_channel != "dev" %} selected{% endif %}>Stable — tagged releases</option>
+                  <option value="dev"{% if update_channel == "dev" %} selected{% endif %}>Dev — follows {{ dev_branch }}</option>
+                </select>
+              </div>
+              <p class="settings-status">Dev builds track every commit on {{ dev_branch }}. They are untested and may need a manual fix. Switching back to Stable stays quiet until a release tag is newer than the version this build carries.</p>
+              <button type="submit" class="btn">Save channel</button>
+            </form>
+          </div>
+        </div>
+        <div class="panel">
           <div class="panel-head">Version</div>
           <div class="panel-body">
             <div class="stat-row">
               <span class="stat-label">Current version</span>
-              <span class="stat-value" id="update-current">v{{ current_version }}</span>
+              <span class="stat-value" id="update-current">v{{ current_version }}{% if update_channel == "dev" and current_revision %} · {{ dev_branch }}@{{ current_revision|slice:":12" }}{% endif %}</span>
             </div>
             <div class="stat-row">
-              <span class="stat-label">Latest release</span>
-              <span class="stat-value" id="update-latest">{% if update_status.latest_version %}{{ update_status.latest_version }}{% else %}—{% endif %}</span>
+              <span class="stat-label" id="update-latest-label">{% if update_status.latest_channel == "dev" %}Latest{% else %}Latest release{% endif %}</span>
+              <span class="stat-value" id="update-latest">{% if update_status.latest_version %}{{ update_status.latest_version }} <span class="update-channel-chip">{{ update_status.latest_channel|default:"stable" }}</span>{% else %}—{% endif %}</span>
             </div>
             <div class="stat-row">
               <span class="stat-label">Last checked</span>
               <span class="stat-value" id="update-checked">{% if update_status.last_checked_at %}{{ update_status.last_checked_at|timesince }} ago{% else %}Never{% endif %}</span>
             </div>
             <p class="update-banner{% if update_ready %} update-banner--available{% endif %}" id="update-banner">
-              {% if update_ready %}
+              {% if update_ready and update_status.latest_channel == "dev" %}
+                Commit {{ update_status.latest_version }} on {{ dev_branch }} is available.
+              {% elif update_ready %}
                 Update {{ update_status.latest_version }} is available.
               {% elif update_status.check_error %}
                 {{ update_status.check_error }}
@@ -447,10 +443,10 @@
         </div>
         {% if update_status.release_notes %}
         <div class="panel">
-          <div class="panel-head">Release notes</div>
+          <div class="panel-head" id="update-notes-heading">{% if update_status.latest_channel == "dev" %}Commit message{% else %}Release notes{% endif %}</div>
           <div class="panel-body">
             <details class="update-notes"{% if update_ready %} open{% endif %}>
-              <summary>Release notes</summary>
+              <summary id="update-notes-summary">{% if update_status.latest_channel == "dev" %}Commit message{% else %}Release notes{% endif %}</summary>
               <pre class="update-notes__body" id="update-notes">{{ update_status.release_notes }}</pre>
               {% if update_status.release_url %}
               <p class="settings-status"><a href="{{ update_status.release_url }}" target="_blank" rel="noopener">View on GitHub</a></p>

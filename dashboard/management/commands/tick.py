@@ -35,3 +35,9 @@ class Command(BaseCommand):
                 f"Detect: {detected.get('detected', 0)} "
                 f"(+{detected.get('adopted', 0)} / ~{detected.get('refreshed', 0)})"
             )
+
+        from dashboard.debug import prune_incidents
+
+        pruned_debug = prune_incidents()
+        if pruned_debug:
+            self.stdout.write(f"Pruned {pruned_debug} old debug incidents")

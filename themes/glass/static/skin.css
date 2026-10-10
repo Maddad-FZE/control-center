@@ -1,0 +1,17 @@
+@layer skin {
+  html,
+  body {
+    background-color: #0b1220;
+    background-image: radial-gradient(ellipse at 10% 0%, rgba(90, 200, 250, 0.35), transparent 50%),
+      linear-gradient(180deg, #1e293b 0%, #0b1220 100%);
+  }
+
+  .panel,
+  .shell-sidebar,
+  .service-card,
+  .bookmark {
+    border-radius: var(--cc-radius);
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(var(--cc-blur));
+  }
+}

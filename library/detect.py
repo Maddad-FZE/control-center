@@ -8,7 +8,7 @@ import docker
 from django.conf import settings
 from django.core.cache import cache
 
-from .catalog import all_services, get_service_by_slug
+from .catalog import all_services, get_docker_spec, get_service_by_slug
 from .installer import DOCKER_LABEL_SLUG, get_docker_client, _image_version
 from .models import InstalledService
 
@@ -124,8 +124,6 @@ def _match_container_to_slug(container, by_repo, by_slug_tail, by_slug):
 
 
 def _catalog_container_port(slug):
-    from .catalog import get_service_by_slug
-
     entry = get_service_by_slug(slug)
     if not entry:
         return None

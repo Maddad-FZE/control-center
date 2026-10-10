@@ -41,6 +41,20 @@ class ArchiveUrlTests(SimpleTestCase):
         with self.assertRaises(ValueError):
             updates.archive_url("https://evil.example/repo", "v0.1.3")
 
+    def test_commit_archive_accepts_sha(self):
+        self.assertEqual(
+            updates.archive_url_for_commit(
+                "Maddad-FZE/control-center", "abcdef0123456789abcdef0123456789abcdef01"
+            ),
+            "https://github.com/Maddad-FZE/control-center/archive/abcdef0123456789abcdef0123456789abcdef01.tar.gz",
+        )
+
+    def test_commit_archive_rejects_tag_and_path(self):
+        with self.assertRaises(ValueError):
+            updates.archive_url_for_commit("Maddad-FZE/control-center", "v0.4.0")
+        with self.assertRaises(ValueError):
+            updates.archive_url_for_commit("Maddad-FZE/control-center", "../etc/passwd")
+
 
 class ApplyReleaseTests(SimpleTestCase):
     def test_overlays_app_files_and_preserves_local_state(self):
@@ -63,6 +77,17 @@ class ApplyReleaseTests(SimpleTestCase):
             self.assertEqual((dest / ".env").read_text(encoding="utf-8"), "SECRET=keep\n")
             self.assertEqual((dest / "media" / "logo.png").read_text(encoding="utf-8"), "png")
             self.assertEqual(updates.verify_installed_version(dest, "v0.9.9"), "0.9.9")
+
+    def test_commit_archive_matches_folder_sha(self):
+        full = "abcdef0123456789abcdef0123456789abcdef01"
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / f"control-center-{full}"
+            src.mkdir()
+            self.assertEqual(updates.verify_commit_archive(src, full[:12]), full)
+            other = Path(tmp) / "control-center-1111111111111111111111111111111111111111"
+            other.mkdir()
+            with self.assertRaises(ValueError):
+                updates.verify_commit_archive(other, full[:12])
 
     def test_version_mismatch_is_an_error(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -346,6 +371,93 @@ class StaleInstallProgressTests(TestCase):
         self.assertEqual(status.install_log, "")
 
 
+class DevChannelTests(TestCase):
+    def test_check_stores_branch_tip(self):
+        from core.models import SiteSettings
+
+        site = SiteSettings.load()
+        site.update_channel = "dev"
+        site.save()
+        payload = {
+            "sha": "abcdef0123456789abcdef0123456789abcdef01",
+            "html_url": "https://github.com/example/repo/commit/abcdef0123456789abcdef0123456789abcdef01",
+            "commit": {
+                "message": "Fix the dock\n\nMore detail",
+                "committer": {"date": "2026-10-06T12:00:00Z"},
+            },
+        }
+        with self.settings(GITHUB_REPO="example/repo", UPDATE_DEV_BRANCH="main"):
+            with patch.object(updates, "_fetch_branch_tip", return_value=(payload, "")):
+                with patch.object(updates, "get_git_revision", return_value=""):
+                    status = updates.check_for_update()
+        self.assertEqual(status.latest_version, "abcdef012345")
+        self.assertEqual(status.latest_channel, "dev")
+        self.assertIn("Fix the dock", status.release_notes)
+        self.assertTrue(updates.update_available(status))
+
+    def test_availability_follows_revision_then_semver(self):
+        status = UpdateStatus.load()
+        status.latest_channel = "dev"
+        status.latest_version = "abcdef012345"
+        status.installed_revision = "abcdef0123456789abcdef0123456789abcdef01"
+        status.save()
+        self.assertFalse(updates.update_available(status))
+
+        status.installed_revision = ""
+        status.save()
+        with patch.object(updates, "get_git_revision", return_value=""):
+            self.assertTrue(updates.update_available(status))
+
+        status.installed_revision = "bbbbbbb222222222222222222222222222222222"
+        status.save()
+        self.assertTrue(updates.update_available(status))
+
+        status.latest_channel = "stable"
+        status.latest_version = "v0.4.1"
+        status.save()
+        with patch.object(updates, "get_current_version", return_value="0.4.0"):
+            self.assertTrue(updates.update_available(status))
+        with patch.object(updates, "get_current_version", return_value="0.4.1"):
+            self.assertFalse(updates.update_available(status))
+
+    def test_commit_install_records_revision(self):
+        full = "abcdef0123456789abcdef0123456789abcdef01"
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / f"control-center-{full}"
+            _build_release_tree(src, "0.4.1")
+            with self.settings(GITHUB_REPO="example/repo", UPDATE_DEV_BRANCH="main"):
+                with patch.object(updates, "download_archive", return_value=100):
+                    with patch.object(updates, "extract_release_tarball", return_value=src):
+                        with patch.object(updates, "apply_release_tree", return_value=1):
+                            with patch.object(updates, "_run_step", return_value=True):
+                                with patch.object(updates, "_restart_application", return_value=True):
+                                    with patch.object(updates, "get_current_version", return_value="0.4.0"):
+                                        updates.run_install(full[:12], "admin", ref_type="commit")
+        status = UpdateStatus.load()
+        self.assertEqual(status.install_state, UpdateStatus.InstallState.SUCCESS)
+        self.assertEqual(status.installed_revision, full)
+        self.assertIn("main@abcdef012345 (VERSION 0.4.0)", status.install_log)
+        lock = Path(settings.BASE_DIR) / "data" / "update-install.lock"
+        lock.unlink(missing_ok=True)
+        cache.delete(updates.INSTALL_LOCK_KEY)
+
+
+class InstallUpdateCommandTests(SimpleTestCase):
+    def test_rejects_sha_with_tag_ref(self):
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+
+        with self.assertRaises(CommandError):
+            call_command("install_update", "abcdef0", "--ref-type", "tag")
+
+    def test_rejects_tag_with_commit_ref(self):
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+
+        with self.assertRaises(CommandError):
+            call_command("install_update", "v0.4.0", "--ref-type", "commit")
+
+
 class SettingsLogsConsoleTests(TestCase):
     def setUp(self):
         from django.contrib.auth.models import User
@@ -361,6 +473,38 @@ class SettingsLogsConsoleTests(TestCase):
         self.assertContains(resp, "settings-logs.js")
         self.assertContains(resp, 'data-section="console"')
         self.assertContains(resp, "settings-console.js")
+
+    def test_superuser_sets_dev_channel_and_clears_status(self):
+        from core.models import SiteSettings
+
+        status = UpdateStatus.load()
+        status.latest_version = "v0.4.0"
+        status.release_notes = "notes"
+        status.last_checked_at = timezone.now()
+        status.save()
+        self.client.force_login(self.admin)
+        resp = self.client.post(
+            "/settings/",
+            {"form": "update_channel", "section": "updates", "update_channel": "dev"},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(SiteSettings.load().update_channel, "dev")
+        status.refresh_from_db()
+        self.assertEqual(status.latest_version, "")
+        self.assertEqual(status.release_notes, "")
+        self.assertIsNone(status.last_checked_at)
+        self.assertEqual(status.latest_channel, "dev")
+
+    def test_member_cannot_change_update_channel(self):
+        from core.models import SiteSettings
+
+        self.client.force_login(self.member)
+        resp = self.client.post(
+            "/settings/",
+            {"form": "update_channel", "section": "updates", "update_channel": "dev"},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(SiteSettings.load().update_channel, "stable")
 
     def test_logs_sources_forbidden_for_member(self):
         self.client.force_login(self.member)

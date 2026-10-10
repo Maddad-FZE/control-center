@@ -5,7 +5,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required, login_required
 from django.contrib.auth.models import User
 from django.core.cache import cache
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -13,7 +13,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from core.models import AuditEvent, log_audit
 
-from library.catalog import LIBRARY_DESCRIPTIONS, get_service_by_slug
+from library.catalog import get_service_by_slug
 from library.icons import icon_url_for_entry
 from library.installer import services_host
 from library.models import InstalledService
@@ -21,7 +21,7 @@ from library.pihole import attach_launch_href
 from library.versions import update_map_for_services
 
 from .forms import ServiceForm, ServiceMetricFormSet
-from .models import Alert, Service, ServiceCategory
+from .models import Alert, DebugIncident, Service, ServiceCategory
 from .prefs import open_in_new_tab_ids, prefers_new_tab, set_open_in_new_tab
 from .presets import apply_preset_metrics
 from . import hostops, services
@@ -329,7 +329,7 @@ def service_create_view(request):
                 port = installed.host_port
             initial = {
                 "name": catalog_entry["name"],
-                "description": LIBRARY_DESCRIPTIONS.get(catalog_slug)
+                "description": catalog_entry.get("description")
                 or catalog_entry.get("tagline", ""),
                 "icon": catalog_entry.get("icon", ""),
                 "host": host,
@@ -618,3 +618,125 @@ def api_icons(request):
 @require_GET
 def api_weather(request):
     return JsonResponse(services.fetch_weather())
+
+
+def _troubleshoot_service(request, service_id):
+    from core.access import can_open_service
+
+    service = get_object_or_404(Service, pk=service_id, enabled=True)
+    if not can_open_service(request.user, service):
+        return None
+    return service
+
+
+@login_required
+@require_POST
+def api_service_troubleshoot_start(request, service_id):
+    from dashboard.debug import incident_payload, start_diagnosis
+
+    service = _troubleshoot_service(request, service_id)
+    if service is None:
+        return JsonResponse({"error": "Not found"}, status=404)
+    incident, error = start_diagnosis(service, request.user)
+    if error:
+        status = 429 if "Too many" in error or "busy" in error else 400
+        return JsonResponse({"error": error}, status=status)
+    payload = incident_payload(incident, is_superuser=request.user.is_superuser)
+    payload["status"] = incident.status
+    return JsonResponse(payload, status=202)
+
+
+@login_required
+@require_GET
+def api_service_troubleshoot_poll(request, service_id, incident_id):
+    from dashboard.debug import incident_payload
+
+    service = _troubleshoot_service(request, service_id)
+    if service is None:
+        return JsonResponse({"error": "Not found"}, status=404)
+    incident = get_object_or_404(DebugIncident, incident_id=incident_id, service=service)
+    return JsonResponse(incident_payload(incident, is_superuser=request.user.is_superuser))
+
+
+@login_required
+@require_POST
+def api_service_troubleshoot_repair(request, service_id, incident_id):
+    from dashboard.debug_actions import start_repair
+
+    service = _troubleshoot_service(request, service_id)
+    if service is None:
+        return JsonResponse({"error": "Not found"}, status=404)
+    try:
+        body = json.loads(request.body.decode() or "{}")
+    except json.JSONDecodeError:
+        body = {}
+    action_id = (body.get("action_id") or "").strip()
+    if action_id != "ACTION_RECHECK" and not request.user.is_superuser:
+        return JsonResponse({"error": "Forbidden"}, status=403)
+    incident = get_object_or_404(DebugIncident, incident_id=incident_id, service=service)
+    confirmed = bool(body.get("confirmed") or body.get("confirm_token"))
+    payload, error, status = start_repair(incident, action_id, request.user, confirmed=confirmed)
+    if error:
+        hint = "Check again" if error == "stale_diagnosis" else ""
+        data = {"error": error}
+        if hint:
+            data["hint"] = hint
+        return JsonResponse(data, status=status)
+    return JsonResponse(payload, status=status)
+
+
+@login_required
+@require_GET
+def api_service_troubleshoot_repair_poll(request, service_id, incident_id, job_id):
+    service = _troubleshoot_service(request, service_id)
+    if service is None:
+        return JsonResponse({"error": "Not found"}, status=404)
+    incident = get_object_or_404(DebugIncident, incident_id=incident_id, service=service)
+    job = (incident.repair_jobs or {}).get(job_id)
+    if not job:
+        return JsonResponse({"error": "Not found"}, status=404)
+    return JsonResponse({"job_id": job_id, **job})
+
+
+@login_required
+@require_POST
+def api_service_troubleshoot_cancel(request, service_id, incident_id):
+    service = _troubleshoot_service(request, service_id)
+    if service is None:
+        return JsonResponse({"error": "Not found"}, status=404)
+    incident = get_object_or_404(DebugIncident, incident_id=incident_id, service=service)
+    if incident.status in (
+        DebugIncident.Status.QUEUED,
+        DebugIncident.Status.RUNNING,
+    ):
+        incident.cancel_requested = True
+        incident.save(update_fields=["cancel_requested"])
+        return JsonResponse({"ok": True, "status": "cancelling"})
+    return JsonResponse({"error": "This run cannot be cancelled."}, status=409)
+
+
+@login_required
+@require_GET
+def api_service_troubleshoot_report_txt(request, service_id, incident_id):
+    service = _troubleshoot_service(request, service_id)
+    if service is None:
+        return JsonResponse({"error": "Not found"}, status=404)
+    incident = get_object_or_404(DebugIncident, incident_id=incident_id, service=service)
+    body = incident.report_text or "No report yet."
+    response = HttpResponse(body, content_type="text/plain; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="{incident.incident_id}.txt"'
+    return response
+
+
+@login_required
+@require_GET
+def api_service_troubleshoot_report_json(request, service_id, incident_id):
+    from dashboard.debug import incident_payload
+
+    service = _troubleshoot_service(request, service_id)
+    if service is None:
+        return JsonResponse({"error": "Not found"}, status=404)
+    incident = get_object_or_404(DebugIncident, incident_id=incident_id, service=service)
+    payload = incident_payload(incident, is_superuser=request.user.is_superuser)
+    payload["report_text"] = incident.report_text
+    return JsonResponse(payload)

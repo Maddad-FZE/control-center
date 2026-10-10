@@ -137,6 +137,7 @@ class CatalogItem(models.Model):
             "path": self.path or "/",
             "widget_type": self.widget_type or "none",
             "compose": self.compose,
+            "description": self.description,
         }
         if self.install_options:
             entry["install_options"] = self.install_options

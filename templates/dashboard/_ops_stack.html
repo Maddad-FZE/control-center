@@ -1,0 +1,82 @@
+{% if not is_guest %}
+  <aside class="ops-stack ops-stack--collapsed ops-stack--{{ theme.dashboard.stats }}" id="ops-stack"{% if is_admin %} data-admin="1"{% endif %}{% if theme.dashboard.stats == "hidden" %} hidden{% endif %}>
+    <section class="services-group services-group--stats">
+      <h2 class="group-title">
+        <button type="button" class="stats-toggle" id="stats-toggle" aria-expanded="false" aria-controls="stats-group-body" title="Expand Stats">
+          <span class="stats-toggle__label">4 — Stats</span>
+          <span class="panel-chevron" aria-hidden="true">▾</span>
+        </button>
+      </h2>
+      <div class="stats-group__body" id="stats-group-body">
+      <section class="panel" data-panel-id="system">
+      <button type="button" class="panel-head panel-toggle" aria-expanded="true" aria-controls="panel-system">
+        <span class="panel-toggle__label">System</span>
+        <span class="panel-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div class="panel-body" id="panel-system">
+        <div id="system-stats">
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+        </div>
+        {% if is_admin %}
+        <div class="ops-actions">
+          <button type="button" class="btn danger" id="host-reboot-btn">Restart Server</button>
+        </div>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="panel" data-panel-id="usb">
+      <div class="panel-head panel-head--alerts">
+        <button type="button" class="panel-toggle panel-toggle--inline" aria-expanded="true" aria-controls="panel-usb">
+          <span class="panel-toggle__label">USB</span>
+          <span class="panel-chevron" aria-hidden="true">▾</span>
+        </button>
+        <button type="button" class="btn secondary btn-ack" id="usb-refresh-btn">Refresh</button>
+      </div>
+      <div class="panel-body" id="panel-usb">
+        <div id="usb-stats">
+          <div class="skeleton-row"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" data-panel-id="containers">
+      <button type="button" class="panel-head panel-toggle" aria-expanded="true" aria-controls="panel-containers">
+        <span class="panel-toggle__label">Containers</span>
+        <span class="panel-head-meta" id="docker-count"></span>
+        <span class="panel-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div class="panel-body" id="panel-containers">
+        <div id="docker-stats">
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" data-panel-id="uptime">
+      <button type="button" class="panel-head panel-toggle" aria-expanded="true" aria-controls="panel-uptime">
+        <span class="panel-toggle__label">Monitor</span>
+        <span class="panel-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div class="panel-body" id="panel-uptime">
+        <div id="uptime-panel"{% if is_admin %} data-can-install="1"{% endif %}>
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+        </div>
+      </div>
+    </section>
+      </div>
+      <div class="ops-footer">
+        {% for ev in recent_logins %}
+          <span class="login-chip">{{ ev.username|default:"?" }} · {{ ev.created_at|date:"M d H:i" }}</span>
+        {% empty %}
+          <span class="login-chip">No login events yet.</span>
+        {% endfor %}
+      </div>
+    </section>
+  </aside>
+  {% endif %}
+</div>

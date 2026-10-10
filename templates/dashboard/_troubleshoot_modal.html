@@ -1,0 +1,24 @@
+<div class="library-modal" id="service-troubleshoot-modal" hidden>
+  <div class="library-modal__backdrop" data-troubleshoot-close></div>
+  <div class="library-modal__panel troubleshoot-modal__panel" role="dialog" aria-modal="true" aria-labelledby="service-troubleshoot-title">
+    <h2 class="library-modal__title" id="service-troubleshoot-title">Troubleshoot</h2>
+    <p class="settings-hint" id="service-troubleshoot-summary" aria-live="polite"></p>
+    <div class="update-progress" id="service-troubleshoot-progress" hidden role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Troubleshoot progress">
+      <div class="update-progress__track update-progress__track--indeterminate">
+        <div class="update-progress__fill is-running"></div>
+      </div>
+      <p class="update-progress__status" id="service-troubleshoot-progress-label">Looking</p>
+    </div>
+    <div id="service-troubleshoot-findings" class="troubleshoot-findings"></div>
+    <div class="troubleshoot-actions" id="service-troubleshoot-actions"></div>
+    <details class="troubleshoot-details">
+      <summary>Technical details</summary>
+      <pre class="update-log" id="service-troubleshoot-log"></pre>
+    </details>
+    <div class="library-modal__actions">
+      <button type="button" class="btn secondary" id="service-troubleshoot-copy" aria-label="Copy diagnostic report">Copy report</button>
+      <a class="btn secondary" id="service-troubleshoot-download" href="#" hidden>Download</a>
+      <button type="button" class="btn secondary" data-troubleshoot-close>Close</button>
+    </div>
+  </div>
+</div>

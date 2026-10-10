@@ -51,12 +51,20 @@ Open http://127.0.0.1:8000/ and sign in.
 - Public subdomain routing for mini-apps (Cloudflare tunnel)
 - Version reporting with GitHub release checks every 12 hours and one-click updates from Settings
 
+## Library catalog
+
+Built-in apps ship in [`catalog/apps.json`](catalog/apps.json) for a fresh install with no network. **Update list** downloads `https://raw.githubusercontent.com/Maddad-FZE/alef-app-catalog/main/apps.json` (override with `CATALOG_URL`) and replaces built-in apps. Apps added in Settings stay. An installed app that disappears from the file stays in the list so you can still open and uninstall it.
+
 ## Updates
 
 The current version lives in `VERSION` and is shown in the footer. Settings >
-Updates (and the footer **Update available** button) compare it against the
-latest GitHub release and install that release archive in place. A git
-checkout is not required.
+Updates compares it against the selected channel and installs that archive in
+place. A git checkout is not required.
+
+- **Stable** (default): the latest GitHub release.
+- **Dev**: every commit on `UPDATE_DEV_BRANCH` (default `main`). Opt in from
+  Settings → Updates. Dev builds are untested. Switching back to Stable stays
+  quiet until a release tag is newer than the `VERSION` that build carries.
 
 ```bash
 python manage.py tick                   # health, prune, due GitHub/detect checks

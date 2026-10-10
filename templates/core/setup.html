@@ -55,6 +55,14 @@
           {% endif %}
         </div>
       </div>
+      <div class="form-group">
+        <label for="{{ form.theme.id_for_label }}">Theme</label>
+        {{ form.theme }}
+        <p class="settings-hint">Look for everyone on this Control Center. You can change it later in Settings.</p>
+        {% if form.theme.errors %}
+          <p class="alert-item error">{{ form.theme.errors|join:", " }}</p>
+        {% endif %}
+      </div>
       <div class="form-group form-group--checkbox">
         <label class="checkbox-label" for="{{ form.wizard_enabled.id_for_label }}">
           {{ form.wizard_enabled }}

@@ -1,0 +1,8 @@
+<aside class="shell-sidebar">
+  {% include "core/shell/_brand.html" %}
+  {% include "core/shell/_nav.html" %}
+  {% include "core/shell/_actions.html" %}
+  {% if theme.helper.mode == "docked" and theme.helper.dock == "rail" %}
+  {% include "core/shell/_helper.html" %}
+  {% endif %}
+</aside>

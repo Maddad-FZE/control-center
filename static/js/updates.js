@@ -45,9 +45,28 @@
   }
 
   function sameVersion(a, b) {
-    const left = String(a || "").replace(/^v/i, "");
-    const right = String(b || "").replace(/^v/i, "");
+    const left = String(a || "").replace(/^v/i, "").toLowerCase();
+    const right = String(b || "").replace(/^v/i, "").toLowerCase();
+    if (/^[0-9a-f]{7,40}$/.test(left) && /^[0-9a-f]{7,40}$/.test(right)) {
+      const short = left.length <= right.length ? left : right;
+      const long = left.length <= right.length ? right : left;
+      return long.startsWith(short);
+    }
     return Boolean(left) && left === right;
+  }
+
+  function onDev(data) {
+    return data.latest_channel === "dev" || data.channel === "dev";
+  }
+
+  function shortRev(value) {
+    return String(value || "").replace(/^v/i, "").slice(0, 12);
+  }
+
+  function currentLabel(data) {
+    const base = `v${data.current_version}`;
+    if (!onDev(data) || !data.current_revision) return base;
+    return `${base} · ${data.dev_branch || "main"}@${shortRev(data.current_revision)}`;
   }
 
   function effectiveInstallState(data) {
@@ -102,12 +121,23 @@
     if (data.install_state === "running") return `Installing ${data.install_target_version || data.latest_version}…`;
     if (data.install_state === "failed") return "Last update attempt failed. See the install log below.";
     if (data.restart_required) {
-      return `Updated to v${data.installed_version || data.current_version}. Restart the service to load the new version.`;
+      const installed = data.installed_version || data.current_version;
+      if (onDev(data)) {
+        return `Updated to ${data.dev_branch || "main"}@${shortRev(data.current_revision || installed)}. Restart the service to load the new version.`;
+      }
+      return `Updated to v${installed}. Restart the service to load the new version.`;
     }
     if (data.install_state === "success") {
-      return `Updated to v${data.installed_version || data.current_version}.`;
+      const installed = data.installed_version || data.current_version;
+      if (onDev(data)) {
+        return `Updated to ${data.dev_branch || "main"}@${shortRev(data.current_revision || data.latest_version)} (v${installed}).`;
+      }
+      return `Updated to v${installed}.`;
     }
-    if (data.update_available) return `Update ${data.latest_version} is available.`;
+    if (data.update_available) {
+      if (onDev(data)) return `Commit ${shortRev(data.latest_version)} on ${data.dev_branch || "main"} is available.`;
+      return `Update ${data.latest_version} is available.`;
+    }
     if (data.check_error) return data.check_error;
     return "You are running the latest version.";
   }
@@ -118,9 +148,25 @@
     const running = data.install_state === "running";
     const available = !!data.update_available && !running && data.install_state !== "success";
 
-    setText("update-latest", data.latest_version || "—");
+    const latestEl = document.getElementById("update-latest");
+    if (latestEl) {
+      latestEl.textContent = data.latest_version || "—";
+      if (data.latest_version) {
+        const chip = document.createElement("span");
+        chip.className = "update-channel-chip";
+        chip.textContent = data.latest_channel || "stable";
+        latestEl.append(" ", chip);
+      }
+    }
     setText("update-checked", formatRelative(data.last_checked_at));
-    setText("update-current", `v${data.current_version}`);
+    setText("update-current", currentLabel(data));
+    const latestLabel = document.getElementById("update-latest-label");
+    if (latestLabel) latestLabel.textContent = onDev(data) ? "Latest" : "Latest release";
+    const notesHeading = document.getElementById("update-notes-heading");
+    const notesSummary = document.getElementById("update-notes-summary");
+    const notesTitle = onDev(data) ? "Commit message" : "Release notes";
+    if (notesHeading) notesHeading.textContent = notesTitle;
+    if (notesSummary) notesSummary.textContent = notesTitle;
 
     if (footerBtn) {
       footerBtn.hidden = !data.update_available && data.install_state !== "running";
