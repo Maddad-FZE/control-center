@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-10
+
 ### Added
 
 - Site-wide theme packs. Wood stays the default. Settings → Appearance sets the theme for everyone, with a session preview
