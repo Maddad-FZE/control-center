@@ -3,6 +3,7 @@
 {% block title %}{% if not is_guest and services_down %}({{ services_down }} DOWN) {% endif %}{{ site_title }}{% endblock %}
 {% block extra_css %}
 <link rel="stylesheet" href="{% vstatic 'css/dashboard.css' %}">
+{% if is_admin %}<link rel="stylesheet" href="{% vstatic 'css/explore.css' %}">{% endif %}
 {% endblock %}
 {% block content %}
 {% if not is_guest %}<meta name="csrf-token" content="{{ csrf_token }}">{% endif %}
@@ -44,5 +45,8 @@ Host unreachable — layout is cached, metrics are not live
 <script src="{% vstatic 'js/tunnel.js' %}"></script>
 {% if not is_guest %}
 <script src="{% vstatic 'js/troubleshoot-service.js' %}"></script>
+{% endif %}
+{% if is_admin %}
+<script src="{% vstatic 'js/explore-files.js' %}"></script>
 {% endif %}
 {% endblock %}

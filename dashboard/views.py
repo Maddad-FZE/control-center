@@ -620,6 +620,47 @@ def api_weather(request):
     return JsonResponse(services.fetch_weather())
 
 
+@login_required
+@require_GET
+def api_service_files(request, service_id):
+    from . import explore
+
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Forbidden"}, status=403)
+    service = get_object_or_404(Service, pk=service_id, enabled=True)
+    try:
+        payload = explore.list_service_files(service, request.GET.get("path") or "")
+    except explore.ExploreError as exc:
+        return JsonResponse({"error": exc.message}, status=exc.status)
+    return JsonResponse(payload)
+
+
+@login_required
+@require_GET
+def api_service_file_content(request, service_id):
+    from . import explore
+
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Forbidden"}, status=403)
+    service = get_object_or_404(Service, pk=service_id, enabled=True)
+    try:
+        result = explore.read_service_file(service, request.GET.get("path") or "")
+    except explore.ExploreError as exc:
+        return JsonResponse({"error": exc.message}, status=exc.status)
+    if result["kind"] == "image":
+        response = HttpResponse(result["body"], content_type=result["content_type"])
+        safe_name = result["name"].replace('"', "").replace("\\", "").replace("\n", "").replace("\r", "")
+        response["Content-Disposition"] = f'inline; filename="{safe_name}"'
+        return response
+    return JsonResponse(
+        {
+            "kind": "text",
+            "name": result["name"],
+            "text": result["body"].decode("utf-8", errors="replace"),
+        }
+    )
+
+
 def _troubleshoot_service(request, service_id):
     from core.access import can_open_service
 

@@ -1,0 +1,159 @@
+/* Draggable file windows. Colors come from the active theme tokens. */
+
+.cc-explore-desk {
+  position: fixed;
+  inset: 0;
+  z-index: 10060;
+  pointer-events: none;
+}
+
+.cc-win {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  width: min(28rem, calc(100vw - 1.5rem));
+  max-height: min(26rem, calc(100vh - 2rem));
+  pointer-events: auto;
+  border: 1px solid var(--tva-border);
+  border-bottom-width: 3px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--tva-wood), var(--tva-wood-deep));
+  box-shadow: 0 10px 28px var(--tva-shadow);
+  color: var(--tva-cream);
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+}
+
+.cc-win--viewer {
+  width: min(36rem, calc(100vw - 1.5rem));
+}
+
+.cc-win__bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+  padding: 0.35rem 0.45rem;
+  border-bottom: 1px solid var(--tva-orange);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--tva-orange) 35%, transparent), var(--tva-wood-deep));
+  cursor: grab;
+  user-select: none;
+}
+
+.cc-win__bar:active {
+  cursor: grabbing;
+}
+
+.cc-win__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--tva-orange);
+  font-family: var(--font-display, "Oswald", sans-serif);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.cc-win__close {
+  flex: 0 0 auto;
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  border: 1px solid var(--tva-border);
+  border-radius: 2px;
+  background: var(--tva-ink);
+  color: var(--tva-cream);
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cc-win__close:hover {
+  border-color: var(--tva-orange);
+  color: var(--tva-orange);
+}
+
+.cc-explore-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  flex: 0 0 auto;
+  padding: 0.35rem;
+  border-bottom: 1px solid var(--tva-border);
+}
+
+.cc-explore-path {
+  flex: 1 1 8rem;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--tva-muted);
+  font-size: 0.68rem;
+  line-height: 1.4rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cc-explore-chip,
+.cc-explore-row {
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--tva-cream);
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.cc-explore-chip {
+  padding: 0.15rem 0.4rem;
+  border-color: var(--tva-border);
+}
+
+.cc-win__body {
+  flex: 1 1 auto;
+  min-height: 8rem;
+  overflow: auto;
+  padding: 0.35rem;
+}
+
+.cc-explore-row {
+  display: block;
+  width: 100%;
+  padding: 0.22rem 0.35rem;
+  text-align: left;
+}
+
+.cc-explore-row:hover,
+.cc-explore-row:focus {
+  border-color: var(--tva-orange);
+  background: color-mix(in srgb, var(--tva-orange) 16%, transparent);
+  color: var(--tva-orange);
+  outline: none;
+}
+
+.cc-explore-note {
+  margin: 0.4rem;
+  color: var(--tva-muted);
+  font-size: 0.75rem;
+}
+
+.cc-win__pre {
+  margin: 0;
+  color: var(--tva-cream);
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cc-win__img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}

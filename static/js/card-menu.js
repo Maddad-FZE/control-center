@@ -109,6 +109,15 @@
           }
         }
 
+        if (action === "explore") {
+          if (typeof window.ccOpenExplore === "function") {
+            window.ccOpenExplore({
+              serviceId,
+              name: actionBtn.dataset.name || "",
+            });
+          }
+        }
+
         if (action === "visibility") {
           try {
             const resp = await fetch(`/api/services/${serviceId}/visibility/`, {

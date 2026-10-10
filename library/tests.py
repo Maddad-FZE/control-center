@@ -1013,6 +1013,11 @@ class NewCatalogAppTests(TestCase):
             ("bookstack", "Productivity"),
             ("odysseus", "Productivity"),
             ("securo", "Productivity"),
+            ("gods-eye-view", "Monitoring"),
+            ("trek", "Productivity"),
+            ("databasus", "Management and Hosting"),
+            ("notediscovery", "Productivity"),
+            ("snapotter", "Productivity"),
         ):
             entry = get_service_by_slug(slug)
             self.assertIsNotNone(entry, slug)

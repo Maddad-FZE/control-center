@@ -42,6 +42,16 @@ urlpatterns = [
     path("api/weather/", views.api_weather, name="api_weather"),
     path("api/icons/", views.api_icons, name="api_icons"),
     path(
+        "api/services/<int:service_id>/files/",
+        views.api_service_files,
+        name="api_service_files",
+    ),
+    path(
+        "api/services/<int:service_id>/files/content/",
+        views.api_service_file_content,
+        name="api_service_file_content",
+    ),
+    path(
         "api/services/<int:service_id>/troubleshoot/",
         views.api_service_troubleshoot_start,
         name="api_service_troubleshoot_start",

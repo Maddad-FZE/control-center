@@ -1268,3 +1268,111 @@ class DebugServiceTests(TestCase):
         )
         self.assertEqual(report.status_code, 200)
         self.assertIn("report_text", report.json())
+
+
+class ExploreFilesTests(TestCase):
+    def setUp(self):
+        self.cat = ServiceCategory.objects.create(name="Explore")
+        self.svc = Service.objects.create(
+            category=self.cat,
+            name="God's Eye View",
+            href="http://127.0.0.1:4173/",
+            host="127.0.0.1",
+            port=4173,
+            enabled=True,
+            is_public=False,
+            catalog_slug="gods-eye-view",
+        )
+        InstalledService.objects.create(
+            slug="gods-eye-view",
+            container_name="cc-gods-eye-view",
+            status=InstalledService.Status.RUNNING,
+        )
+        self.admin = User.objects.create_user("explore-admin", password="x", is_superuser=True)
+        self.member = User.objects.create_user("explore-member", password="x")
+
+    def test_member_cannot_list_or_read_files(self):
+        self.client.force_login(self.member)
+        listing = self.client.get(reverse("api_service_files", args=[self.svc.id]))
+        content = self.client.get(
+            reverse("api_service_file_content", args=[self.svc.id]),
+            {"path": "/data/.env"},
+        )
+        self.assertEqual(listing.status_code, 403)
+        self.assertEqual(content.status_code, 403)
+
+    def test_dotdot_path_is_rejected(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(
+            reverse("api_service_files", args=[self.svc.id]),
+            {"path": "/data/../etc"},
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("not inside", resp.json()["error"])
+
+    def test_listing_returns_names_and_preview_kinds(self):
+        from dashboard.explore import preview_kind
+
+        self.assertEqual(preview_kind(".env"), "text")
+        self.assertEqual(preview_kind("readme.md"), "text")
+        self.assertEqual(preview_kind("shot.png"), "image")
+        self.assertEqual(preview_kind("shot.jpg"), "image")
+        self.assertEqual(preview_kind("blob.bin"), "")
+
+        container = MagicMock()
+        container.attrs = {"Mounts": [{"Destination": "/data"}]}
+        self.client.force_login(self.admin)
+        with (
+            patch("dashboard.explore.open_container", return_value=container),
+            patch("dashboard.explore.run_ls", return_value=".env\nnotes.txt\nshots/\ncover.png\n"),
+        ):
+            resp = self.client.get(
+                reverse("api_service_files", args=[self.svc.id]),
+                {"path": "/data"},
+            )
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertEqual(payload["path"], "/data")
+        self.assertEqual(payload["parent"], "/")
+        names = [row["name"] for row in payload["entries"]]
+        self.assertEqual(names[0], "shots")
+        kinds = {row["name"]: row for row in payload["entries"]}
+        self.assertEqual(kinds[".env"]["preview"], "text")
+        self.assertEqual(kinds["notes.txt"]["preview"], "text")
+        self.assertEqual(kinds["cover.png"]["preview"], "image")
+        self.assertEqual(kinds["shots"]["kind"], "dir")
+
+    def test_text_and_image_previews(self):
+        self.client.force_login(self.admin)
+        with (
+            patch("dashboard.explore.open_container", return_value=MagicMock()),
+            patch("dashboard.explore.fetch_file", return_value=b"KEY=1\n"),
+        ):
+            text = self.client.get(
+                reverse("api_service_file_content", args=[self.svc.id]),
+                {"path": "/data/.env"},
+            )
+        self.assertEqual(text.status_code, 200)
+        self.assertEqual(text.json()["kind"], "text")
+        self.assertEqual(text.json()["text"], "KEY=1\n")
+
+        png = b"\x89PNG\r\n"
+        with (
+            patch("dashboard.explore.open_container", return_value=MagicMock()),
+            patch("dashboard.explore.fetch_file", return_value=png),
+        ):
+            image = self.client.get(
+                reverse("api_service_file_content", args=[self.svc.id]),
+                {"path": "/data/shot.png"},
+            )
+        self.assertEqual(image.status_code, 200)
+        self.assertEqual(image["Content-Type"], "image/png")
+        self.assertEqual(image.content, png)
+
+    def test_admin_menu_includes_explore_files(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse("dashboard"))
+        self.assertContains(resp, 'data-action="explore"')
+        self.assertContains(resp, ">Explore files<")
+        self.assertContains(resp, "explore-files.js")
+        self.assertContains(resp, "explore.css")
