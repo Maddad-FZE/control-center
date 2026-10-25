@@ -1,6 +1,8 @@
 from .base import *  # noqa: F403,F401
 
 DEBUG = False
+# Secure by default for HTTPS. PlainHttpCookieMiddleware clears the flag
+# on http:// so a LAN browser can keep the session.
 SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "true").lower() in (
     "1",
     "true",

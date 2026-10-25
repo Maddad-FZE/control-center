@@ -899,6 +899,34 @@ class FirstRunSetupTests(TestCase):
         self.assertEqual(resp.status_code, 302)
 
 
+class PlainHttpCookieTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+
+        User.objects.create_user("ada", password="secret")
+
+    def test_http_sign_in_does_not_mark_cookies_secure(self):
+        with self.settings(SESSION_COOKIE_SECURE=True, CSRF_COOKIE_SECURE=True):
+            resp = self.client.post(
+                "/login/", {"username": "ada", "password": "secret"}
+            )
+        self.assertEqual(resp.status_code, 302)
+        self.assertFalse(resp.cookies["sessionid"]["secure"])
+        self.assertFalse(resp.cookies["csrftoken"]["secure"])
+        self.assertIn("_auth_user_id", self.client.session)
+
+    def test_https_sign_in_keeps_secure_cookies(self):
+        with self.settings(SESSION_COOKIE_SECURE=True, CSRF_COOKIE_SECURE=True):
+            resp = self.client.post(
+                "/login/",
+                {"username": "ada", "password": "secret"},
+                secure=True,
+            )
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(resp.cookies["sessionid"]["secure"])
+        self.assertTrue(resp.cookies["csrftoken"]["secure"])
+
+
 class InstallScriptTests(SimpleTestCase):
     def test_host_bootstrap_script(self):
         script = Path(__file__).resolve().parents[1] / "scripts" / "install.sh"

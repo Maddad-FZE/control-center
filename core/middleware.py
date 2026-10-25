@@ -7,6 +7,27 @@ from django.urls import reverse
 SETUP_DONE_CACHE_KEY = "setup:has_users"
 
 
+class PlainHttpCookieMiddleware:
+    """Drop the Secure flag when the browser is on plain HTTP.
+
+    Production marks the session and CSRF cookies Secure. A browser on
+    http:// ignores those cookies, so sign-in posts and the next page still
+    shows the Sign in button (or the post is rejected as a bad CSRF token).
+    HTTPS requests keep the flag.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        if request.is_secure():
+            return response
+        for morsel in response.cookies.values():
+            morsel["secure"] = False
+        return response
+
+
 class HostAppMiddleware:
     """Route public mini-app hostnames to their dedicated URLconf."""
 
