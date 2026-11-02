@@ -111,13 +111,13 @@
   <article class="panel card-form-stats">
     <div class="panel-head">5 — Live stats</div>
     <div class="panel-body card-form-stats-body">
-      <p class="settings-hint">Optional widgets on Tracked cards. Pi-hole needs an app password from its API settings.</p>
+      <p class="settings-hint">Optional widgets on Tracked cards. Pi-hole needs an app password from its API settings. AdGuard Home needs <code>username:password</code>.</p>
       <div class="form-group">
         <label for="{{ form.preset.id_for_label }}">Preset</label>
         {{ form.preset }}
       </div>
       <div class="form-group" id="widget-key-wrap" hidden>
-        <label for="{{ form.widget_api_key.id_for_label }}">API key</label>
+        <label id="widget-key-label" for="{{ form.widget_api_key.id_for_label }}">API key</label>
         {{ form.widget_api_key }}
       </div>
       <div id="metrics-section" hidden>

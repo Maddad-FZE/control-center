@@ -20,7 +20,7 @@ from library.models import InstalledService
 from library.pihole import attach_launch_href
 from library.versions import update_map_for_services
 
-from .forms import ServiceForm, ServiceMetricFormSet
+from .forms import WIDGET_PRESETS, ServiceForm, ServiceMetricFormSet
 from .models import Alert, DebugIncident, Service, ServiceCategory
 from .prefs import open_in_new_tab_ids, prefers_new_tab, set_open_in_new_tab
 from .presets import apply_preset_metrics
@@ -339,10 +339,8 @@ def service_create_view(request):
                 "catalog_slug": catalog_slug,
             }
             widget_type = catalog_entry.get("widget_type", "none")
-            if widget_type == "pihole":
-                preset = "pihole"
-            elif widget_type == "speedtest":
-                preset = "speedtest"
+            if widget_type in WIDGET_PRESETS:
+                preset = widget_type
         form = ServiceForm(initial=initial, request=request)
         if preset != "none":
             form.fields["preset"].initial = preset

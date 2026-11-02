@@ -132,8 +132,8 @@
       "default_port": 3000,
       "container_port": 0,
       "path": "/",
-      "widget_type": "none",
-      "compose": "services:\n  adguard:\n    image: adguard/adguardhome\n    restart: unless-stopped\n    ports:\n      - \"3000:3000\"\n    volumes:\n      - ./work:/opt/adguardhome/work\n      - ./conf:/opt/adguardhome/conf",
+      "widget_type": "adguard",
+      "compose": "services:\n  adguard:\n    image: adguard/adguardhome\n    restart: unless-stopped\n    ports:\n      - \"3000:3000/tcp\"\n      - \"80:80/tcp\"\n      - \"53:53/tcp\"\n      - \"53:53/udp\"\n    volumes:\n      - ./work:/opt/adguardhome/work\n      - ./conf:/opt/adguardhome/conf",
       "install_options": "",
       "sort_order": 7
     },

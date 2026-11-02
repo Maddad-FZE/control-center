@@ -28,6 +28,14 @@ WIDGET_PRESETS = {
             ("PING", "ping"),
         ],
     },
+    "adguard": {
+        "widget_type": Service.WidgetType.ADGUARD,
+        "metrics": [
+            ("QUERIES", "num_dns_queries"),
+            ("BLOCKED", "num_blocked_filtering"),
+            ("AVG TIME", "avg_processing_time"),
+        ],
+    },
 }
 
 LINK_CUSTOM = "__custom__"
@@ -83,11 +91,7 @@ def _meta_for_entry(entry, installed):
     slug = (entry or {}).get("slug") or (installed.slug if installed else "")
     category = _ensure_category((entry or {}).get("category"))
     widget = (entry or {}).get("widget_type", "none")
-    preset = "none"
-    if widget == "pihole":
-        preset = "pihole"
-    elif widget == "speedtest":
-        preset = "speedtest"
+    preset = widget if widget in WIDGET_PRESETS else "none"
     port = 0
     if installed and installed.host_port:
         port = installed.host_port
@@ -123,6 +127,7 @@ class ServiceForm(forms.ModelForm):
         choices=[
             ("none", "None"),
             ("pihole", "Pi-hole"),
+            ("adguard", "AdGuard Home"),
             ("speedtest", "Speedtest"),
             ("custom", "Custom metrics"),
         ],
@@ -206,10 +211,8 @@ class ServiceForm(forms.ModelForm):
                 self.initial.setdefault("linked_service", LINK_CUSTOM)
                 self.initial.setdefault("open_url", instance.href)
             self.initial.setdefault("icon_slug", slug_from_icon_url(instance.icon))
-            if instance.widget_type == Service.WidgetType.PIHOLE:
-                self.fields["preset"].initial = "pihole"
-            elif instance.widget_type == Service.WidgetType.SPEEDTEST:
-                self.fields["preset"].initial = "speedtest"
+            if instance.widget_type in WIDGET_PRESETS:
+                self.fields["preset"].initial = instance.widget_type
             elif instance.metrics.exists() or instance.widget_type != Service.WidgetType.NONE:
                 self.fields["preset"].initial = "custom"
         elif self.initial.get("catalog_slug"):
@@ -271,10 +274,8 @@ class ServiceForm(forms.ModelForm):
                     cleaned["health_check_url"] = f"http://{host}:{cleaned['port']}{path}"
 
         preset = cleaned.get("preset") or "none"
-        if preset == "pihole":
-            cleaned["widget_type"] = Service.WidgetType.PIHOLE
-        elif preset == "speedtest":
-            cleaned["widget_type"] = Service.WidgetType.SPEEDTEST
+        if preset in WIDGET_PRESETS:
+            cleaned["widget_type"] = WIDGET_PRESETS[preset]["widget_type"]
         elif preset == "custom":
             if not cleaned.get("widget_type"):
                 cleaned["widget_type"] = Service.WidgetType.NONE

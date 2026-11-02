@@ -312,6 +312,64 @@ def pick_host_port(client, start_port):
     return port
 
 
+def _assign_host_port(ports, key, host_port):
+    current = ports.get(key)
+    if current is None or current == host_port:
+        ports[key] = host_port
+        return
+    if isinstance(current, list):
+        if host_port not in current:
+            current.append(host_port)
+        return
+    ports[key] = [current, host_port]
+
+
+def resolve_published_ports(client, spec):
+    """Publish every compose port. The card's web port may still shift.
+
+    ``pick_host_port`` keeps the primary web mapping off a busy port and off
+    listeners below 1024, which is how Pi-hole avoids Control Center on port
+    80. Additional mappings keep the host port and protocol from compose, so
+    DNS 53/tcp, 53/udp, and AdGuard's admin port stay on the LAN addresses
+    the catalog declared.
+    """
+    bindings = list(spec.get("port_bindings") or [])
+    container_port = int(spec.get("container_port") or 0)
+    start_port = int(spec.get("host_port_hint") or 0) or container_port or 8080
+    if not container_port:
+        container_port = start_port
+
+    if not bindings:
+        host_port = pick_host_port(client, start_port)
+        return {f"{container_port}/tcp": host_port}, host_port
+
+    primary_index = None
+    for idx, row in enumerate(bindings):
+        if row.get("protocol", "tcp") == "tcp" and int(row["host_port"]) == start_port:
+            primary_index = idx
+            break
+    if primary_index is None:
+        for idx, row in enumerate(bindings):
+            if row.get("protocol", "tcp") == "tcp" and int(row["container_port"]) == container_port:
+                primary_index = idx
+                break
+    if primary_index is None:
+        for idx, row in enumerate(bindings):
+            if row.get("protocol", "tcp") == "tcp":
+                primary_index = idx
+                break
+    if primary_index is None:
+        primary_index = 0
+
+    primary_host = pick_host_port(client, start_port)
+    ports = {}
+    for idx, row in enumerate(bindings):
+        protocol = (row.get("protocol") or "tcp").lower()
+        host_port = primary_host if idx == primary_index else int(row["host_port"])
+        _assign_host_port(ports, f"{int(row['container_port'])}/{protocol}", host_port)
+    return ports, primary_host
+
+
 def _image_version(client, image):
     try:
         img = client.images.get(image)
@@ -530,7 +588,7 @@ def _install_nextcloud(client, entry, spec, options):
     )
     _wait_for_postgres(db_container)
 
-    host_port = pick_host_port(client, int(spec.get("host_port_hint") or 8080))
+    ports, host_port = resolve_published_ports(client, spec)
     host = services_host()
     app_env = {
         "POSTGRES_HOST": NEXTCLOUD_DB_CONTAINER,
@@ -546,7 +604,7 @@ def _install_nextcloud(client, entry, spec, options):
         name=f"cc-{NEXTCLOUD_SLUG}",
         detach=True,
         network=NEXTCLOUD_NETWORK,
-        ports={"80/tcp": host_port},
+        ports=ports,
         volumes={f"cc-{NEXTCLOUD_SLUG}-0": {"bind": "/var/www/html", "mode": "rw"}},
         environment=app_env,
         labels=labels,
@@ -633,14 +691,14 @@ def _install_bookstack(client, entry, spec):
     )
     _wait_for_mariadb(db_container, root_password)
 
-    host_port = pick_host_port(client, int(spec.get("host_port_hint") or 6875))
+    ports, host_port = resolve_published_ports(client, spec)
     host = services_host()
     client.containers.run(
         image,
         name=f"cc-{BOOKSTACK_SLUG}",
         detach=True,
         network=BOOKSTACK_NETWORK,
-        ports={"80/tcp": host_port},
+        ports=ports,
         volumes={f"cc-{BOOKSTACK_SLUG}-0": {"bind": "/config", "mode": "rw"}},
         environment={
             "PUID": "1000",
@@ -738,13 +796,13 @@ def _install_odysseus(client, entry, spec):
         restart_policy={"Name": "unless-stopped"},
     )
 
-    host_port = pick_host_port(client, int(spec.get("host_port_hint") or 7000))
+    ports, host_port = resolve_published_ports(client, spec)
     client.containers.run(
         image,
         name=f"cc-{ODYSSEUS_SLUG}",
         detach=True,
         network=ODYSSEUS_NETWORK,
-        ports={"7000/tcp": host_port},
+        ports=ports,
         extra_hosts=HOST_GATEWAY,
         volumes={f"cc-{ODYSSEUS_SLUG}-0": {"bind": "/data", "mode": "rw"}},
         environment={
@@ -868,7 +926,7 @@ def _install_securo(client, entry, spec):
     _wait_for_postgres(db_container, user="securo", database="securo")
     _wait_for_redis(redis_container)
 
-    host_port = pick_host_port(client, int(spec.get("host_port_hint") or 3030))
+    ports, host_port = resolve_published_ports(client, spec)
     host = services_host()
     frontend_url = f"http://{host}:{host_port}"
     backend_env = _securo_backend_env(db_password, secret_key, frontend_url, mcp_secret)
@@ -902,7 +960,7 @@ def _install_securo(client, entry, spec):
         name=f"cc-{SECURO_SLUG}",
         detach=True,
         network=SECURO_NETWORK,
-        ports={"8080/tcp": host_port},
+        ports=ports,
         environment={
             "BACKEND_URL": f"http://{SECURO_BACKEND}:8000",
             "FRONTEND_URL": frontend_url,
@@ -949,10 +1007,8 @@ def create_dashboard_card(slug, entry, host_port):
     if widget_type != "none":
         service.widget_url = f"http://{host}:{host_port}"
     service.save()
-    if widget_type == "pihole":
-        apply_preset_metrics(service, "pihole")
-    elif widget_type == "speedtest":
-        apply_preset_metrics(service, "speedtest")
+    if widget_type in ("pihole", "speedtest", "adguard"):
+        apply_preset_metrics(service, widget_type)
     try:
         from dashboard.services import probe_service_health
 
@@ -993,7 +1049,6 @@ def _install_worker(slug, install_options=None):
 
     container_name = f"cc-{slug}"
     container_port = int(spec.get("container_port") or entry.get("default_port") or 8080)
-    start_port = int(spec.get("host_port_hint") or entry.get("default_port") or container_port)
 
     try:
         close_old_connections()
@@ -1027,7 +1082,7 @@ def _install_worker(slug, install_options=None):
             )
             return
 
-        host_port = pick_host_port(client, start_port)
+        ports, host_port = resolve_published_ports(client, spec)
 
         volume_paths = list(spec.get("volumes") or [])
         env = dict(spec.get("env") or {})
@@ -1056,8 +1111,6 @@ def _install_worker(slug, install_options=None):
             except docker.errors.APIError:
                 pass
             volume_map[vol_name] = {"bind": clean_path, "mode": "rw"}
-
-        ports = {f"{container_port}/tcp": host_port}
 
         run_kwargs = {
             "name": container_name,
