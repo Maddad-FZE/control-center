@@ -29,6 +29,7 @@ class Service(models.Model):
         NONE = "none", "None"
         PIHOLE = "pihole", "Pi-hole"
         SPEEDTEST = "speedtest", "Speedtest Tracker"
+        ADGUARD = "adguard", "AdGuard Home"
 
     category = models.ForeignKey(
         ServiceCategory, on_delete=models.CASCADE, related_name="services"
@@ -115,7 +116,11 @@ class Service(models.Model):
                 self.path = "/admin/"
             self.href = f"{base}{self._normalized_path()}"
             self.widget_url = base
-            if not self.health_check_url or "/admin" in self.health_check_url:
+            if self.widget_type == Service.WidgetType.ADGUARD:
+                desired = f"{base}{self._normalized_path()}"
+                if not self.health_check_url or "/admin" in self.health_check_url:
+                    self.health_check_url = desired
+            elif not self.health_check_url or "/admin" in self.health_check_url:
                 self.health_check_url = f"{base}/admin/"
         else:
             built = self.build_href()

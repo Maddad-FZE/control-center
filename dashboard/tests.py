@@ -1401,3 +1401,166 @@ class ExploreFilesTests(TestCase):
         self.assertContains(resp, ">Explore files<")
         self.assertContains(resp, "explore-files.js")
         self.assertContains(resp, "explore.css")
+
+
+class AdGuardWidgetTests(TestCase):
+    def setUp(self):
+        self.cat = ServiceCategory.objects.create(name="Networking")
+        self.admin = User.objects.create_user("admin", password="x", is_superuser=True)
+
+    def _response(self, status, payload=None):
+        resp = MagicMock()
+        resp.status_code = status
+        resp.ok = 200 <= status < 300
+        resp.json.return_value = payload if payload is not None else {}
+        resp.cookies = {}
+        return resp
+
+    def test_widgets_api_returns_adguard_card(self):
+        service = Service.objects.create(
+            category=self.cat,
+            name="AdGuard Home",
+            host="127.0.0.1",
+            port=3000,
+            path="/",
+            widget_type=Service.WidgetType.ADGUARD,
+            widget_api_key="alice:secret",
+            enabled=True,
+        )
+        cache.clear()
+        self.client.force_login(self.admin)
+        with patch(
+            "dashboard.services._fetch_adguard_stats",
+            return_value={"stats": [{"label": "QUERIES", "value": "12"}]},
+        ):
+            resp = self.client.get(reverse("api_widgets"))
+        self.assertEqual(resp.status_code, 200)
+        entry = resp.json()["widgets"][str(service.id)]
+        self.assertEqual(entry["type"], "adguard")
+        self.assertEqual(entry["data"]["stats"][0]["value"], "12")
+
+    def test_card_form_lists_adguard_preset(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse("service_create"))
+        self.assertContains(resp, "AdGuard Home")
+        self.assertContains(resp, "username:password")
+
+    def test_tracked_card_uses_adguard_widget(self):
+        Service.objects.create(
+            category=self.cat,
+            name="AdGuard Home",
+            host="127.0.0.1",
+            port=3000,
+            path="/",
+            widget_type=Service.WidgetType.ADGUARD,
+            enabled=True,
+        )
+        Service.objects.create(
+            category=self.cat,
+            name="Jellyfin",
+            host="127.0.0.1",
+            port=8096,
+            path="/",
+            widget_type=Service.WidgetType.NONE,
+            enabled=True,
+        )
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse("dashboard"))
+        html = resp.content.decode()
+        tracked = html.split("service-grid--tracked", 1)[1].split("services-group--apps", 1)[0]
+        apps = html.split("services-group--apps", 1)[1].split("services-group--misc", 1)[0]
+        self.assertIn("AdGuard Home", tracked)
+        self.assertIn('data-widget-type="adguard"', tracked)
+        self.assertNotIn("AdGuard Home", apps)
+        self.assertIn("Jellyfin", apps)
+
+    def test_stats_use_basic_auth(self):
+        payload = {
+            "num_dns_queries": 1200,
+            "num_blocked_filtering": 300,
+            "avg_processing_time": 0.012,
+        }
+        with patch(
+            "dashboard.services.requests.get",
+            return_value=self._response(200, payload),
+        ) as get, patch("dashboard.services.requests.post") as post:
+            result = services._fetch_adguard_stats("http://127.0.0.1:3000", "alice:secret")
+        post.assert_not_called()
+        header = get.call_args.kwargs["headers"]["Authorization"]
+        self.assertTrue(header.startswith("Basic "))
+        self.assertEqual(result["stats"][0], {"label": "QUERIES", "value": "1,200"})
+        self.assertEqual(result["stats"][1], {"label": "BLOCKED", "value": "300 (25.0%)"})
+        self.assertEqual(result["stats"][2], {"label": "AVG TIME", "value": "12.0 ms"})
+
+    def test_stats_fall_back_to_session_login(self):
+        payload = {"num_dns_queries": 4, "num_blocked_filtering": 1}
+        responses = [self._response(401), self._response(200, payload)]
+
+        def fake_get(*args, **kwargs):
+            return responses.pop(0)
+
+        login = self._response(200, {})
+        login.cookies = {"agh_session": "tok"}
+        with patch("dashboard.services.requests.get", side_effect=fake_get), patch(
+            "dashboard.services.requests.post", return_value=login
+        ) as post:
+            result = services._fetch_adguard_stats("http://192.168.0.40:3000/", "alice:secret")
+        self.assertEqual(post.call_args.kwargs["json"], {"name": "alice", "password": "secret"})
+        self.assertEqual(result["stats"][0]["value"], "4")
+        self.assertEqual(result["stats"][1]["value"], "1 (25.0%)")
+
+    def test_stats_explain_missing_credentials(self):
+        with patch(
+            "dashboard.services.requests.get",
+            return_value=self._response(401),
+        ):
+            missing = services._fetch_adguard_stats("http://127.0.0.1:3000", "")
+            bare = services._fetch_adguard_stats("http://127.0.0.1:3000", "only-a-password")
+        self.assertIn("username:password", missing["error"])
+        self.assertIn("username:password", bare["error"])
+
+    def test_widget_dispatch_keeps_pihole_and_adguard_separate(self):
+        adguard = Service(
+            widget_type=Service.WidgetType.ADGUARD,
+            widget_url="http://127.0.0.1:3000",
+            widget_api_key="alice:secret",
+        )
+        pihole = Service(
+            widget_type=Service.WidgetType.PIHOLE,
+            widget_url="http://127.0.0.1:8089",
+            widget_api_key="pihole-secret",
+        )
+        with patch(
+            "dashboard.services._fetch_adguard_stats",
+            return_value={"stats": [{"label": "QUERIES", "value": "9"}]},
+        ) as adguard_fetch, patch(
+            "dashboard.services._fetch_pihole_stats",
+            return_value={"stats": [{"label": "QUERIES", "value": "8"}]},
+        ) as pihole_fetch:
+            adguard_result = services.fetch_service_widget(adguard)
+            pihole_result = services.fetch_service_widget(pihole)
+        adguard_fetch.assert_called_once_with("http://127.0.0.1:3000", "alice:secret")
+        pihole_fetch.assert_called_once_with("http://127.0.0.1:8089", "pihole-secret")
+        self.assertEqual(adguard_result["stats"][0]["value"], "9")
+        self.assertEqual(pihole_result["stats"][0]["value"], "8")
+
+    def test_preset_form_sets_adguard_widget(self):
+        from dashboard.forms import LINK_CUSTOM, ServiceForm
+
+        form = ServiceForm(
+            data={
+                "linked_service": LINK_CUSTOM,
+                "open_url": "http://192.168.0.40:3000/",
+                "name": "AdGuard Home",
+                "category": str(self.cat.id),
+                "preset": "adguard",
+                "widget_api_key": "alice:secret",
+                "widget_type": "adguard",
+                "enabled": "on",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        saved = form.save()
+        self.assertEqual(saved.widget_type, Service.WidgetType.ADGUARD)
+        self.assertEqual(saved.widget_api_key, "alice:secret")
+        self.assertNotIn("/admin", saved.health_check_url)

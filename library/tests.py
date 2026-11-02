@@ -68,6 +68,54 @@ class DockerSpecPortTests(TestCase):
         self.assertEqual(spec["container_port"], 80)
         self.assertEqual(spec["image"], "nextcloud:latest")
 
+    def test_plain_ports_stay_tcp(self):
+        jellyfin = get_docker_spec(get_service_by_slug("jellyfin"))
+        self.assertEqual(
+            jellyfin["port_bindings"],
+            [{"host_port": 8096, "container_port": 8096, "protocol": "tcp"}],
+        )
+        books = get_docker_spec(get_service_by_slug("audiobookshelf"))
+        self.assertEqual(
+            books["port_bindings"],
+            [{"host_port": 13378, "container_port": 80, "protocol": "tcp"}],
+        )
+
+    def test_adguard_publishes_web_and_dns_ports(self):
+        entry = get_service_by_slug("adguard-home")
+        self.assertEqual(entry["widget_type"], "adguard")
+        spec = get_docker_spec(entry)
+        self.assertEqual(spec["container_port"], 3000)
+        self.assertEqual(spec["host_port_hint"], 3000)
+        self.assertEqual(
+            spec["port_bindings"],
+            [
+                {"host_port": 3000, "container_port": 3000, "protocol": "tcp"},
+                {"host_port": 80, "container_port": 80, "protocol": "tcp"},
+                {"host_port": 53, "container_port": 53, "protocol": "tcp"},
+                {"host_port": 53, "container_port": 53, "protocol": "udp"},
+            ],
+        )
+
+    def test_port_parser_ignores_environment_lookalikes(self):
+        from library.catalog import parse_compose_ports
+
+        compose = (
+            "services:\n  app:\n    environment:\n"
+            '      BIND: "127.0.0.1:53"\n'
+            "    ports:\n"
+            '      - "3000:3000/tcp"\n'
+            "      - 53:53/udp\n"
+            "      - '80:80/tcp'\n"
+        )
+        self.assertEqual(
+            parse_compose_ports(compose),
+            [
+                {"host_port": 3000, "container_port": 3000, "protocol": "tcp"},
+                {"host_port": 53, "container_port": 53, "protocol": "udp"},
+                {"host_port": 80, "container_port": 80, "protocol": "tcp"},
+            ],
+        )
+
 
 class DashboardCardTests(TestCase):
     def test_kuma_card_is_not_misc(self):
@@ -973,6 +1021,7 @@ class PiholeInstallTests(TestCase):
             _install_worker("pihole", {"user_id": admin.id})
         kwargs = client.containers.run.call_args.kwargs
         self.assertEqual(kwargs["name"], "cc-pihole")
+        self.assertEqual(kwargs["ports"], {"80/tcp": 8089})
         self.assertEqual(
             kwargs["environment"]["FTLCONF_webserver_api_password"], "pihole-secret"
         )
@@ -983,6 +1032,55 @@ class PiholeInstallTests(TestCase):
         stored = VaultEntry.objects.get(user=admin, service=service)
         self.assertEqual(stored.secret_ciphertext, "pihole-secret")
         self.assertEqual(stored.label, "Pi-hole")
+
+
+class AdGuardInstallTests(TestCase):
+    def test_worker_publishes_dns_and_admin_ports(self):
+        from unittest.mock import MagicMock, patch
+
+        import docker as docker_sdk
+        from dashboard.models import Service
+        from library.installer import _install_worker
+        from library.models import InstalledService
+
+        InstalledService.objects.create(
+            slug="adguard-home",
+            container_name="cc-adguard-home",
+            status=InstalledService.Status.INSTALLING,
+        )
+        client = MagicMock()
+        client.containers.list.return_value = []
+        client.containers.get.side_effect = docker_sdk.errors.NotFound("missing")
+        client.containers.run.return_value = MagicMock()
+        with patch("library.installer.get_docker_client", return_value=client), patch(
+            "library.installer.pick_host_port", return_value=3007
+        ) as pick_port, patch(
+            "library.installer._image_version", return_value="latest"
+        ), patch("dashboard.services.probe_service_health"):
+            _install_worker("adguard-home")
+        kwargs = client.containers.run.call_args.kwargs
+        self.assertEqual(kwargs["name"], "cc-adguard-home")
+        self.assertEqual(
+            kwargs["ports"],
+            {
+                "3000/tcp": 3007,
+                "80/tcp": 80,
+                "53/tcp": 53,
+                "53/udp": 53,
+            },
+        )
+        self.assertEqual(pick_port.call_args.args[1], 3000)
+        row = InstalledService.objects.get(slug="adguard-home")
+        self.assertEqual(row.status, InstalledService.Status.RUNNING)
+        self.assertEqual(row.host_port, 3007)
+        service = Service.objects.get(catalog_slug="adguard-home")
+        self.assertEqual(service.widget_type, "adguard")
+        self.assertEqual(service.port, 3007)
+        self.assertTrue(service.has_widget)
+        self.assertNotIn("/admin", service.health_check_url)
+        self.assertTrue(service.health_check_url.endswith(":3007/"))
+        labels = list(service.metrics.order_by("sort_order").values_list("label", flat=True))
+        self.assertEqual(labels, ["QUERIES", "BLOCKED", "AVG TIME"])
 
 
 class NewCatalogAppTests(TestCase):

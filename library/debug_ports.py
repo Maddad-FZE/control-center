@@ -378,7 +378,7 @@ def invalidate_service_caches(service: Service, old_urls: list[str] | None = Non
         if candidate:
             urls.append(candidate)
     for url in {item.rstrip("/") for item in urls if item}:
-        for kind in ("none", "pihole", "speedtest", "generic"):
+        for kind in ("none", "pihole", "speedtest", "adguard", "generic"):
             cache.delete(f"widget:{kind}:{url}:")
             if service.widget_api_key:
                 cache.delete(f"widget:{kind}:{url}:{service.widget_api_key}")

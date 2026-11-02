@@ -228,8 +228,13 @@
 
   function toggleStats() {
     const value = preset ? preset.value : "none";
+    const needsKey = value === "pihole" || value === "adguard";
     if (metricsSection) metricsSection.hidden = value !== "custom";
-    if (keyWrap) keyWrap.hidden = value !== "pihole";
+    if (keyWrap) keyWrap.hidden = !needsKey;
+    const keyLabel = document.getElementById("widget-key-label");
+    const keyInput = document.getElementById("id_widget_api_key");
+    if (keyLabel) keyLabel.textContent = value === "adguard" ? "Username:password" : "API key";
+    if (keyInput) keyInput.placeholder = value === "adguard" ? "username:password" : "";
   }
 
   function setIconPreview(url, label) {

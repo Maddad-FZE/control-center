@@ -46,6 +46,49 @@ def service_categories():
     return seen
 
 
+_PORT_LINE = re.compile(
+    r"""^-\s+["']?(?:(?P<ip>\d{1,3}(?:\.\d{1,3}){3}):)?(?P<host>\d{1,5}):(?P<container>\d{1,5})(?:/(?P<proto>tcp|udp))?["']?\s*$""",
+    re.IGNORECASE,
+)
+
+
+def parse_compose_ports(compose):
+    """Return every host/container/protocol mapping under compose ``ports:`` keys.
+
+    Short syntax only (``"3000:3000/tcp"``, ``"53:53/udp"``, ``"8080:80"``).
+    A missing protocol is TCP, which is what the catalog already publishes.
+    """
+    bindings = []
+    in_ports = False
+    for line in (compose or "").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped == "ports:":
+            in_ports = True
+            continue
+        if not in_ports:
+            continue
+        if stripped.endswith(":") and not stripped.startswith("-"):
+            in_ports = stripped == "ports:"
+            continue
+        match = _PORT_LINE.match(stripped)
+        if not match:
+            continue
+        host_port = int(match.group("host"))
+        container_port = int(match.group("container"))
+        if not (1 <= host_port <= 65535 and 1 <= container_port <= 65535):
+            continue
+        bindings.append(
+            {
+                "host_port": host_port,
+                "container_port": container_port,
+                "protocol": (match.group("proto") or "tcp").lower(),
+            }
+        )
+    return bindings
+
+
 def get_docker_spec(entry):
     """Return docker install spec, parsing compose when needed."""
     if entry.get("docker"):
@@ -61,11 +104,11 @@ def get_docker_spec(entry):
 
     host_port_hint = entry.get("default_port", 8080)
     container_port = int(entry.get("container_port") or 0) or host_port_hint
-    port_match = re.search(r'-\s*"(\d+):(\d+)"', compose)
-    if port_match:
-        host_port_hint = int(port_match.group(1))
+    port_bindings = parse_compose_ports(compose)
+    if port_bindings:
+        host_port_hint = port_bindings[0]["host_port"]
         if not entry.get("container_port"):
-            container_port = int(port_match.group(2))
+            container_port = port_bindings[0]["container_port"]
 
     volumes = []
     env = {}
@@ -109,6 +152,7 @@ def get_docker_spec(entry):
         "image": image,
         "container_port": container_port,
         "host_port_hint": host_port_hint,
+        "port_bindings": port_bindings,
         "volumes": volumes,
         "env": env,
         "pid_mode": pid_mode,

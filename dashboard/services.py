@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import logging
 import time
@@ -646,6 +647,93 @@ def _fetch_pihole_stats(base_url, api_key):
     return {"error": "Pi-hole API unavailable"}
 
 
+def _adguard_credentials(api_key):
+    key = (api_key or "").strip()
+    if ":" not in key:
+        return "", ""
+    user, _, password = key.partition(":")
+    return user, password
+
+
+def _adguard_summary_stats(data):
+    if not isinstance(data, dict):
+        return {"error": "AdGuard API returned unexpected data"}
+    if "num_dns_queries" not in data and "num_blocked_filtering" not in data:
+        return {"error": "AdGuard API returned unexpected data"}
+    try:
+        queries = int(data.get("num_dns_queries") or 0)
+        blocked = int(data.get("num_blocked_filtering") or 0)
+    except (TypeError, ValueError):
+        return {"error": "AdGuard API returned unexpected data"}
+    percent = round(100 * blocked / queries, 1) if queries else 0
+    stats = [
+        {"label": "QUERIES", "value": f"{queries:,}"},
+        {"label": "BLOCKED", "value": f"{blocked:,} ({percent}%)"},
+    ]
+    avg = data.get("avg_processing_time")
+    if isinstance(avg, (int, float)) and not isinstance(avg, bool):
+        stats.append({"label": "AVG TIME", "value": f"{float(avg) * 1000:.1f} ms"})
+    return {"stats": stats}
+
+
+def _adguard_login(base, user, password):
+    try:
+        resp = requests.post(
+            f"{base}/control/login",
+            json={"name": user, "password": password},
+            timeout=8,
+        )
+    except Exception as exc:
+        logger.debug("AdGuard login failed: %s", exc)
+        return None
+    if not resp.ok:
+        return None
+    return resp.cookies
+
+
+def _fetch_adguard_stats(base_url, api_key):
+    """AdGuard Home query stats from GET /control/stats.
+
+    Auth is HTTP basic ``username:password`` stored in the widget key.
+    If basic auth is rejected, fall back to POST /control/login and the
+    session cookie, which is the other method AdGuard Home accepts.
+    """
+    base = base_url.rstrip("/")
+    user, password = _adguard_credentials(api_key)
+    headers = {}
+    if user or password:
+        token = base64.b64encode(f"{user}:{password}".encode("utf-8")).decode("ascii")
+        headers["Authorization"] = f"Basic {token}"
+
+    try:
+        resp = requests.get(f"{base}/control/stats", headers=headers, timeout=8)
+    except Exception as exc:
+        logger.debug("AdGuard stats failed: %s", exc)
+        return {"error": "AdGuard API unavailable"}
+
+    if resp.status_code in (401, 403) and user:
+        cookies = _adguard_login(base, user, password)
+        if cookies is not None:
+            try:
+                resp = requests.get(f"{base}/control/stats", cookies=cookies, timeout=8)
+            except Exception as exc:
+                logger.debug("AdGuard stats failed after login: %s", exc)
+                return {"error": "AdGuard API unavailable"}
+
+    if resp.status_code in (401, 403):
+        if not (api_key or "").strip():
+            return {"error": "AdGuard API requires username:password"}
+        if ":" not in (api_key or ""):
+            return {"error": "AdGuard API key must be username:password"}
+        return {"error": "AdGuard login failed — check username:password"}
+    if not resp.ok:
+        return {"error": f"AdGuard API returned {resp.status_code}"}
+    try:
+        return _adguard_summary_stats(resp.json())
+    except ValueError:
+        return {"error": "AdGuard API returned invalid JSON"}
+
+
 def _fetch_speedtest_stats(base_url, api_key):
     base = base_url.rstrip("/")
     headers = {}
@@ -782,6 +870,21 @@ def fetch_service_widget(service):
         if cached is not None:
             return cached
         result = _fetch_pihole_stats(url, service.widget_api_key)
+        if "error" in result:
+            stale = _get_widget_stale(cache_key)
+            if stale:
+                return stale
+        _set_widget_cache(cache_key, result)
+        return result
+
+    if service.widget_type == Service.WidgetType.ADGUARD:
+        if not url:
+            return {"error": "No widget URL configured"}
+        cache_key = _widget_cache_key(service.widget_type, url, service.widget_api_key)
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+        result = _fetch_adguard_stats(url, service.widget_api_key)
         if "error" in result:
             stale = _get_widget_stale(cache_key)
             if stale:
